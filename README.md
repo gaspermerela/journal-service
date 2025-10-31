@@ -345,15 +345,52 @@ POSTGRES_DB=journal
 - ✅ Error handling and rollback scenarios
 
 **Running Tests:**
+
+Run all tests with verbose output:
 ```bash
-# Run all tests
-pytest
+pytest -v
+```
 
-# Run with coverage
+Run with coverage:
+```bash
 pytest --cov=app
+```
 
-# Run specific test file
+Run with coverage report:
+```bash
+pytest --cov=app --cov-report=term-missing
+```
+
+**Run specific test modules:**
+
+File validation tests:
+```bash
+pytest tests/test_validators.py
+```
+
+Storage service tests:
+```bash
+pytest tests/test_storage.py
+```
+
+Database service tests:
+```bash
+pytest tests/test_database.py
+```
+
+Upload endpoint tests:
+```bash
 pytest tests/test_upload.py
+```
+
+Entries endpoint tests:
+```bash
+pytest tests/test_entries.py
+```
+
+Health endpoint tests:
+```bash
+pytest tests/test_health.py
 ```
 
 ---
