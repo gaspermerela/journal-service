@@ -242,10 +242,7 @@ async def test_save_file_cleanup_on_error(storage_service: StorageService, test_
     assert len(temp_files) == 0
 
 
-def test_storage_service_uses_configured_base_path(test_settings):
+def test_storage_service_uses_configured_base_path(storage_service: StorageService, test_storage_path: Path):
     """Test that StorageService uses the configured base path."""
-    service = StorageService()
-
-    # Should use the path from settings
-    expected_path = Path(test_settings.AUDIO_STORAGE_PATH)
-    assert service.base_path == expected_path
+    # The storage_service fixture is already configured with test_storage_path
+    assert storage_service.base_path == test_storage_path

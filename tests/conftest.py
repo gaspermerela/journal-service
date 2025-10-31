@@ -26,75 +26,60 @@ TEST_DATABASE_URL = "postgresql+asyncpg://journal_user:password@localhost:5432/p
 TEST_SCHEMA = "journal_test"
 
 
-@pytest.fixture(scope="session")
-def event_loop() -> Generator:
-    """
-    Create an event loop for the test session.
-    Required for pytest-asyncio to work properly.
-    """
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+@pytest.fixture(scope="module")
+def test_db_schema():
+    """Set up test database schema once per module."""
+    import asyncio
+
+    async def setup():
+        engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool, echo=False)
+        async with engine.connect() as conn:
+            await conn.execute(text(f"DROP SCHEMA IF EXISTS {TEST_SCHEMA} CASCADE"))
+            await conn.execute(text(f"CREATE SCHEMA {TEST_SCHEMA}"))
+            await conn.commit()
+        async with engine.begin() as conn:
+            await conn.execute(text(f"SET search_path TO {TEST_SCHEMA}"))
+            await conn.run_sync(Base.metadata.create_all)
+        await engine.dispose()
+
+    async def teardown():
+        engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool, echo=False)
+        async with engine.connect() as conn:
+            await conn.execute(text(f"DROP SCHEMA IF EXISTS {TEST_SCHEMA} CASCADE"))
+            await conn.commit()
+        await engine.dispose()
+
+    asyncio.run(setup())
+    yield
+    asyncio.run(teardown())
 
 
-@pytest.fixture(scope="session")
-async def test_engine():
+@pytest.fixture
+async def db_session(test_db_schema) -> AsyncGenerator[AsyncSession, None]:
     """
-    Create a test database engine.
-    Uses a separate test schema to avoid conflicts with dev data.
+    Create a fresh database session for each test.
+    Automatically rolls back changes after each test.
     """
     engine = create_async_engine(
         TEST_DATABASE_URL,
         poolclass=NullPool,
         echo=False,
+        connect_args={"server_settings": {"search_path": TEST_SCHEMA}}
     )
 
-    # Create test schema
-    async with engine.connect() as conn:
-        await conn.execute(text(f"DROP SCHEMA IF EXISTS {TEST_SCHEMA} CASCADE"))
-        await conn.execute(text(f"CREATE SCHEMA {TEST_SCHEMA}"))
-        await conn.commit()
+    async with engine.connect() as connection:
+        trans = await connection.begin()
+        Session = async_sessionmaker(bind=connection, expire_on_commit=False)
+        session = Session()
 
-    # Create tables in test schema
-    async with engine.begin() as conn:
-        # Set search path to test schema
-        await conn.execute(text(f"SET search_path TO {TEST_SCHEMA}"))
-        await conn.run_sync(Base.metadata.create_all)
-
-    yield engine
-
-    # Cleanup: drop test schema
-    async with engine.connect() as conn:
-        await conn.execute(text(f"DROP SCHEMA IF EXISTS {TEST_SCHEMA} CASCADE"))
-        await conn.commit()
+        try:
+            yield session
+        finally:
+            await session.close()
+            await trans.rollback()
+            await connection.close()
 
     await engine.dispose()
-
-
-@pytest.fixture
-async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
-    """
-    Create a fresh database session for each test.
-    Automatically rolls back changes after each test.
-    """
-    async_session_maker = async_sessionmaker(
-        test_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-    )
-
-    async with async_session_maker() as session:
-        # Set search path for this session
-        await session.execute(text(f"SET search_path TO {TEST_SCHEMA}"))
-
-        yield session
-
-        # Rollback any changes
-        await session.rollback()
-
-        # Clean up all data after test
-        await session.execute(text(f"TRUNCATE TABLE {TEST_SCHEMA}.dream_entries CASCADE"))
-        await session.commit()
 
 
 @pytest.fixture
