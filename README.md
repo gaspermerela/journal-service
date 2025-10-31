@@ -504,6 +504,8 @@ pip install -r requirements.txt
 
 # 2. Set up database
 # Create PostgreSQL database: journal
+docker run --name postgres -e POSTGRES_USER=journal_user -e POSTGRES_PASSWORD=password -e POSTGRES_DB=postgres -p 5432:5432 -d postgres:17
+docker exec -i postgres bash -c "PGPASSWORD=password psql -U journal_user -d postgres -w -c 'CREATE SCHEMA IF NOT EXISTS journal;'"
 
 # 3. Configure environment
 cp .env.example .env

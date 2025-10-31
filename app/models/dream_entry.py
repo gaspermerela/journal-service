@@ -70,9 +70,10 @@ class DreamEntry(Base):
         onupdate=lambda: datetime.now(timezone.utc)
     )
 
-    # Indexes for query performance
+    # Indexes for query performance and schema configuration
     __table_args__ = (
         Index("idx_dream_entries_uploaded_at", "uploaded_at"),
+        {"schema": "journal"}
     )
 
     def __repr__(self) -> str:
