@@ -1,0 +1,25 @@
+# Deployment Configuration
+# Copy this file to .deploy-config and customize for your setup
+#
+# Usage:
+#   cp .deploy-config.example .deploy-config
+#   nano .deploy-config  # Edit with your values
+#   ./docker/deploy.sh v1.0.0
+
+# SSH Configuration
+# Path to your SSH private key for server access
+SSH_KEY=~/.ssh/id_rsa
+
+# Docker Build Configuration
+# Target platform architecture (linux/amd64 for x86_64, linux/arm64 for ARM)
+PLATFORM=linux/amd64
+
+# Server Configuration
+# SSH user for server access (use non-root user for better security)
+SERVER_USER=root
+
+# Deployment directory on the server
+SERVER_DIR=/root/journal-service
+
+# Server IP (alternatively, set SERVER_IP environment variable)
+# SERVER_IP=123.456.789.10

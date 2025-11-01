@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: journal-service
+    restart: unless-stopped
+
+    # Use host network to access systemctl PostgreSQL on localhost
+    network_mode: host
+
+    # Environment variables
+    environment:
+      - DATABASE_HOST=localhost
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=postgres
+      - DATABASE_USER=journal_user
+      - DATABASE_PASSWORD=password
+      - HOST=0.0.0.0
+      - PORT=8000
+      - LOG_LEVEL=INFO
+      - AUDIO_STORAGE_PATH=/app/data/audio
+      - MAX_FILE_SIZE_MB=100
+      - CORS_ORIGINS=*
+      - WORKERS=1
+      - DB_POOL_SIZE=5
+      - DB_MAX_OVERFLOW=10
+      - DEBUG=false
+      - RELOAD=false
+
+    # Mount volumes for persistent data
+    volumes:
+      - ./data/audio:/app/data/audio
+      - ./.env:/app/.env:ro  # Optional: use .env file instead of environment vars
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

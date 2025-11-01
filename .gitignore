@@ -30,6 +30,9 @@ venv.bak/
 # Environment Variables
 .env
 
+# Deployment Configuration
+.deploy-config
+
 # IDE
 .vscode/
 .idea/
