@@ -1,729 +1,173 @@
-# AI Journal Backend Service Specification
+# AI Journal Backend Service
 
-## 🧠 Project Overview
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-00a393.svg)](https://fastapi.tiangolo.com)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-336791.svg)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg)](https://www.docker.com/)
+[![Status: In Progress](https://img.shields.io/badge/status-in--progress-orange)]()
 
-This project is a backend service for a voice-based dream journaling application. 
-Users record dreams as `.mp3` audio files (e.g., via iOS Shortcuts or mobile app) 
-and submit them to the backend. The system stores the audio and related metadata. 
-This is **Phase 1** of development.
+## Why This Project?
 
-## ✅ Features (Current Scope)
+**Writing daily dream journals can be frustrating, especially right after waking up.**  
+This backend service tries to solve that problem by letting you record voice notes,  
+send them to a server via iOS Shortcuts or web app, and transform them into clean,  
+fluent entries using ASR (transcription) and LLM (transcription cleanup) processing pipelines.  
+The final result can be automatically inserted into your Notion database or manually copied into any digital journaling platform of your choice.
 
-Implemented in this version:
+This approach could extend to general voice-based daily journaling.
 
-- Accept `.mp3` file uploads via HTTP POST. Audio file represent voice recording in Slovenian or English language.
-- Save uploaded audio files to disk with unique filenames
-- Store metadata in a PostgreSQL database
+  **Technical implementation:**
+- **Modern async architecture** using FastAPI + SQLAlchemy async
+- **Docker deployment pipeline** with Docker multi-platform builds and scripted automated deployment
+- **Comprehensive testing** (unit, integration, end-to-end)
+- **Database management** with Alembic migrations
 
-## 💤 Deferred Features (Future Phases)
+## Features
 
-Not implemented now but the system should be structured to support:
+**Current - Phase 1 (Backend Backbone):**
+- Upload `.mp3` audio files via REST API
+- Store files with UUID-based naming and date organization
+- PostgreSQL metadata storage
+- Health monitoring and auto-generated API documentation
 
-- Transcribing audio to text with open-sourced model (e.g., via Whisper)
-- LLM-based text cleanup to generate fluent dream entries
-- Dream motif and entity extraction
-- Syncing final text to Notion
+**Future Phases:**
+- Audio transcription (Whisper)
+- LLM-based text cleanup and analysis
+- Notion synchronization
+- Frontend UI under consideration for future expansion
 
-In the distant future, the service may extend to support daily/weekly journaling
-via multiple mp3 files representing journal entries throughout the day/week.
+## Quick Start
 
----
-
-## ⚙️ Stack Requirements
-
-**Selected Stack:**
-
-- ✅ **Web Framework**: FastAPI (async, modern, auto-documentation, type hints)
-- ✅ **Database**: PostgreSQL
-- ✅ **ORM**: SQLAlchemy (with async support via asyncpg)
-- ✅ **Migrations**: Alembic
-- ✅ **Logging**: Python's `logging` module with structured text output
-- ✅ **Environment Config**: `python-dotenv`
-- ✅ **Validation**: Pydantic (built into FastAPI)
-- ✅ **Testing**: pytest + httpx (for async tests)
-- ✅ **Containerization**: Docker (Dockerfile + docker-compose)
-- ✅ **WSGI Server**: Uvicorn (ASGI server for FastAPI)
-
----
-
-## 🌐 API Endpoints
-
-### `POST /api/v1/upload`
-Upload an audio file for dream journaling.
-
-**Request:**
-- Content-Type: `multipart/form-data`
-- Field name: `file`
-- Accepted file types: `.mp3`
-- Max file size: 100 MB (configurable via `.env`)
-
-**Response (Success - 201 Created):**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "original_filename": "dream_recording.mp3",
-  "saved_filename": "550e8400-e29b-41d4-a716-446655440000_20250131T143022.mp3",
-  "file_path": "/data/audio/2025-01-31/550e8400-e29b-41d4-a716-446655440000_20250131T143022.mp3",
-  "uploaded_at": "2025-01-31T14:30:22.123456Z",
-  "message": "File uploaded successfully"
-}
-```
-
-**Response (Error - 4xx/5xx):**
-```json
-{
-  "detail": "Error description",
-  "error_code": "INVALID_FILE_TYPE"
-}
-```
-
-**Status Codes:**
-- `201`: File uploaded and saved successfully
-- `400`: Invalid request (wrong file type, missing file, etc.)
-- `413`: File too large
-- `500`: Server error (storage failure, database error)
-
-### `GET /api/v1/entries/{id}`
-Retrieve metadata for a specific dream entry.
-
-**Response (Success - 200 OK):**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "original_filename": "dream_recording.mp3",
-  "saved_filename": "550e8400-e29b-41d4-a716-446655440000_20250131T143022.mp3",
-  "file_path": "/data/audio/2025-01-31/550e8400-e29b-41d4-a716-446655440000_20250131T143022.mp3",
-  "uploaded_at": "2025-01-31T14:30:22.123456Z"
-}
-```
-
-**Status Codes:**
-- `200`: Entry found
-- `404`: Entry not found
-
-### `GET /health`
-Health check endpoint for monitoring.
-
-**Response (Success - 200 OK):**
-```json
-{
-  "status": "healthy",
-  "database": "connected",
-  "timestamp": "2025-01-31T14:30:22.123456Z"
-}
-```
-
-### `GET /docs`
-Auto-generated API documentation (FastAPI Swagger UI).
-
-### `GET /redoc`
-Alternative API documentation (ReDoc).
-
----
-
-## 📂 File Storage
-
-**Storage Structure:**
-- Base path: `/data/audio/` (configurable via `AUDIO_STORAGE_PATH` in `.env`)
-- Subfolder structure: `/data/audio/YYYY-MM-DD/`
-- Example full path: `/data/audio/2025-01-31/550e8400-e29b-41d4-a716-446655440000_20250131T143022.mp3`
-
-**Filename Format:**
-- Pattern: `{uuid}_{timestamp}.mp3`
-- UUID: UUID4 format
-- Timestamp: ISO 8601 compact format `YYYYMMDDTHHmmss`
-- Example: `550e8400-e29b-41d4-a716-446655440000_20250131T143022.mp3`
-
-**Behavior:**
-- Directories created automatically if they don't exist
-- Original filename preserved in database metadata
-- File permissions set to 644 (readable by owner/group)
-- Atomic write operations (write to temp, then move)
-
----
-
-## 🗃️ Database
-
-**Configuration:**
-- Database name: `journal` (configurable via `.env`)
-- All connection parameters configurable via `.env`:
-  - Host, Port, Username, Password, Database name
-- Connection pooling enabled (SQLAlchemy async engine)
-- Migration management via Alembic
-
-**Schema:**
-
-**Table: `dream_entries`**
-
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| `id` | UUID | PRIMARY KEY | Unique identifier (UUID4) |
-| `original_filename` | VARCHAR(255) | NOT NULL | Original name of uploaded file |
-| `saved_filename` | VARCHAR(255) | NOT NULL, UNIQUE | UUID-based filename on disk |
-| `file_path` | TEXT | NOT NULL | Absolute path to saved file |
-| `uploaded_at` | TIMESTAMP WITH TIME ZONE | NOT NULL, DEFAULT NOW() | Upload timestamp (UTC) |
-| `created_at` | TIMESTAMP WITH TIME ZONE | NOT NULL, DEFAULT NOW() | Record creation time |
-| `updated_at` | TIMESTAMP WITH TIME ZONE | NOT NULL, DEFAULT NOW() | Last update time |
-
-**Indexes:**
-- Primary key on `id`
-- Index on `uploaded_at` (for time-based queries)
-- Unique index on `saved_filename`
-
-**Future Schema Extensions:**
-- `transcription` column (TEXT) for audio-to-text output
-- `cleaned_text` column (TEXT) for LLM-processed content
-- `language` column (VARCHAR) for detected language
-- `motifs` column (JSONB) for extracted themes
-- `synced_to_notion` column (BOOLEAN) for sync status
-- `notion_page_id` column (VARCHAR) for Notion reference
-
----
-
-## 🪵 Logging
-
-**Configuration:**
-- Log level configurable via `LOG_LEVEL` in `.env` (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-- Default level: INFO
-- Output: stdout (suitable for Docker/container environments)
-- Format: Structured text with timestamp, level, module, and message
-
-**Log Format Example:**
-```
-2025-01-31 14:30:22.123 | INFO | app.routes.upload | File upload request received | ip=192.168.1.100 filename=dream_recording.mp3 size=5242880
-2025-01-31 14:30:22.456 | INFO | app.services.storage | File saved successfully | saved_path=/data/audio/2025-01-31/550e8400...mp3
-2025-01-31 14:30:22.789 | INFO | app.services.database | Database record created | entry_id=550e8400-e29b-41d4-a716-446655440000
-```
-
-**What Gets Logged:**
-- **Request Level**: HTTP method, path, IP address, user agent, request ID
-- **Upload Processing**: Original filename, file size, content type validation
-- **File Operations**: Save location, success/failure, disk usage
-- **Database Operations**: Query type, success/failure, execution time
-- **Errors**: Full stack trace, context data, request ID for tracing
-- **Performance**: Response times, slow queries (>1s)
-
-**Sensitive Data Handling:**
-- Never log file contents
-- Never log full file paths in non-ERROR logs (use relative paths)
-- Never log database credentials
-
----
-
-## ⚙️ Server Configuration
-
-**Application Settings:**
-- **Host**: `0.0.0.0` (configurable via `HOST`)
-- **Port**: `8000` (configurable via `PORT`)
-- **Workers**: 1 (can be increased for production via `WORKERS`)
-- **Reload**: Enabled in development, disabled in production
-- **CORS**: Configurable origins via `CORS_ORIGINS` (comma-separated list)
-  - Default: Allow all origins in development
-  - Production: Specify allowed origins explicitly
-
-**Request Limits:**
-- Max file size: 100 MB (configurable via `MAX_FILE_SIZE_MB`)
-- Request timeout: 60 seconds
-- Max concurrent uploads: Limited by worker count
-
-**Graceful Shutdown:**
-- Handles SIGTERM and SIGINT signals
-- Completes in-flight requests before shutdown
-- Closes database connections cleanly
-
----
-
-## 🔧 Environment Variables
-
-All configuration via `.env` file. See `.env.example` for template.
-
-**Required Variables:**
+**With Docker (recommended):**
 ```bash
-# Database Configuration
-DATABASE_HOST=localhost
-DATABASE_PORT=5432
-DATABASE_NAME=journal
-DATABASE_USER=journal_user
-DATABASE_PASSWORD=secure_password
+# Clone and configure
+git clone <repo-url>
+cd journal-service
+cp .env.example .env
 
-# Application Configuration
-HOST=0.0.0.0
-PORT=8000
-LOG_LEVEL=INFO
+# Start services
+docker-compose up -d
 
-# Storage Configuration
-AUDIO_STORAGE_PATH=/data/audio
-MAX_FILE_SIZE_MB=100
+# Verify
+curl http://localhost:8000/health
 ```
 
-**Optional Variables:**
+**Local development:**
 ```bash
-# CORS Configuration (comma-separated)
-CORS_ORIGINS=http://localhost:3000,https://yourdomain.com
+# Install dependencies
+pip install -r requirements.txt
 
-# Worker Configuration
-WORKERS=1
+# Set up PostgreSQL database
+docker run --name postgres \
+  -e POSTGRES_USER=journal_user \
+  -e POSTGRES_PASSWORD=password \
+  -e POSTGRES_DB=postgres \
+  -p 5432:5432 -d postgres:17
 
-# Database Pool Configuration
-DB_POOL_SIZE=5
-DB_MAX_OVERFLOW=10
+docker exec -i postgres bash -c \
+  "PGPASSWORD=password psql -U journal_user -d postgres -c 'CREATE SCHEMA IF NOT EXISTS journal;'"
 
-# Development/Debug
-DEBUG=false
-RELOAD=false
+# Configure and run
+cp .env.example .env
+alembic upgrade head
+uvicorn app.main:app --reload
 ```
 
-**Docker-Specific:**
+**Test it:**
 ```bash
-# Used in docker-compose.yml
-POSTGRES_USER=journal_user
-POSTGRES_PASSWORD=secure_password
-POSTGRES_DB=journal
+# Upload audio file
+  curl -X POST "http://localhost:8000/api/v1/upload" \
+  -F "file=@recording.mp3;type=audio/mpeg"
+
+# View API docs
+open http://localhost:8000/docs
 ```
 
----
+## API Endpoints
 
-## 🚨 Error Handling & Rollback Strategy
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/upload` | POST | Upload audio file (multipart/form-data) |
+| `/api/v1/entries/{id}` | GET | Retrieve entry metadata |
+| `/health` | GET | Health check with database status |
+| `/docs` | GET | Interactive API documentation (Swagger) |
+| `/redoc` | GET | Alternative API documentation |
 
-**Transaction Management:**
-- All database writes wrapped in transactions
-- Automatic rollback on any failure
-- File operations performed before database commits
+See [API Reference](docs/api-reference.md) for detailed request/response schemas.
 
-**Error Scenarios:**
+## Architecture
 
-1. **Invalid File Type**
-   - HTTP 400 response
-   - No file saved, no database entry
+**Stack:**
+- **Framework**: FastAPI with automatic OpenAPI docs
+- **Database**: PostgreSQL with SQLAlchemy async ORM
+- **Migrations**: Alembic
+- **Testing**: pytest
+- **Deployment**: Docker 
+- **Server**: Uvicorn ASGI server
 
-2. **File Too Large**
-   - HTTP 413 response
-   - No file saved, no database entry
+**Project Structure:**
+```
+journal-service/
+├── app/                  # Application code
+│   ├── routes/          # API endpoints
+│   ├── services/        # Business logic
+│   ├── models/          # Database models
+│   └── schemas/         # Pydantic validation
+├── tests/               # Comprehensive test suite
+├── alembic/             # Database migrations
+├── docker/              # Deployment scripts
+└── docs/                # Technical documentation
+```
 
-3. **Disk Write Failure**
-   - HTTP 500 response
-   - Attempted file deletion if partial write
-   - No database entry created
+See [Getting Started Guide](docs/getting-started.md) for detailed setup instructions.
 
-4. **Database Connection Failure**
-   - HTTP 500 response
-   - File saved but orphaned (can be cleaned up later)
-   - Logged with full context for manual recovery
+## Testing
 
-5. **Database Write Failure**
-   - HTTP 500 response
-   - Transaction rollback
-   - Saved file deleted to maintain consistency
-
-**Retry Logic:**
-- No automatic retries (client responsible)
-- Idempotency: Same file can be uploaded multiple times
-- Each upload creates new UUID/entry
-
-**Monitoring Hooks:**
-- All errors logged with request ID for tracing
-- Database health checked on startup and in `/health` endpoint
-- Disk space not monitored (rely on system-level monitoring)
-
----
-
-## 🧪 Tests
-
-**Test Structure:**
-- Unit tests: Test individual components (storage, validation, etc.)
-- Integration tests: Test full request/response cycle with test database
-- End-to-end tests: Test complete system with real HTTP requests to running service
-- Test database: Separate from main database, cleaned between tests
-- Fixtures: Provide sample MP3 files for testing
-
-**Test Coverage:**
-- ✅ File upload with valid MP3 file
-- ✅ File upload with invalid file type
-- ✅ File upload exceeding size limit
-- ✅ File storage logic (directory creation, naming)
-- ✅ Database operations (create, retrieve)
-- ✅ Health endpoint
-- ✅ Error handling and rollback scenarios
-
-**Running Tests:**
-
-Run all tests with verbose output:
 ```bash
+# Run all tests
 pytest -v
-```
 
-Run with coverage:
-```bash
-pytest --cov=app
-```
-
-Run with coverage report:
-```bash
+# Run with coverage
 pytest --cov=app --cov-report=term-missing
-```
 
-**Run specific test modules:**
-
-File validation tests:
-```bash
-pytest tests/test_validators.py
-```
-
-Storage service tests:
-```bash
-pytest tests/test_storage.py
-```
-
-Database service tests:
-```bash
-pytest tests/test_database.py
-```
-
-Upload endpoint tests:
-```bash
-pytest tests/test_upload.py
-```
-
-Entries endpoint tests:
-```bash
-pytest tests/test_entries.py
-```
-
-Health endpoint tests:
-```bash
-pytest tests/test_health.py
-```
-
-**End-to-End Tests** (require running service):
-
-First, start the service in a separate terminal:
-```bash
+# End-to-end tests (requires running service)
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-Then run e2e tests:
-```bash
 pytest tests/test_e2e.py -v
 ```
 
-E2e tests verify the complete system by making real HTTP requests to the running service, testing:
-- Health check endpoints
-- Upload functionality with real files
-- Entry retrieval
-- Complete upload-retrieve workflows
-- API documentation endpoints
+See [Testing Guide](docs/testing.md) for comprehensive test documentation.
 
----
+## Deployment
 
-## 📁 Project Structure
-
-```
-journal-service/
-├── app/
-│   ├── __init__.py
-│   ├── main.py                 # FastAPI application entry point
-│   ├── config.py               # Configuration management (.env loading)
-│   ├── database.py             # Database connection and session management
-│   ├── models/
-│   │   ├── __init__.py
-│   │   └── dream_entry.py      # SQLAlchemy models
-│   ├── schemas/
-│   │   ├── __init__.py
-│   │   └── dream_entry.py      # Pydantic schemas for request/response
-│   ├── routes/
-│   │   ├── __init__.py
-│   │   ├── upload.py           # Upload endpoint
-│   │   ├── entries.py          # Entry retrieval endpoints
-│   │   └── health.py           # Health check endpoint
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── storage.py          # File storage logic
-│   │   └── database.py         # Database operations
-│   ├── middleware/
-│   │   ├── __init__.py
-│   │   └── logging.py          # Request logging middleware
-│   └── utils/
-│       ├── __init__.py
-│       ├── logger.py           # Logging configuration
-│       └── validators.py       # File validation utilities
-├── alembic/
-│   ├── versions/               # Migration files
-│   └── env.py                  # Alembic configuration
-├── tests/
-│   ├── __init__.py
-│   ├── conftest.py             # Pytest fixtures
-│   ├── test_upload.py          # Upload endpoint tests
-│   ├── test_storage.py         # Storage service tests
-│   ├── test_database.py        # Database service tests
-│   └── fixtures/
-│       └── sample.mp3          # Test audio file
-├── docs/
-│   ├── overview.md
-│   ├── endpoints.md
-│   ├── database-schema.md
-│   ├── logging.md
-│   ├── future-features.md
-│   └── changelog.md
-├── data/
-│   └── audio/                  # Audio file storage (created at runtime)
-├── Dockerfile
-├── docker-compose.yml
-├── alembic.ini                 # Alembic configuration
-├── requirements.txt            # Python dependencies
-├── .env.example               # Environment variables template
-├── .env                       # Environment variables (gitignored)
-├── .gitignore
-├── .dockerignore
-└── README.md                  # This file
-```
-
-**Key Design Principles:**
-- **Separation of Concerns**: Routes, services, and models are separated
-- **Async/Await**: All I/O operations are async
-- **Dependency Injection**: FastAPI's DI system for database sessions
-- **Type Hints**: Full type annotation for better IDE support
-- **Error Handling**: Centralized exception handling
-- **Configuration**: All config loaded from environment variables
-
----
-
-## 🐳 Dockerization
-
-**Dockerfile:**
-- Multi-stage build for optimized image size
-- Based on Python 3.11+ slim image
-- Non-root user for security
-- Health check included
-
-**docker-compose.yml:**
-- **App service**: FastAPI application
-  - Exposed port: 8000
-  - Volume: `/data/audio` for persistent storage
-  - Depends on database service
-  - Auto-restart on failure
-- **PostgreSQL service**:
-  - Version: 15+
-  - Volume for database persistence
-  - Health check for readiness
-- **Network**: Internal bridge network for service communication
-
-**Volumes:**
-- `postgres_data`: Database persistence
-- `audio_data`: Audio file storage persistence
-
-**Docker Commands:**
-```bash
-# Build and start all services
-docker-compose up --build
-
-# Start in detached mode
-docker-compose up -d
-
-# View logs
-docker-compose logs -f app
-
-# Stop all services
-docker-compose down
-
-# Stop and remove volumes (WARNING: deletes data)
-docker-compose down -v
-```
-
----
-
-## 🚀 Quick Start
-
-**Prerequisites:**
-- Docker & Docker Compose installed
-- OR Python 3.11+ and PostgreSQL 15+
-
-**Option 1: Docker (Recommended)**
-```bash
-# 1. Clone the repository
-git clone <repo-url>
-cd journal-service
-
-# 2. Copy and configure environment variables
-cp .env.example .env
-# Edit .env with your settings
-
-# 3. Start services
-docker-compose up --build
-
-# 4. API available at http://localhost:8000
-# 5. View docs at http://localhost:8000/docs
-```
-
-**Option 2: Local Development**
-```bash
-# 1. Install dependencies
-pip install -r requirements.txt
-```
+Simplified deployment pipeline for remote servers:
 
 ```bash
-# 2. Set up database
-# Create PostgreSQL database: journal
-docker run --name postgres -e POSTGRES_USER=journal_user -e POSTGRES_PASSWORD=password -e POSTGRES_DB=postgres -p 5432:5432 -d postgres:17
-docker exec -i postgres bash -c "PGPASSWORD=password psql -U journal_user -d postgres -w -c 'CREATE SCHEMA IF NOT EXISTS journal;'"
-```
-```bash
-# 3. Configure environment
-cp .env.example .env
-# Edit .env with your local settings
+# Local: Build and upload image
+export SERVER_IP=your.server.ip
+./docker/deploy.sh v1.0.0
 
-# 4. Run migrations
-alembic upgrade head
-
-# 5. Start application
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# 6. API available at http://localhost:8000
+# Server: Deploy uploaded image
+ssh user@server
+cd /path/to/journal-service
+./run.sh v1.0.0
 ```
 
-**Testing the API:**
-```bash
-# Upload a file
-curl -X POST "http://localhost:8000/api/v1/upload" \
-  -H "accept: application/json" \
-  -H "Content-Type: multipart/form-data" \
-  -F "file=@/path/to/your/recording.mp3"
+See [Deployment Guide](docs/deployment.md) for detailed instructions.
 
-# Check health
-curl "http://localhost:8000/health"
+## Documentation
 
-# Get entry by ID
-curl "http://localhost:8000/api/v1/entries/{entry-id}"
-```
+- [Getting Started](docs/getting-started.md) - Detailed setup and configuration
+- [API Reference](docs/api-reference.md) - Complete endpoint documentation
+- [Testing Guide](docs/testing.md) - Running and writing tests
+- [Deployment Guide](docs/deployment.md) - Production deployment pipeline
+- [Database Schema](docs/database-schema.md) - Schema design and migrations
+- [Architecture](docs/architecture.md) - Design decisions and structure
 
----
+## Contributing
 
-## 📈 Future Extension Hooks
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-The code should be modular to allow:
+## License
 
-- Adding a transcription module
-- Adding LLM prompt-based cleanup
-- Notion integration
-- Metadata tagging system
-- API key or auth layer
-
----
-
-## 🔐 Security & Safety
-
-- Only `.mp3` files allowed for now
-- Limit max file size (e.g., 100 MB)
-- Sanitize and validate all inputs
-
----
-
-## 📌 Summary
-
-This project is a robust, containerized backend for dream audio journaling. 
-The current version handles file storage and metadata, while future phases 
-will enable full AI processing and integration.
-
-## 📜 Documentation
-
-During AI based and manual development, we must maintain detailed documentation in the
-`docs/` directory. It should be structured in multiple `.md` files, for example (but not necessarily like this):
-- `overview.md` - High-level system architecture and design
-- `endpoints.md` - Detailed API endpoint documentation
-- `database-schema.md` - Database schema with relationships
-- `logging.md` - Logging standards and examples
-- `future-features.md` - Planned enhancements and roadmap
-- `changelog.md` - Version history and changes
-
----
-
-## 🛠️ Development Workflow
-
-**Adding New Features:**
-1. Create feature branch from main
-2. Update documentation in `docs/` if needed
-3. Implement feature with tests
-4. Run tests: `pytest --cov=app`
-5. Update `docs/changelog.md`
-6. Create pull request
-
-**Database Migrations:**
-```bash
-# Create new migration
-alembic revision --autogenerate -m "Description of changes"
-
-# Review generated migration file
-# Edit if needed
-
-# Apply migration
-alembic upgrade head
-
-# Rollback if needed
-alembic downgrade -1
-```
-
-**Code Quality:**
-- Type hints required for all functions
-- Docstrings for complex functions
-- Follow PEP 8 style guide
-- Keep functions small and focused
-- Separate business logic from routes
-
-**Best Practices:**
-- Always use async/await for I/O operations
-- Handle exceptions at service layer
-- Log all important operations
-- Never commit `.env` file
-- Test error scenarios, not just happy paths
-- Keep database sessions short-lived
-
----
-
-## 🔍 Troubleshooting
-
-**Database Connection Issues:**
-```bash
-# Check database is running
-docker-compose ps
-
-# View database logs
-docker-compose logs postgres
-
-# Connect to database directly
-docker-compose exec postgres psql -U journal_user -d journal
-```
-
-**File Storage Issues:**
-```bash
-# Check directory permissions
-ls -la /data/audio
-
-# Check disk space
-df -h
-
-# View app logs
-docker-compose logs app
-```
-
-**Application Not Starting:**
-```bash
-# Check environment variables
-cat .env
-
-# Verify all required variables are set
-# Check for syntax errors in .env
-
-# View full error logs
-docker-compose up
-```
-
----
-
-## 📄 License
-
-This project is private and proprietary.
-
----
-
-## 👤 Author
-
-Developed for personal dream journaling and AI processing experimentation.
+MIT License - see [LICENSE](LICENSE) file for details.

@@ -12,9 +12,9 @@ class Settings(BaseSettings):
     # Database Configuration
     DATABASE_HOST: str = "localhost"
     DATABASE_PORT: int = 5432
-    DATABASE_NAME: str = "journal"
+    DATABASE_NAME: str = "postgres"
     DATABASE_USER: str = "journal_user"
-    DATABASE_PASSWORD: str
+    DATABASE_PASSWORD: str  # Required - no default for security
 
     # Application Configuration
     HOST: str = "0.0.0.0"
