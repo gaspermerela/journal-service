@@ -332,6 +332,7 @@ POSTGRES_DB=journal
 **Test Structure:**
 - Unit tests: Test individual components (storage, validation, etc.)
 - Integration tests: Test full request/response cycle with test database
+- End-to-end tests: Test complete system with real HTTP requests to running service
 - Test database: Separate from main database, cleaned between tests
 - Fixtures: Provide sample MP3 files for testing
 
@@ -392,6 +393,25 @@ Health endpoint tests:
 ```bash
 pytest tests/test_health.py
 ```
+
+**End-to-End Tests** (require running service):
+
+First, start the service in a separate terminal:
+```bash
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Then run e2e tests:
+```bash
+pytest tests/test_e2e.py -v
+```
+
+E2e tests verify the complete system by making real HTTP requests to the running service, testing:
+- Health check endpoints
+- Upload functionality with real files
+- Entry retrieval
+- Complete upload-retrieve workflows
+- API documentation endpoints
 
 ---
 
@@ -538,12 +558,15 @@ docker-compose up --build
 ```bash
 # 1. Install dependencies
 pip install -r requirements.txt
+```
 
+```bash
 # 2. Set up database
 # Create PostgreSQL database: journal
 docker run --name postgres -e POSTGRES_USER=journal_user -e POSTGRES_PASSWORD=password -e POSTGRES_DB=postgres -p 5432:5432 -d postgres:17
 docker exec -i postgres bash -c "PGPASSWORD=password psql -U journal_user -d postgres -w -c 'CREATE SCHEMA IF NOT EXISTS journal;'"
-
+```
+```bash
 # 3. Configure environment
 cp .env.example .env
 # Edit .env with your local settings
