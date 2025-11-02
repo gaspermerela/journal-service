@@ -4,7 +4,7 @@ Alembic environment configuration for async migrations.
 import asyncio
 from logging.config import fileConfig
 
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -64,6 +64,10 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
+    # Create journal schema if it doesn't exist (needed for alembic_version table)
+    connection.execute(text("CREATE SCHEMA IF NOT EXISTS journal"))
+    connection.commit()
+
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
