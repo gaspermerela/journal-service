@@ -9,11 +9,12 @@
 
 ## Why This Project?
 
-**Writing daily dream journals can be frustrating, especially right after waking up.**  
-This backend service tries to solve that problem by letting you record voice notes,  
-send them to a server via iOS Shortcuts or web app, and transform them into clean,  
-fluent entries using ASR (transcription) and LLM (transcription cleanup) processing pipelines.  
-The final result can be automatically inserted into your Notion database or manually copied into any digital journaling platform of your choice.
+**Writing daily dream journals can be frustrating, especially in the middle of the night or right after waking up 🥱.**
+
+This backend service solves that problem by offering a REST API for voice note uploads,
+which can be used from iOS Shortcuts, a web app, or any other interface.
+Once received, the audio is transcribed and cleaned up using ASR and LLM processing.
+The final result can be inserted into Notion or copied into any digital journal.
 
 This approach could extend to general voice-based daily journaling.
 
@@ -32,57 +33,43 @@ This approach could extend to general voice-based daily journaling.
 - Health monitoring and auto-generated API documentation
 
 **Future Phases:**
-- Audio transcription (Whisper)
-- LLM-based text cleanup and analysis
-- Notion synchronization
+- **Phase 2**: Audio transcription (Whisper)
+- **Phase 3**: LLM-based text cleanup and analysis
+- **Phase 4**: Notion synchronization
 - Frontend UI under consideration for future expansion
 
 ## Quick Start
 
-**With Docker (recommended):**
+**Try it out with Docker setup, which includes Postgres DB**
 ```bash
-# Clone and configure
+# Clone repository
 git clone <repo-url>
 cd journal-service
-cp .env.example .env
 
-# Start services
-docker-compose up -d
+# Start Postgres and Journal backend services
+docker compose -f docker-compose.dev.yml up -d
 
 # Verify
 curl http://localhost:8000/health
-```
-
-**Local development:**
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Set up PostgreSQL database
-docker run --name postgres \
-  -e POSTGRES_USER=journal_user \
-  -e POSTGRES_PASSWORD=password \
-  -e POSTGRES_DB=postgres \
-  -p 5432:5432 -d postgres:17
-
-docker exec -i postgres bash -c \
-  "PGPASSWORD=password psql -U journal_user -d postgres -c 'CREATE SCHEMA IF NOT EXISTS journal;'"
-
-# Configure and run
-cp .env.example .env
-alembic upgrade head
-uvicorn app.main:app --reload
-```
-
-**Test it:**
-```bash
-# Upload audio file
-  curl -X POST "http://localhost:8000/api/v1/upload" \
-  -F "file=@recording.mp3;type=audio/mpeg"
-
-# View API docs
 open http://localhost:8000/docs
 ```
+
+**Test the API:**
+```bash
+# Upload audio file
+curl -X POST "http://localhost:8000/api/v1/upload" \
+  -F "file=@recording.mp3;type=audio/mpeg"
+```
+
+**Stop services:**
+```bash
+# Stop (keeps data)
+docker compose -f docker-compose.dev.yml down
+
+# Reset everything (deletes data)
+docker compose -f docker-compose.dev.yml down -v
+```
+
 
 ## API Endpoints
 
@@ -98,71 +85,28 @@ See [API Reference](docs/api-reference.md) for detailed request/response schemas
 
 ## Architecture
 
-**Stack:**
-- **Framework**: FastAPI with automatic OpenAPI docs
-- **Database**: PostgreSQL with SQLAlchemy async ORM
-- **Migrations**: Alembic
-- **Testing**: pytest
-- **Deployment**: Docker 
-- **Server**: Uvicorn ASGI server
+FastAPI + PostgreSQL + async SQLAlchemy | [Full details](docs/architecture.md)
 
-**Project Structure:**
-```
-journal-service/
-├── app/                  # Application code
-│   ├── routes/          # API endpoints
-│   ├── services/        # Business logic
-│   ├── models/          # Database models
-│   └── schemas/         # Pydantic validation
-├── tests/               # Comprehensive test suite
-├── alembic/             # Database migrations
-├── docker/              # Deployment scripts
-└── docs/                # Technical documentation
-```
+## Development
 
-See [Getting Started Guide](docs/getting-started.md) for detailed setup instructions.
-
-## Testing
-
+**Run tests:**
 ```bash
-# Run all tests
-pytest -v
-
-# Run with coverage
-pytest --cov=app --cov-report=term-missing
-
-# End-to-end tests (requires running service)
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-pytest tests/test_e2e.py -v
+pytest -v                                    # All tests
+pytest --cov=app --cov-report=term-missing  # With coverage
 ```
 
-See [Testing Guide](docs/testing.md) for comprehensive test documentation.
-
-## Deployment
-
-Simplified deployment pipeline for remote servers:
-
+**Production deployment:**
 ```bash
-# Local: Build and upload image
-export SERVER_IP=your.server.ip
-./docker/deploy.sh v1.0.0
-
-# Server: Deploy uploaded image
-ssh user@server
-cd /path/to/journal-service
-./run.sh v1.0.0
+./docker/deploy.sh v1.0.0  # Build + upload to server
+ssh user@server './run.sh v1.0.0'  # Deploy on server
 ```
 
-See [Deployment Guide](docs/deployment.md) for detailed instructions.
+See `docker/` directory for deployment scripts.
 
 ## Documentation
 
-- [Getting Started](docs/getting-started.md) - Detailed setup and configuration
-- [API Reference](docs/api-reference.md) - Complete endpoint documentation
-- [Testing Guide](docs/testing.md) - Running and writing tests
-- [Deployment Guide](docs/deployment.md) - Production deployment pipeline
-- [Database Schema](docs/database-schema.md) - Schema design and migrations
-- [Architecture](docs/architecture.md) - Design decisions and structure
+- [Architecture](docs/architecture.md) - Design decisions and trade-offs
+- [API Reference](docs/api-reference.md) - Endpoints (or use `/docs` for interactive)
 
 ## Contributing
 

@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="AI Journal Backend Service",
     description="Backend service for voice-based dream journaling with audio file uploads",
-    version="1.0.0",
+    version="0.1.0",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc"
