@@ -10,13 +10,13 @@ High-level design decisions and trade-offs.
 1. Client POSTs MP3 file
 2. Validate file type + size
 3. Generate UUID + timestamp filename
-4. Save mp3 file
-5. Create database record (transaction)
+4. Save mp3 file to disk
+5. Create database record
    - If DB fails: delete mp3 file
 7. Return entry metadata
 ```
 
-No orphaned files if database write fails. File operations and DB writes stay in sync.
+**Cleanup mechanism:** If database write fails, saved file is deleted automatically. No orphaned files.
 
 ## Key Decisions
 

@@ -1,3 +1,15 @@
+# Production Docker Compose Configuration
+#
+# Purpose: Deploy app container to server with PostgreSQL running on host (via systemctl)
+# Use this for: Production deployment where database is managed separately
+#
+# Prerequisites:
+#   - PostgreSQL running on host (systemctl)
+#   - Database user and schema configured
+#
+# Deploy: See docker/deploy.sh and docker/run.sh scripts
+# Note: Uses host network mode to access localhost PostgreSQL
+
 services:
   app:
     build:

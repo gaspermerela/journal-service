@@ -1,3 +1,12 @@
+# Development Docker Compose Configuration
+#
+# Purpose: Quick local setup with PostgreSQL included in the same compose stack
+# Use this for: Local development, testing, demos
+#
+# To run: docker compose -f docker-compose.dev.yml up
+# To stop: docker compose -f docker-compose.dev.yml down
+# To reset: docker compose -f docker-compose.dev.yml down -v (deletes data)
+
 services:
   postgres:
     image: postgres:17

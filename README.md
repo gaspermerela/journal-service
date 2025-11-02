@@ -14,7 +14,7 @@
 This backend service solves that problem by offering a REST API for voice note uploads,
 which can be used from iOS Shortcuts, a web app, or any other interface.
 Once received, the audio is transcribed and cleaned up using ASR and LLM processing.
-The final result can be inserted into Notion or copied into any digital journal.
+The final result can be automatically inserted into Notion or manually copied into any digital journal.
 
 This approach could extend to general voice-based daily journaling.
 
@@ -40,7 +40,10 @@ This approach could extend to general voice-based daily journaling.
 
 ## Quick Start
 
-**Try it out with Docker setup, which includes Postgres DB**
+**Local development/demo (PostgreSQL included):**
+
+This is the easiest way to try the service - PostgreSQL is bundled in the same Docker Compose stack.
+
 ```bash
 # Clone repository
 git clone <repo-url>
@@ -70,6 +73,10 @@ docker compose -f docker-compose.dev.yml down
 docker compose -f docker-compose.dev.yml down -v
 ```
 
+**Production deployment (PostgreSQL on host):**
+
+For production deployment with PostgreSQL running on the host via systemctl, see [DOCKER.md](DOCKER.md).
+
 
 ## API Endpoints
 
@@ -94,14 +101,6 @@ FastAPI + PostgreSQL + async SQLAlchemy | [Full details](docs/architecture.md)
 pytest -v                                    # All tests
 pytest --cov=app --cov-report=term-missing  # With coverage
 ```
-
-**Production deployment:**
-```bash
-./docker/deploy.sh v1.0.0  # Build + upload to server
-ssh user@server './run.sh v1.0.0'  # Deploy on server
-```
-
-See `docker/` directory for deployment scripts.
 
 ## Documentation
 
