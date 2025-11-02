@@ -1,0 +1,52 @@
+events {}
+
+http {
+    log_format main '$remote_addr - $request $status';
+    access_log /var/log/nginx/journal-access.log main;
+    error_log /var/log/nginx/journal-error.log;
+
+    server {
+        listen 8080;
+        server_name localhost;  # Change to your domain if needed
+
+        # Increase buffer sizes for large headers
+        proxy_buffer_size 32k;
+        proxy_buffers 8 32k;
+        proxy_busy_buffers_size 64k;
+
+        # Support large file uploads (100MB max)
+        client_max_body_size 100M;
+        client_body_timeout 300s;
+
+        # Main application
+        location / {
+            proxy_pass http://localhost:8000/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            # Timeouts for long-running uploads
+            proxy_connect_timeout 300s;
+            proxy_send_timeout 300s;
+            proxy_read_timeout 300s;
+        }
+
+        # Health check endpoint (optional: can be accessed directly)
+        location /health {
+            proxy_pass http://localhost:8000/health;
+            access_log off;  # Don't log health checks
+        }
+
+        # API documentation (optional: restrict in production)
+        location /docs {
+            proxy_pass http://localhost:8000/docs;
+            proxy_set_header Host $host;
+        }
+
+        location /redoc {
+            proxy_pass http://localhost:8000/redoc;
+            proxy_set_header Host $host;
+        }
+    }
+}

@@ -1,0 +1,73 @@
+# Development Docker Compose Configuration
+#
+# Purpose: Quick local setup with PostgreSQL included in the same compose stack
+# Use this for: Local development, testing, demos
+#
+# To run: docker compose -f docker-compose.dev.yml up
+# To stop: docker compose -f docker-compose.dev.yml down
+# To reset: docker compose -f docker-compose.dev.yml down -v (deletes data)
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: journal-postgres
+    environment:
+      POSTGRES_USER: journal_user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "journal_user", "-d", "postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: journal-service
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=postgres
+      - DATABASE_USER=journal_user
+      - DATABASE_PASSWORD=password
+      - HOST=0.0.0.0
+      - PORT=8000
+      - LOG_LEVEL=INFO
+      - AUDIO_STORAGE_PATH=/app/data/audio
+      - MAX_FILE_SIZE_MB=100
+      - CORS_ORIGINS=*
+      - WORKERS=1
+      - DB_POOL_SIZE=5
+      - DB_MAX_OVERFLOW=10
+      - DEBUG=false
+      - RELOAD=false
+    volumes:
+      - ./data/audio:/app/data/audio
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; r = requests.get('http://localhost:8000/health', timeout=5); exit(0 if r.status_code == 200 else 1)"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    command: >
+      sh -c "alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+volumes:
+  postgres_data:
