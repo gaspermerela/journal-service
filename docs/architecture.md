@@ -61,7 +61,6 @@ File structure:
 - No authentication
 - No rate limiting
 - No file retrieval (only metadata)
-- No list/search entries endpoint
 - No deletion
 - Single server only
 

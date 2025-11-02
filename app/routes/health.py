@@ -2,7 +2,7 @@
 Health check endpoint for monitoring.
 """
 from datetime import datetime, timezone
-from fastapi import APIRouter, status
+from fastapi import APIRouter, HTTPException, status
 from app.schemas.dream_entry import HealthResponse
 from app.database import check_db_connection
 from app.utils.logger import get_logger
@@ -14,7 +14,6 @@ router = APIRouter()
 @router.get(
     "/health",
     response_model=HealthResponse,
-    status_code=status.HTTP_200_OK,
     summary="Health check",
     description="Check application and database health status",
     responses={
@@ -31,7 +30,7 @@ async def health_check() -> HealthResponse:
     - Database connection is working
 
     Returns:
-        HealthResponse with status and timestamp
+        HealthResponse with status and timestamp (200 if healthy, 503 if not)
     """
     # Check database connection
     db_healthy = await check_db_connection()
@@ -45,8 +44,11 @@ async def health_check() -> HealthResponse:
         )
     else:
         logger.warning("Health check: database connection failed")
-        return HealthResponse(
-            status="degraded",
-            database="disconnected",
-            timestamp=datetime.now(timezone.utc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "status": "degraded",
+                "database": "disconnected",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
         )

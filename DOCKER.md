@@ -4,10 +4,8 @@ This guide covers deploying the AI Journal Backend Service using Docker with an 
 
 ## 📋 Prerequisites
 
-- Docker installed (20.10+)
-- Docker Compose installed (1.29+)
+- Docker with Docker Compose
 - PostgreSQL running via systemctl
-- PostgreSQL `journal` schema created
 
 ## 🚀 Quick Start
 
@@ -18,17 +16,11 @@ This guide covers deploying the AI Journal Backend Service using Docker with an 
 cp .env.docker .env
 ```
 
-### 2. Create Audio Storage Directory
-
-```bash
-mkdir -p data/audio
-```
-
-### 3. Build and Run with Docker Compose
+### 2. Build and Run with Docker Compose
 
 ```bash
 # Build and start the service
-docker-compose up -d
+docker compose -f docker-compose.yml up -d
 ```
 
 ### 4. Verify Deployment
@@ -103,7 +95,7 @@ git tag v1.0.0
 **Note**: Version is required - either provide it manually or have a git tag. The script will fail if neither exists.
 
 This script will:
-- Build the Docker image for ARM64
+- Build the Docker image
 - Save it as a .tar file
 - Upload it to your server
 
@@ -128,4 +120,3 @@ This script will:
 - Stop and remove old containers
 - Start new container using docker-compose
 - Clean up old unused images
-- Show container status and logs

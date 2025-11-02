@@ -12,9 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - LLM-based text cleanup
 - Notion integration for synced entries
 
-## [0.1.0] - 2025-11-01
+## [0.1.0] - 2025-11-02
 
-Initial release - Phase 1 complete. A production-ready backend foundation for voice-based journaling with architecture for future AI features.
+Initial release - Phase 1 complete. A backend foundation for voice-based journaling with architecture for future AI features.
 
 ### Added
 
@@ -35,7 +35,7 @@ Initial release - Phase 1 complete. A production-ready backend foundation for vo
 - Test database isolation
 
 **Deployment**
-- Two-step deployment pipeline (`deploy.sh`, `run.sh`)
+- Two-step rsync-based deployment pipeline (`deploy.sh`, `run.sh`)
 
 **Documentation**
 - Technical documentation (`/docs` directory)
@@ -46,3 +46,6 @@ Initial release - Phase 1 complete. A production-ready backend foundation for vo
 ### Known Limitations
 - No authentication
 - No rate limiting
+- No file retrieval (only metadata)
+- No deletion
+- Single server only
