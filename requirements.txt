@@ -25,3 +25,8 @@ pydub==0.25.1
 
 # Utilities
 aiofiles==24.1.0
+
+# Audio Transcription
+openai-whisper==20250625
+torch==2.9.0
+torchaudio==2.9.0

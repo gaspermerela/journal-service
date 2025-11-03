@@ -3,7 +3,11 @@ Pydantic schemas for dream entry request/response validation.
 """
 from datetime import datetime
 from uuid import UUID
+from typing import Optional, TYPE_CHECKING
 from pydantic import BaseModel, Field, ConfigDict
+
+if TYPE_CHECKING:
+    from app.schemas.transcription import TranscriptionResponse
 
 
 class DreamEntryBase(BaseModel):
@@ -25,6 +29,10 @@ class DreamEntryResponse(DreamEntryBase):
     """Schema for dream entry API responses."""
     id: UUID
     uploaded_at: datetime
+    primary_transcription: Optional["TranscriptionResponse"] = Field(
+        default=None,
+        description="Primary transcription for this entry, if available"
+    )
 
     model_config = ConfigDict(from_attributes=True)
 

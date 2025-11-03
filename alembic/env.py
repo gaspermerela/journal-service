@@ -13,6 +13,7 @@ from alembic import context
 # Import the base and models
 from app.database import Base
 from app.models.dream_entry import DreamEntry  # noqa: F401
+from app.models.transcription import Transcription  # noqa: F401
 from app.config import settings
 
 # this is the Alembic Config object, which provides

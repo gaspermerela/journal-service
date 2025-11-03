@@ -4,11 +4,13 @@ Main FastAPI application for AI Journal Backend Service.
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import whisper
 
 from app.config import settings
 from app.database import check_db_connection
-from app.routes import upload, health, entries
+from app.routes import upload, health, entries, transcription
 from app.middleware.logging import RequestLoggingMiddleware
+from app.services.transcription import create_transcription_service
 from app.utils.logger import get_logger
 
 logger = get_logger("main")
@@ -38,10 +40,37 @@ async def lifespan(app: FastAPI):
     storage_path.mkdir(parents=True, exist_ok=True)
     logger.info(f"Storage path configured: {settings.AUDIO_STORAGE_PATH}")
 
+    # Load Whisper model for transcription
+    logger.info(f"Loading Whisper model: {settings.WHISPER_MODEL}")
+    try:
+        whisper_model = whisper.load_model(
+            settings.WHISPER_MODEL,
+            device=settings.WHISPER_DEVICE
+        )
+        logger.info(
+            f"Whisper model loaded successfully: "
+            f"model={settings.WHISPER_MODEL}, device={settings.WHISPER_DEVICE}"
+        )
+
+        # Create transcription service and store in app state
+        app.state.transcription_service = create_transcription_service(
+            model=whisper_model,
+            device=settings.WHISPER_DEVICE,
+            num_threads=settings.TORCH_NUM_THREADS
+        )
+        logger.info("Transcription service initialized")
+    except Exception as e:
+        logger.error(f"Failed to load Whisper model: {e}", exc_info=True)
+        # Don't fail startup, but transcription won't work
+        app.state.transcription_service = None
+        logger.warning("Application started without transcription capability")
+
     yield
 
     # Shutdown
     logger.info("Shutting down AI Journal Backend Service")
+    app.state.transcription_service = None
+    logger.info("Transcription service cleaned up")
 
 
 # Create FastAPI application
@@ -77,6 +106,11 @@ app.include_router(
     entries.router,
     prefix="/api/v1",
     tags=["Entries"]
+)
+app.include_router(
+    transcription.router,
+    prefix="/api/v1",
+    tags=["Transcription"]
 )
 
 

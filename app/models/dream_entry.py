@@ -3,10 +3,14 @@ SQLAlchemy model for dream entries table.
 """
 import uuid
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 from sqlalchemy import String, Text, DateTime, Index
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.transcription import Transcription
 
 
 class DreamEntry(Base):
@@ -68,6 +72,14 @@ class DreamEntry(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+    # Relationships
+    transcriptions: Mapped[list["Transcription"]] = relationship(
+        "Transcription",
+        back_populates="entry",
+        cascade="all, delete-orphan",
+        lazy="selectin"
     )
 
     # Indexes for query performance and schema configuration

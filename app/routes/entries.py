@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.schemas.dream_entry import DreamEntryResponse
+from app.schemas.transcription import TranscriptionResponse
 from app.services.database import db_service
 from app.utils.logger import get_logger
 
@@ -55,12 +56,25 @@ async def get_entry(
             detail=f"Entry with ID {entry_id} not found"
         )
 
-    logger.info(f"Entry retrieved successfully", entry_id=str(entry_id))
+    # Get primary transcription if available
+    primary_transcription = await db_service.get_primary_transcription(db, entry_id)
+    primary_transcription_data = None
+
+    if primary_transcription:
+        primary_transcription_data = TranscriptionResponse.model_validate(primary_transcription)
+        logger.info(
+            f"Entry retrieved with primary transcription",
+            entry_id=str(entry_id),
+            transcription_id=str(primary_transcription.id)
+        )
+    else:
+        logger.info(f"Entry retrieved without transcription", entry_id=str(entry_id))
 
     return DreamEntryResponse(
         id=entry.id,
         original_filename=entry.original_filename,
         saved_filename=entry.saved_filename,
         file_path=entry.file_path,
-        uploaded_at=entry.uploaded_at
+        uploaded_at=entry.uploaded_at,
+        primary_transcription=primary_transcription_data
     )
