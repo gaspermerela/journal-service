@@ -66,8 +66,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+
+    # Run migrations then start app
     command: >
-      sh -c "alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      sh -c "alembic upgrade head && python -m uvicorn app.main:app --host $${HOST} --port $${PORT} --workers $${WORKERS}"
 
 volumes:
   postgres_data:

@@ -19,9 +19,15 @@ cp .env.docker .env
 ### 2. Build and Run with Docker Compose
 
 ```bash
-# Build and start the service
+# Create data directory with correct permissions
+mkdir -p ./data/audio
+sudo chown -R 1000:1000 ./data/audio
+
+# Build and start the service (migrations run automatically)
 docker compose -f docker-compose.yml up -d
 ```
+
+**Note:** Database migrations run automatically on container startup via `alembic upgrade head`.
 
 ### 4. Verify Deployment
 
@@ -41,8 +47,8 @@ curl http://localhost:8000/docs
 | `DATABASE_PORT` | 5432 | PostgreSQL port |
 | `DATABASE_NAME` | postgres | Database name |
 | `DATABASE_USER` | journal_user | Database user |
-| `DATABASE_PASSWORD` | - | Database password |
-| `HOST` | 0.0.0.0 | Application host |
+| `DATABASE_PASSWORD` | - | Database password (set to generated password) |
+| `HOST` | 127.0.0.1 | Application host (127.0.0.1 for localhost only) |
 | `PORT` | 8000 | Application port |
 | `LOG_LEVEL` | INFO | Logging level |
 | `AUDIO_STORAGE_PATH` | /app/data/audio | Audio storage path |
@@ -51,6 +57,8 @@ curl http://localhost:8000/docs
 | `WORKERS` | 1 | Uvicorn workers |
 | `DB_POOL_SIZE` | 5 | Connection pool size |
 | `DB_MAX_OVERFLOW` | 10 | Max overflow connections |
+| `DEBUG` | false | Debug mode |
+| `RELOAD` | false | Auto-reload on changes |
 
 ## 🚀 Simplified Development Deployment Pipeline
 
@@ -107,6 +115,8 @@ SSH to your server and run:
 # Using settings from .deploy-config
 ssh -i $SSH_KEY $SERVER_USER@$SERVER_IP
 cd $SERVER_DIR
+
+# Create docker-compose.yml that uses the uploaded image
 
 # Run the uploaded version
 ./run.sh v1.0.0
