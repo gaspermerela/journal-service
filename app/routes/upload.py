@@ -22,7 +22,7 @@ router = APIRouter()
     response_model=DreamEntryUploadResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Upload audio file",
-    description="Upload an MP3 audio file for dream journaling. File is saved to disk and metadata stored in database.",
+    description="Upload an audio file (MP3 or M4A) for dream journaling. File is saved to disk and metadata stored in database.",
     responses={
         201: {"description": "File uploaded successfully"},
         400: {"description": "Invalid file type or missing file"},
@@ -32,7 +32,7 @@ router = APIRouter()
 )
 async def upload_audio(
     request: Request,
-    file: UploadFile = File(..., description="MP3 audio file to upload"),
+    file: UploadFile = File(..., description="Audio file to upload (MP3 or M4A)"),
     db: AsyncSession = Depends(get_db)
 ) -> DreamEntryUploadResponse:
     """
