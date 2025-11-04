@@ -139,7 +139,7 @@ async def process_transcription_task(
     response_model=TranscriptionTriggerResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Trigger audio transcription",
-    description="Start background transcription of an audio file"
+    description="Start background transcription of an audio file using the configured Whisper model (set via WHISPER_MODEL env variable)"
 )
 async def trigger_transcription(
     entry_id: UUID,
@@ -151,12 +151,12 @@ async def trigger_transcription(
     """
     Trigger transcription for a dream entry audio file.
 
-    The transcription runs in the background. Use the returned transcription_id
-    to check status via GET /transcriptions/{transcription_id}.
+    The transcription runs in the background using the configured Whisper model.
+    Use the returned transcription_id to check status via GET /transcriptions/{transcription_id}.
 
     Args:
         entry_id: UUID of the dream entry
-        request_data: Transcription parameters (model, language)
+        request_data: Transcription parameters (language)
         background_tasks: FastAPI background tasks
         db: Database session
         transcription_service: Transcription service
@@ -167,10 +167,13 @@ async def trigger_transcription(
     Raises:
         HTTPException: If entry not found or transcription cannot be started
     """
+    # Get model name from loaded transcription service
+    model_name = transcription_service.get_model_name()
+
     logger.info(
         f"Transcription trigger requested",
         entry_id=str(entry_id),
-        model=request_data.model,
+        model=model_name,
         language=request_data.language
     )
 
@@ -187,7 +190,7 @@ async def trigger_transcription(
     transcription_data = TranscriptionCreate(
         entry_id=entry_id,
         status="pending",
-        model_used=f"whisper-{request_data.model}",
+        model_used=model_name,
         language_code=request_data.language,
         is_primary=False  # Can be set later via set-primary endpoint
     )

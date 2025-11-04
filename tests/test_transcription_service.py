@@ -17,7 +17,7 @@ async def test_transcribe_audio_success(mock_whisper_model, tmp_path):
     audio_file.write_bytes(b"fake audio data")
 
     # Create service with mocked model
-    service = WhisperLocalService(model=mock_whisper_model, device="cpu", num_threads=4)
+    service = WhisperLocalService(model=mock_whisper_model, model_name="base", device="cpu", num_threads=4)
 
     # Transcribe
     result = await service.transcribe_audio(audio_file, language="en")
@@ -40,7 +40,7 @@ async def test_transcribe_audio_auto_language(mock_whisper_model, tmp_path):
     audio_file = tmp_path / "test_audio.mp3"
     audio_file.write_bytes(b"fake audio data")
 
-    service = WhisperLocalService(model=mock_whisper_model, device="cpu")
+    service = WhisperLocalService(model=mock_whisper_model, model_name="base", device="cpu")
 
     result = await service.transcribe_audio(audio_file, language="auto")
 
@@ -54,7 +54,7 @@ async def test_transcribe_audio_file_not_found(mock_whisper_model, tmp_path):
     """Test transcription fails when audio file doesn't exist."""
     non_existent_file = tmp_path / "does_not_exist.mp3"
 
-    service = WhisperLocalService(model=mock_whisper_model, device="cpu")
+    service = WhisperLocalService(model=mock_whisper_model, model_name="base", device="cpu")
 
     with pytest.raises(FileNotFoundError) as exc_info:
         await service.transcribe_audio(non_existent_file, language="en")
@@ -72,7 +72,7 @@ async def test_transcribe_audio_model_error(mock_whisper_model, tmp_path):
     # Make model raise an error
     mock_whisper_model.transcribe.side_effect = RuntimeError("Model error")
 
-    service = WhisperLocalService(model=mock_whisper_model, device="cpu")
+    service = WhisperLocalService(model=mock_whisper_model, model_name="base", device="cpu")
 
     with pytest.raises(RuntimeError) as exc_info:
         await service.transcribe_audio(audio_file, language="en")
@@ -87,7 +87,7 @@ async def test_transcribe_audio_with_different_languages(mock_whisper_model, tmp
     audio_file = tmp_path / "test_audio.mp3"
     audio_file.write_bytes(b"fake audio data")
 
-    service = WhisperLocalService(model=mock_whisper_model, device="cpu")
+    service = WhisperLocalService(model=mock_whisper_model, model_name="base", device="cpu")
 
     languages = ["en", "es", "fr", "de", "auto"]
 
@@ -102,7 +102,7 @@ async def test_transcribe_audio_with_different_languages(mock_whisper_model, tmp
 
 def test_get_supported_languages(mock_whisper_model):
     """Test getting list of supported languages."""
-    service = WhisperLocalService(model=mock_whisper_model, device="cpu")
+    service = WhisperLocalService(model=mock_whisper_model, model_name="base", device="cpu")
 
     languages = service.get_supported_languages()
 
@@ -115,7 +115,7 @@ def test_get_supported_languages(mock_whisper_model):
 
 def test_service_initialization_cpu(mock_whisper_model):
     """Test service initializes correctly with CPU device."""
-    service = WhisperLocalService(model=mock_whisper_model, device="cpu", num_threads=8)
+    service = WhisperLocalService(model=mock_whisper_model, model_name="base", device="cpu", num_threads=8)
 
     assert service.model == mock_whisper_model
     assert service.device == "cpu"
@@ -124,7 +124,7 @@ def test_service_initialization_cpu(mock_whisper_model):
 
 def test_service_initialization_cuda(mock_whisper_model):
     """Test service initializes correctly with CUDA device."""
-    service = WhisperLocalService(model=mock_whisper_model, device="cuda", num_threads=4)
+    service = WhisperLocalService(model=mock_whisper_model, model_name="base", device="cuda", num_threads=4)
 
     assert service.model == mock_whisper_model
     assert service.device == "cuda"
@@ -143,7 +143,7 @@ async def test_transcribe_strips_whitespace(mock_whisper_model, tmp_path):
         "segments": []
     }
 
-    service = WhisperLocalService(model=mock_whisper_model, device="cpu")
+    service = WhisperLocalService(model=mock_whisper_model, model_name="base", device="cpu")
     result = await service.transcribe_audio(audio_file, language="en")
 
     assert result["text"] == "Text with whitespace"
@@ -157,7 +157,7 @@ async def test_transcription_options_configured_correctly(mock_whisper_model, tm
     audio_file = tmp_path / "test_audio.mp3"
     audio_file.write_bytes(b"fake audio data")
 
-    service = WhisperLocalService(model=mock_whisper_model, device="cpu")
+    service = WhisperLocalService(model=mock_whisper_model, model_name="base", device="cpu")
     await service.transcribe_audio(audio_file, language="en")
 
     call_kwargs = mock_whisper_model.transcribe.call_args[1]
@@ -178,7 +178,7 @@ async def test_transcribe_async_execution(mock_whisper_model, tmp_path):
     audio_file = tmp_path / "test_audio.mp3"
     audio_file.write_bytes(b"fake audio data")
 
-    service = WhisperLocalService(model=mock_whisper_model, device="cpu")
+    service = WhisperLocalService(model=mock_whisper_model, model_name="base", device="cpu")
 
     # Run transcription and another task concurrently
     async def other_task():

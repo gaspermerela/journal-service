@@ -34,7 +34,7 @@ async def test_complete_transcription_workflow(client, sample_mp3_path, mock_tra
     # Step 2: Trigger transcription
     transcribe_response = await client.post(
         f"/api/v1/entries/{entry_id}/transcribe",
-        json={"model": "base", "language": "en"}
+        json={"language": "en"}
     )
 
     assert transcribe_response.status_code == 202
@@ -65,19 +65,18 @@ async def test_complete_transcription_workflow(client, sample_mp3_path, mock_tra
 async def test_multiple_transcription_attempts(client, sample_dream_entry, mock_transcription_service):
     """
     Test creating multiple transcriptions for the same entry.
-    Simulates: trying with different models for quality comparison.
+    Simulates: trying multiple times (e.g., retries or different language attempts).
     """
     from app.main import app
     app.state.transcription_service = mock_transcription_service
 
-    models = ["tiny", "base", "small"]
+    # Create 3 transcriptions for the same entry
     transcription_ids = []
 
-    # Create multiple transcriptions with different models
-    for model in models:
+    for i in range(3):
         response = await client.post(
             f"/api/v1/entries/{sample_dream_entry.id}/transcribe",
-            json={"model": model, "language": "en"}
+            json={"language": "en"}
         )
 
         assert response.status_code == 202
@@ -90,8 +89,8 @@ async def test_multiple_transcription_attempts(client, sample_dream_entry, mock_
 
     assert list_response.status_code == 200
     data = list_response.json()
-    assert data["total"] == len(models)
-    assert len(data["transcriptions"]) == len(models)
+    assert data["total"] == len(transcription_ids)
+    assert len(data["transcriptions"]) == len(transcription_ids)
 
 
 @pytest.mark.asyncio
@@ -201,7 +200,7 @@ async def test_transcription_with_auto_language_detection(client, sample_dream_e
 
     response = await client.post(
         f"/api/v1/entries/{sample_dream_entry.id}/transcribe",
-        json={"model": "base", "language": "auto"}
+        json={"language": "auto"}
     )
 
     assert response.status_code == 202
@@ -261,7 +260,7 @@ async def test_upload_and_immediate_transcription(client, sample_mp3_path, mock_
     # Immediately trigger transcription
     transcribe_response = await client.post(
         f"/api/v1/entries/{entry_id}/transcribe",
-        json={"model": "base", "language": "en"}
+        json={"language": "en"}
     )
 
     assert transcribe_response.status_code == 202

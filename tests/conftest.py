@@ -285,6 +285,8 @@ def mock_transcription_service():
         "segments": []
     }
     service.get_supported_languages.return_value = ["en", "es", "fr", "de", "auto"]
+    # Use Mock (not AsyncMock) for non-async method
+    service.get_model_name = Mock(return_value="whisper-base")
     return service
 
 

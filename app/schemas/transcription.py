@@ -17,13 +17,9 @@ class TranscriptionBase(BaseModel):
 
 class TranscriptionTriggerRequest(BaseModel):
     """Schema for triggering a transcription."""
-    model: str = Field(
-        default="base",
-        description="Whisper model to use (tiny, base, small, medium, large)"
-    )
     language: str = Field(
         default="en",
-        description="Language code (e.g., 'en', 'es') or 'auto' for detection"
+        description="Language code (e.g., 'en', 'es', 'sl') or 'auto' for detection"
     )
 
 

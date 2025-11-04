@@ -18,7 +18,7 @@ async def test_trigger_transcription_success(client, sample_dream_entry, mock_tr
 
     response = await client.post(
         f"/api/v1/entries/{sample_dream_entry.id}/transcribe",
-        json={"model": "base", "language": "en"}
+        json={"language": "en"}
     )
 
     assert response.status_code == 202
@@ -39,7 +39,7 @@ async def test_trigger_transcription_entry_not_found(client, mock_transcription_
 
     response = await client.post(
         f"/api/v1/entries/{non_existent_id}/transcribe",
-        json={"model": "base", "language": "en"}
+        json={"language": "en"}
     )
 
     assert response.status_code == 404
@@ -54,7 +54,7 @@ async def test_trigger_transcription_service_unavailable(client, sample_dream_en
 
     response = await client.post(
         f"/api/v1/entries/{sample_dream_entry.id}/transcribe",
-        json={"model": "base", "language": "en"}
+        json={"language": "en"}
     )
 
     assert response.status_code == 503
@@ -221,22 +221,24 @@ async def test_get_entry_without_transcription(client, sample_dream_entry):
 
 
 @pytest.mark.asyncio
-async def test_trigger_transcription_with_different_models(client, sample_dream_entry, mock_transcription_service):
-    """Test triggering transcription with different model options."""
+async def test_trigger_transcription_uses_configured_model(client, sample_dream_entry, mock_transcription_service, db_session):
+    """Test that transcription uses the model configured in the service (not from request)."""
     from app.main import app
     app.state.transcription_service = mock_transcription_service
 
-    models = ["tiny", "base", "small", "medium", "large"]
+    response = await client.post(
+        f"/api/v1/entries/{sample_dream_entry.id}/transcribe",
+        json={"language": "en"}
+    )
 
-    for model in models:
-        response = await client.post(
-            f"/api/v1/entries/{sample_dream_entry.id}/transcribe",
-            json={"model": model, "language": "en"}
-        )
+    assert response.status_code == 202
+    data = response.json()
+    assert "transcription_id" in data
 
-        assert response.status_code == 202
-        data = response.json()
-        assert "transcription_id" in data
+    # Verify the transcription was created with the correct model from service
+    from app.services.database import db_service
+    transcription = await db_service.get_transcription_by_id(db_session, data["transcription_id"])
+    assert transcription.model_used == "whisper-base"  # From mock
 
 
 @pytest.mark.asyncio
@@ -245,12 +247,12 @@ async def test_trigger_transcription_with_different_languages(client, sample_dre
     from app.main import app
     app.state.transcription_service = mock_transcription_service
 
-    languages = ["en", "es", "fr", "auto"]
+    languages = ["en", "es", "fr", "sl", "auto"]
 
     for lang in languages:
         response = await client.post(
             f"/api/v1/entries/{sample_dream_entry.id}/transcribe",
-            json={"model": "base", "language": lang}
+            json={"language": lang}
         )
 
         assert response.status_code == 202
@@ -264,7 +266,7 @@ async def test_transcription_background_task_execution(client, sample_dream_entr
 
     response = await client.post(
         f"/api/v1/entries/{sample_dream_entry.id}/transcribe",
-        json={"model": "base", "language": "en"}
+        json={"language": "en"}
     )
 
     assert response.status_code == 202

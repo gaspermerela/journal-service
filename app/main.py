@@ -55,6 +55,7 @@ async def lifespan(app: FastAPI):
         # Create transcription service and store in app state
         app.state.transcription_service = create_transcription_service(
             model=whisper_model,
+            model_name=settings.WHISPER_MODEL,
             device=settings.WHISPER_DEVICE,
             num_threads=settings.TORCH_NUM_THREADS
         )

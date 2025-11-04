@@ -53,6 +53,16 @@ class TranscriptionService(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_model_name(self) -> str:
+        """
+        Get the name/identifier of the model being used.
+
+        Returns:
+            Model name (e.g., 'whisper-small', 'whisper-base')
+        """
+        pass
+
 
 class WhisperLocalService(TranscriptionService):
     """
@@ -60,16 +70,24 @@ class WhisperLocalService(TranscriptionService):
     Runs Whisper model directly using CPU/GPU.
     """
 
-    def __init__(self, model: Any, device: str = "cpu", num_threads: int = 10):
+    def __init__(
+        self,
+        model: Any,
+        model_name: str,
+        device: str = "cpu",
+        num_threads: int = 10
+    ):
         """
         Initialize Whisper local service.
 
         Args:
             model: Loaded Whisper model instance
+            model_name: Name of the model (e.g., 'small', 'base', 'medium')
             device: Device to use ('cpu' or 'cuda')
             num_threads: Number of CPU threads for PyTorch
         """
         self.model = model
+        self.model_name = model_name
         self.device = device
         self.num_threads = num_threads
 
@@ -181,9 +199,19 @@ class WhisperLocalService(TranscriptionService):
             "mg", "as", "tt", "haw", "ln", "ha", "ba", "jw", "su", "auto"
         ]
 
+    def get_model_name(self) -> str:
+        """
+        Get the name of the Whisper model being used.
+
+        Returns:
+            Model name with 'whisper-' prefix (e.g., 'whisper-small')
+        """
+        return f"whisper-{self.model_name}"
+
 
 def create_transcription_service(
     model: Any,
+    model_name: str,
     device: str = "cpu",
     num_threads: int = 10
 ) -> TranscriptionService:
@@ -193,10 +221,16 @@ def create_transcription_service(
 
     Args:
         model: Loaded model instance
+        model_name: Name of the model (e.g., 'small', 'base')
         device: Device to use ('cpu' or 'cuda')
         num_threads: Number of CPU threads
 
     Returns:
         TranscriptionService implementation
     """
-    return WhisperLocalService(model=model, device=device, num_threads=num_threads)
+    return WhisperLocalService(
+        model=model,
+        model_name=model_name,
+        device=device,
+        num_threads=num_threads
+    )
