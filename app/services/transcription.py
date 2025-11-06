@@ -68,6 +68,9 @@ class WhisperLocalService(TranscriptionService):
     """
     Local Whisper model implementation for transcription.
     Runs Whisper model directly using CPU/GPU.
+
+    Note: Uses a lock to ensure only one transcription runs at a time,
+    as Whisper's KV caching is not thread-safe.
     """
 
     def __init__(
@@ -90,6 +93,10 @@ class WhisperLocalService(TranscriptionService):
         self.model_name = model_name
         self.device = device
         self.num_threads = num_threads
+
+        # Lock to prevent concurrent access to the model
+        # Whisper's KV caching uses forward hooks that are not thread-safe
+        self._transcription_lock = asyncio.Lock()
 
         # Set PyTorch thread count for CPU optimization
         if device == "cpu":
@@ -126,13 +133,23 @@ class WhisperLocalService(TranscriptionService):
         )
 
         try:
-            # Run Whisper transcription in thread pool to avoid blocking event loop
-            # Whisper's transcribe() is CPU-intensive and synchronous
-            result = await asyncio.to_thread(
-                self._transcribe_sync,
-                str(audio_path),
-                language
-            )
+            # Acquire lock to ensure only one transcription runs at a time
+            # This prevents race conditions in Whisper's KV caching mechanism
+            if self._transcription_lock.locked():
+                logger.info(
+                    f"Transcription queued (another transcription in progress): {audio_path.name}"
+                )
+
+            async with self._transcription_lock:
+                logger.info(f"Transcription processing started: {audio_path.name}")
+
+                # Run Whisper transcription in thread pool to avoid blocking event loop
+                # Whisper's transcribe() is CPU-intensive and synchronous
+                result = await asyncio.to_thread(
+                    self._transcribe_sync,
+                    str(audio_path),
+                    language
+                )
 
             logger.info(
                 f"Transcription completed: file={audio_path.name}, "
