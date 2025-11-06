@@ -34,7 +34,7 @@ def upgrade() -> None:
         sa.Column('is_primary', sa.Boolean(), nullable=False, server_default='false'),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(['entry_id'], ['journal.dream_entries.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['entry_id'], ['journal.voice_entries.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id'),
         schema='journal'
     )

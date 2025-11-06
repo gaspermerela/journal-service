@@ -12,10 +12,10 @@ from app.models.transcription import Transcription
 
 
 @pytest.mark.asyncio
-async def test_create_transcription(db_session, sample_dream_entry):
+async def test_create_transcription(db_session, sample_voice_entry):
     """Test creating a new transcription record."""
     transcription_data = TranscriptionCreate(
-        entry_id=sample_dream_entry.id,
+        entry_id=sample_voice_entry.id,
         status="pending",
         model_used="whisper-base",
         language_code="en",
@@ -26,7 +26,7 @@ async def test_create_transcription(db_session, sample_dream_entry):
     await db_session.commit()
 
     assert transcription.id is not None
-    assert transcription.entry_id == sample_dream_entry.id
+    assert transcription.entry_id == sample_voice_entry.id
     assert transcription.status == "pending"
     assert transcription.model_used == "whisper-base"
     assert transcription.language_code == "en"
@@ -58,12 +58,12 @@ async def test_get_transcription_by_id_not_found(db_session):
 
 
 @pytest.mark.asyncio
-async def test_get_transcriptions_for_entry(db_session, sample_dream_entry):
+async def test_get_transcriptions_for_entry(db_session, sample_voice_entry):
     """Test retrieving all transcriptions for an entry."""
     # Create multiple transcriptions for the same entry
     for i in range(3):
         transcription_data = TranscriptionCreate(
-            entry_id=sample_dream_entry.id,
+            entry_id=sample_voice_entry.id,
             status="completed" if i == 0 else "pending",
             model_used=f"whisper-base-{i}",
             language_code="en",
@@ -75,7 +75,7 @@ async def test_get_transcriptions_for_entry(db_session, sample_dream_entry):
 
     transcriptions = await db_service.get_transcriptions_for_entry(
         db_session,
-        sample_dream_entry.id
+        sample_voice_entry.id
     )
 
     assert len(transcriptions) == 3
@@ -84,22 +84,22 @@ async def test_get_transcriptions_for_entry(db_session, sample_dream_entry):
 
 
 @pytest.mark.asyncio
-async def test_get_transcriptions_for_entry_empty(db_session, sample_dream_entry):
+async def test_get_transcriptions_for_entry_empty(db_session, sample_voice_entry):
     """Test getting transcriptions for entry with no transcriptions."""
     transcriptions = await db_service.get_transcriptions_for_entry(
         db_session,
-        sample_dream_entry.id
+        sample_voice_entry.id
     )
 
     assert transcriptions == []
 
 
 @pytest.mark.asyncio
-async def test_get_primary_transcription(db_session, sample_dream_entry):
+async def test_get_primary_transcription(db_session, sample_voice_entry):
     """Test retrieving the primary transcription for an entry."""
     # Create non-primary transcription
     transcription_data_1 = TranscriptionCreate(
-        entry_id=sample_dream_entry.id,
+        entry_id=sample_voice_entry.id,
         status="completed",
         model_used="whisper-tiny",
         language_code="en",
@@ -109,7 +109,7 @@ async def test_get_primary_transcription(db_session, sample_dream_entry):
 
     # Create primary transcription
     transcription_data_2 = TranscriptionCreate(
-        entry_id=sample_dream_entry.id,
+        entry_id=sample_voice_entry.id,
         status="completed",
         model_used="whisper-large",
         language_code="en",
@@ -118,7 +118,7 @@ async def test_get_primary_transcription(db_session, sample_dream_entry):
     primary = await db_service.create_transcription(db_session, transcription_data_2)
     await db_session.commit()
 
-    result = await db_service.get_primary_transcription(db_session, sample_dream_entry.id)
+    result = await db_service.get_primary_transcription(db_session, sample_voice_entry.id)
 
     assert result is not None
     assert result.id == primary.id
@@ -127,9 +127,9 @@ async def test_get_primary_transcription(db_session, sample_dream_entry):
 
 
 @pytest.mark.asyncio
-async def test_get_primary_transcription_none(db_session, sample_dream_entry):
+async def test_get_primary_transcription_none(db_session, sample_voice_entry):
     """Test getting primary transcription when none exists."""
-    result = await db_service.get_primary_transcription(db_session, sample_dream_entry.id)
+    result = await db_service.get_primary_transcription(db_session, sample_voice_entry.id)
 
     assert result is None
 
@@ -203,11 +203,11 @@ async def test_update_transcription_status_not_found(db_session):
 
 
 @pytest.mark.asyncio
-async def test_set_primary_transcription(db_session, sample_dream_entry):
+async def test_set_primary_transcription(db_session, sample_voice_entry):
     """Test setting a transcription as primary."""
     # Create two transcriptions
     trans1_data = TranscriptionCreate(
-        entry_id=sample_dream_entry.id,
+        entry_id=sample_voice_entry.id,
         status="completed",
         model_used="whisper-base",
         language_code="en",
@@ -216,7 +216,7 @@ async def test_set_primary_transcription(db_session, sample_dream_entry):
     trans1 = await db_service.create_transcription(db_session, trans1_data)
 
     trans2_data = TranscriptionCreate(
-        entry_id=sample_dream_entry.id,
+        entry_id=sample_voice_entry.id,
         status="completed",
         model_used="whisper-large",
         language_code="en",
@@ -250,13 +250,13 @@ async def test_set_primary_transcription_not_found(db_session):
 
 
 @pytest.mark.asyncio
-async def test_set_primary_transcription_unsets_previous(db_session, sample_dream_entry):
+async def test_set_primary_transcription_unsets_previous(db_session, sample_voice_entry):
     """Test that setting primary unsets any previous primary transcription."""
     # Create three transcriptions
     transcriptions = []
     for i in range(3):
         trans_data = TranscriptionCreate(
-            entry_id=sample_dream_entry.id,
+            entry_id=sample_voice_entry.id,
             status="completed",
             model_used=f"whisper-model-{i}",
             language_code="en",
@@ -281,11 +281,11 @@ async def test_set_primary_transcription_unsets_previous(db_session, sample_drea
 
 
 @pytest.mark.asyncio
-async def test_transcription_cascade_delete(db_session, sample_dream_entry):
+async def test_transcription_cascade_delete(db_session, sample_voice_entry):
     """Test that deleting an entry cascades to delete transcriptions."""
     # Create transcription for entry
     trans_data = TranscriptionCreate(
-        entry_id=sample_dream_entry.id,
+        entry_id=sample_voice_entry.id,
         status="completed",
         model_used="whisper-base",
         language_code="en",
@@ -296,7 +296,7 @@ async def test_transcription_cascade_delete(db_session, sample_dream_entry):
     trans_id = trans.id
 
     # Delete the entry
-    await db_service.delete_entry(db_session, sample_dream_entry.id)
+    await db_service.delete_entry(db_session, sample_voice_entry.id)
     await db_session.commit()
 
     # Try to retrieve transcription - should not exist

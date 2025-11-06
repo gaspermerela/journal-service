@@ -62,7 +62,7 @@ async def test_complete_transcription_workflow(client, sample_mp3_path, mock_tra
 
 
 @pytest.mark.asyncio
-async def test_multiple_transcription_attempts(client, sample_dream_entry, mock_transcription_service):
+async def test_multiple_transcription_attempts(client, sample_voice_entry, mock_transcription_service):
     """
     Test creating multiple transcriptions for the same entry.
     Simulates: trying multiple times (e.g., retries or different language attempts).
@@ -75,7 +75,7 @@ async def test_multiple_transcription_attempts(client, sample_dream_entry, mock_
 
     for i in range(3):
         response = await client.post(
-            f"/api/v1/entries/{sample_dream_entry.id}/transcribe",
+            f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
             json={"language": "en"}
         )
 
@@ -84,7 +84,7 @@ async def test_multiple_transcription_attempts(client, sample_dream_entry, mock_
 
     # List all transcriptions
     list_response = await client.get(
-        f"/api/v1/entries/{sample_dream_entry.id}/transcriptions"
+        f"/api/v1/entries/{sample_voice_entry.id}/transcriptions"
     )
 
     assert list_response.status_code == 200
@@ -94,7 +94,7 @@ async def test_multiple_transcription_attempts(client, sample_dream_entry, mock_
 
 
 @pytest.mark.asyncio
-async def test_set_primary_after_comparison(client, sample_dream_entry, db_session, mock_transcription_service):
+async def test_set_primary_after_comparison(client, sample_voice_entry, db_session, mock_transcription_service):
     """
     Test workflow: create multiple transcriptions, then set one as primary.
     Simulates: user tries different models, picks best one.
@@ -104,7 +104,7 @@ async def test_set_primary_after_comparison(client, sample_dream_entry, db_sessi
 
     # Create two completed transcriptions (simulating completed background tasks)
     trans1_data = TranscriptionCreate(
-        entry_id=sample_dream_entry.id,
+        entry_id=sample_voice_entry.id,
         status="completed",
         model_used="whisper-tiny",
         language_code="en",
@@ -119,7 +119,7 @@ async def test_set_primary_after_comparison(client, sample_dream_entry, db_sessi
     )
 
     trans2_data = TranscriptionCreate(
-        entry_id=sample_dream_entry.id,
+        entry_id=sample_voice_entry.id,
         status="completed",
         model_used="whisper-large",
         language_code="en",
@@ -142,7 +142,7 @@ async def test_set_primary_after_comparison(client, sample_dream_entry, db_sessi
     assert set_primary_response.status_code == 200
 
     # Verify entry now shows trans2 as primary
-    entry_response = await client.get(f"/api/v1/entries/{sample_dream_entry.id}")
+    entry_response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}")
     entry_data = entry_response.json()
 
     assert entry_data["primary_transcription"] is not None
@@ -151,7 +151,7 @@ async def test_set_primary_after_comparison(client, sample_dream_entry, db_sessi
 
 
 @pytest.mark.asyncio
-async def test_retry_failed_transcription(client, sample_dream_entry, db_session):
+async def test_retry_failed_transcription(client, sample_voice_entry, db_session):
     """
     Test workflow: transcription fails, user retries.
     """
@@ -160,7 +160,7 @@ async def test_retry_failed_transcription(client, sample_dream_entry, db_session
 
     # Create failed transcription
     failed_trans_data = TranscriptionCreate(
-        entry_id=sample_dream_entry.id,
+        entry_id=sample_voice_entry.id,
         status="pending",
         model_used="whisper-base",
         language_code="en",
@@ -181,7 +181,7 @@ async def test_retry_failed_transcription(client, sample_dream_entry, db_session
 
     # User can see all attempts including failed one
     list_response = await client.get(
-        f"/api/v1/entries/{sample_dream_entry.id}/transcriptions"
+        f"/api/v1/entries/{sample_voice_entry.id}/transcriptions"
     )
 
     transcriptions = list_response.json()["transcriptions"]
@@ -191,7 +191,7 @@ async def test_retry_failed_transcription(client, sample_dream_entry, db_session
 
 
 @pytest.mark.asyncio
-async def test_transcription_with_auto_language_detection(client, sample_dream_entry, mock_transcription_service):
+async def test_transcription_with_auto_language_detection(client, sample_voice_entry, mock_transcription_service):
     """
     Test transcription with automatic language detection.
     """
@@ -199,7 +199,7 @@ async def test_transcription_with_auto_language_detection(client, sample_dream_e
     app.state.transcription_service = mock_transcription_service
 
     response = await client.post(
-        f"/api/v1/entries/{sample_dream_entry.id}/transcribe",
+        f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
         json={"language": "auto"}
     )
 
@@ -212,7 +212,7 @@ async def test_transcription_with_auto_language_detection(client, sample_dream_e
 
 
 @pytest.mark.asyncio
-async def test_entry_deletion_cascades_to_transcriptions(client, sample_dream_entry, db_session):
+async def test_entry_deletion_cascades_to_transcriptions(client, sample_voice_entry, db_session):
     """
     Test that deleting an entry also deletes its transcriptions.
     """
@@ -221,7 +221,7 @@ async def test_entry_deletion_cascades_to_transcriptions(client, sample_dream_en
 
     # Create transcription
     trans_data = TranscriptionCreate(
-        entry_id=sample_dream_entry.id,
+        entry_id=sample_voice_entry.id,
         status="completed",
         model_used="whisper-base",
         language_code="en",
@@ -232,7 +232,7 @@ async def test_entry_deletion_cascades_to_transcriptions(client, sample_dream_en
     trans_id = trans.id
 
     # Delete entry
-    await db_service.delete_entry(db_session, sample_dream_entry.id)
+    await db_service.delete_entry(db_session, sample_voice_entry.id)
     await db_session.commit()
 
     # Try to get transcription - should not exist

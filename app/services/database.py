@@ -1,5 +1,5 @@
 """
-Database service for CRUD operations on dream entries and transcriptions.
+Database service for CRUD operations on voice entries and transcriptions.
 """
 from uuid import UUID
 from datetime import datetime, timezone
@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from fastapi import HTTPException, status
 
-from app.models.dream_entry import DreamEntry
+from app.models.voice_entry import VoiceEntry
 from app.models.transcription import Transcription
-from app.schemas.dream_entry import DreamEntryCreate
+from app.schemas.voice_entry import VoiceEntryCreate
 from app.schemas.transcription import TranscriptionCreate
 from app.utils.logger import get_logger
 
@@ -18,28 +18,28 @@ logger = get_logger("database_service")
 
 
 class DatabaseService:
-    """Service for database operations on dream entries."""
+    """Service for database operations on voice entries."""
 
     async def create_entry(
         self,
         db: AsyncSession,
-        entry_data: DreamEntryCreate
-    ) -> DreamEntry:
+        entry_data: VoiceEntryCreate
+    ) -> VoiceEntry:
         """
-        Create a new dream entry in the database.
+        Create a new voice entry in the database.
 
         Args:
             db: Database session
             entry_data: Entry data to create
 
         Returns:
-            Created DreamEntry instance
+            Created VoiceEntry instance
 
         Raises:
             HTTPException: If database operation fails
         """
         try:
-            entry = DreamEntry(
+            entry = VoiceEntry(
                 original_filename=entry_data.original_filename,
                 saved_filename=entry_data.saved_filename,
                 file_path=entry_data.file_path,
@@ -73,20 +73,20 @@ class DatabaseService:
         self,
         db: AsyncSession,
         entry_id: UUID
-    ) -> Optional[DreamEntry]:
+    ) -> Optional[VoiceEntry]:
         """
-        Retrieve a dream entry by ID.
+        Retrieve a voice entry by ID.
 
         Args:
             db: Database session
             entry_id: UUID of the entry to retrieve
 
         Returns:
-            DreamEntry if found, None otherwise
+            VoiceEntry if found, None otherwise
         """
         try:
             result = await db.execute(
-                select(DreamEntry).where(DreamEntry.id == entry_id)
+                select(VoiceEntry).where(VoiceEntry.id == entry_id)
             )
             entry = result.scalar_one_or_none()
 
@@ -115,7 +115,7 @@ class DatabaseService:
         entry_id: UUID
     ) -> bool:
         """
-        Delete a dream entry by ID.
+        Delete a voice entry by ID.
 
         Args:
             db: Database session
@@ -252,7 +252,7 @@ class DatabaseService:
         entry_id: UUID
     ) -> list[Transcription]:
         """
-        Get all transcriptions for a specific dream entry.
+        Get all transcriptions for a specific voice entry.
 
         Args:
             db: Database session

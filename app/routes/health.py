@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.schemas.dream_entry import HealthResponse
+from app.schemas.voice_entry import HealthResponse
 from app.database import get_db
 from app.utils.logger import get_logger
 

@@ -10,20 +10,20 @@ from app.routes.transcription import get_transcription_service
 
 
 @pytest.mark.asyncio
-async def test_trigger_transcription_success(client, sample_dream_entry, mock_transcription_service):
+async def test_trigger_transcription_success(client, sample_voice_entry, mock_transcription_service):
     """Test triggering transcription for an entry."""
     # Override transcription service dependency
     from app.main import app
     app.state.transcription_service = mock_transcription_service
 
     response = await client.post(
-        f"/api/v1/entries/{sample_dream_entry.id}/transcribe",
+        f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
         json={"language": "en"}
     )
 
     assert response.status_code == 202
     data = response.json()
-    assert data["entry_id"] == str(sample_dream_entry.id)
+    assert data["entry_id"] == str(sample_voice_entry.id)
     assert "transcription_id" in data
     assert data["status"] == "processing"
     assert data["message"] == "Transcription started in background"
@@ -47,13 +47,13 @@ async def test_trigger_transcription_entry_not_found(client, mock_transcription_
 
 
 @pytest.mark.asyncio
-async def test_trigger_transcription_service_unavailable(client, sample_dream_entry):
+async def test_trigger_transcription_service_unavailable(client, sample_voice_entry):
     """Test triggering transcription when service is unavailable."""
     from app.main import app
     app.state.transcription_service = None  # Simulate service unavailable
 
     response = await client.post(
-        f"/api/v1/entries/{sample_dream_entry.id}/transcribe",
+        f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
         json={"language": "en"}
     )
 
@@ -88,7 +88,7 @@ async def test_get_transcription_not_found(client):
 
 
 @pytest.mark.asyncio
-async def test_list_transcriptions_for_entry(client, sample_dream_entry, db_session):
+async def test_list_transcriptions_for_entry(client, sample_voice_entry, db_session):
     """Test listing all transcriptions for an entry."""
     from app.services.database import db_service
     from app.schemas.transcription import TranscriptionCreate
@@ -96,7 +96,7 @@ async def test_list_transcriptions_for_entry(client, sample_dream_entry, db_sess
     # Create multiple transcriptions
     for i in range(3):
         trans_data = TranscriptionCreate(
-            entry_id=sample_dream_entry.id,
+            entry_id=sample_voice_entry.id,
             status="completed" if i < 2 else "pending",
             model_used=f"whisper-model-{i}",
             language_code="en",
@@ -105,7 +105,7 @@ async def test_list_transcriptions_for_entry(client, sample_dream_entry, db_sess
         await db_service.create_transcription(db_session, trans_data)
     await db_session.commit()
 
-    response = await client.get(f"/api/v1/entries/{sample_dream_entry.id}/transcriptions")
+    response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}/transcriptions")
 
     assert response.status_code == 200
     data = response.json()
@@ -116,9 +116,9 @@ async def test_list_transcriptions_for_entry(client, sample_dream_entry, db_sess
 
 
 @pytest.mark.asyncio
-async def test_list_transcriptions_empty(client, sample_dream_entry):
+async def test_list_transcriptions_empty(client, sample_voice_entry):
     """Test listing transcriptions for entry with none."""
-    response = await client.get(f"/api/v1/entries/{sample_dream_entry.id}/transcriptions")
+    response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}/transcriptions")
 
     assert response.status_code == 200
     data = response.json()
@@ -137,14 +137,14 @@ async def test_list_transcriptions_entry_not_found(client):
 
 
 @pytest.mark.asyncio
-async def test_set_primary_transcription_success(client, sample_dream_entry, db_session):
+async def test_set_primary_transcription_success(client, sample_voice_entry, db_session):
     """Test setting a transcription as primary."""
     from app.services.database import db_service
     from app.schemas.transcription import TranscriptionCreate
 
     # Create two completed transcriptions
     trans1_data = TranscriptionCreate(
-        entry_id=sample_dream_entry.id,
+        entry_id=sample_voice_entry.id,
         status="completed",
         model_used="whisper-base",
         language_code="en",
@@ -153,7 +153,7 @@ async def test_set_primary_transcription_success(client, sample_dream_entry, db_
     trans1 = await db_service.create_transcription(db_session, trans1_data)
 
     trans2_data = TranscriptionCreate(
-        entry_id=sample_dream_entry.id,
+        entry_id=sample_voice_entry.id,
         status="completed",
         model_used="whisper-large",
         language_code="en",
@@ -197,37 +197,37 @@ async def test_set_primary_transcription_not_found(client):
 
 
 @pytest.mark.asyncio
-async def test_get_entry_with_primary_transcription(client, sample_dream_entry, sample_transcription):
+async def test_get_entry_with_primary_transcription(client, sample_voice_entry, sample_transcription):
     """Test that GET /entries/{id} includes primary transcription."""
-    response = await client.get(f"/api/v1/entries/{sample_dream_entry.id}")
+    response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}")
 
     assert response.status_code == 200
     data = response.json()
-    assert data["id"] == str(sample_dream_entry.id)
+    assert data["id"] == str(sample_voice_entry.id)
     assert data["primary_transcription"] is not None
     assert data["primary_transcription"]["id"] == str(sample_transcription.id)
     assert data["primary_transcription"]["transcribed_text"] == sample_transcription.transcribed_text
 
 
 @pytest.mark.asyncio
-async def test_get_entry_without_transcription(client, sample_dream_entry):
+async def test_get_entry_without_transcription(client, sample_voice_entry):
     """Test that GET /entries/{id} works without transcription."""
-    response = await client.get(f"/api/v1/entries/{sample_dream_entry.id}")
+    response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}")
 
     assert response.status_code == 200
     data = response.json()
-    assert data["id"] == str(sample_dream_entry.id)
+    assert data["id"] == str(sample_voice_entry.id)
     assert data["primary_transcription"] is None
 
 
 @pytest.mark.asyncio
-async def test_trigger_transcription_uses_configured_model(client, sample_dream_entry, mock_transcription_service, db_session):
+async def test_trigger_transcription_uses_configured_model(client, sample_voice_entry, mock_transcription_service, db_session):
     """Test that transcription uses the model configured in the service (not from request)."""
     from app.main import app
     app.state.transcription_service = mock_transcription_service
 
     response = await client.post(
-        f"/api/v1/entries/{sample_dream_entry.id}/transcribe",
+        f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
         json={"language": "en"}
     )
 
@@ -242,7 +242,7 @@ async def test_trigger_transcription_uses_configured_model(client, sample_dream_
 
 
 @pytest.mark.asyncio
-async def test_trigger_transcription_with_different_languages(client, sample_dream_entry, mock_transcription_service):
+async def test_trigger_transcription_with_different_languages(client, sample_voice_entry, mock_transcription_service):
     """Test triggering transcription with different languages."""
     from app.main import app
     app.state.transcription_service = mock_transcription_service
@@ -251,7 +251,7 @@ async def test_trigger_transcription_with_different_languages(client, sample_dre
 
     for lang in languages:
         response = await client.post(
-            f"/api/v1/entries/{sample_dream_entry.id}/transcribe",
+            f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
             json={"language": lang}
         )
 
@@ -259,13 +259,13 @@ async def test_trigger_transcription_with_different_languages(client, sample_dre
 
 
 @pytest.mark.asyncio
-async def test_transcription_background_task_execution(client, sample_dream_entry, mock_transcription_service, db_session):
+async def test_transcription_background_task_execution(client, sample_voice_entry, mock_transcription_service, db_session):
     """Test that background task actually processes transcription."""
     from app.main import app
     app.state.transcription_service = mock_transcription_service
 
     response = await client.post(
-        f"/api/v1/entries/{sample_dream_entry.id}/transcribe",
+        f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
         json={"language": "en"}
     )
 

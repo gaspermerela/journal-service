@@ -26,14 +26,20 @@ This approach could extend to general voice-based daily journaling.
 
 ## Features
 
-**Current - Phase 1 (Backend Backbone):**
-- Upload `.mp3` audio files via REST API
+**Current - Phase 1 (Backend Backbone):** ✅
+- Upload `.mp3` and `.m4a` audio files via REST API
 - Store files with UUID-based naming and date organization
-- PostgreSQL metadata storage
+- PostgreSQL metadata storage with entry_type support (dream, journal, meeting, note, etc.)
 - Health monitoring and auto-generated API documentation
 
+**Current - Phase 2 (Audio Transcription):** ✅
+- Whisper-based audio transcription (configurable model via WHISPER_MODEL env var)
+- Background transcription processing
+- Multiple transcription support per entry
+- Primary transcription selection
+- Language detection and multi-language support
+
 **Future Phases:**
-- **Phase 2**: Audio transcription (Whisper)
 - **Phase 3**: LLM-based text cleanup and analysis
 - **Phase 4**: Notion synchronization
 - Frontend UI under consideration for future expansion
@@ -80,10 +86,23 @@ For production deployment with PostgreSQL running on the host via systemctl, see
 
 ## API Endpoints
 
+### Voice Entry Management
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/v1/upload` | POST | Upload audio file (multipart/form-data) |
-| `/api/v1/entries/{id}` | GET | Retrieve entry metadata |
+| `/api/v1/upload` | POST | Upload audio file (MP3 or M4A) |
+| `/api/v1/entries/{id}` | GET | Retrieve entry metadata with primary transcription |
+
+### Transcription
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/entries/{id}/transcribe` | POST | Trigger background transcription |
+| `/api/v1/transcriptions/{id}` | GET | Get transcription status and result |
+| `/api/v1/entries/{id}/transcriptions` | GET | List all transcriptions for an entry |
+| `/api/v1/transcriptions/{id}/set-primary` | PUT | Set transcription as primary |
+
+### System
+| Endpoint | Method | Description |
+|----------|--------|-------------|
 | `/health` | GET | Health check with database status |
 | `/docs` | GET | Interactive API documentation (Swagger) |
 | `/redoc` | GET | Alternative API documentation |

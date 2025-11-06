@@ -27,7 +27,6 @@ class Settings(BaseSettings):
 
     # Whisper Transcription Configuration
     WHISPER_MODEL: str = "base"  # Options: tiny, base, small, medium, large
-    WHISPER_LANGUAGE: str = "en"  # Language code or "auto" for detection
     WHISPER_DEVICE: str = "cpu"  # Options: cpu, cuda (for GPU)
     TORCH_NUM_THREADS: int = 10  # Number of CPU threads for PyTorch
 

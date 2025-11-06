@@ -13,7 +13,7 @@ class Transcription(Base):
     """
     Transcription model storing audio transcription results.
 
-    Supports multiple transcriptions per dream entry to enable:
+    Supports multiple transcriptions per voice entry to enable:
     - Model experimentation (base vs medium vs large)
     - Language variants
     - Retry attempts
@@ -21,7 +21,7 @@ class Transcription(Base):
 
     Attributes:
         id: Unique identifier (UUID4)
-        entry_id: Foreign key to dream_entries table
+        entry_id: Foreign key to voice_entries table
         transcribed_text: The transcription result (nullable until complete)
         status: Processing status (pending, processing, completed, failed)
         model_used: Whisper model used (e.g., "whisper-base", "whisper-large")
@@ -43,10 +43,10 @@ class Transcription(Base):
         default=uuid.uuid4
     )
 
-    # Foreign key to dream_entries
+    # Foreign key to voice_entries
     entry_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("journal.dream_entries.id", ondelete="CASCADE"),
+        ForeignKey("journal.voice_entries.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
@@ -113,9 +113,9 @@ class Transcription(Base):
         onupdate=lambda: datetime.now(timezone.utc)
     )
 
-    # Relationship to DreamEntry
-    entry: Mapped["DreamEntry"] = relationship(
-        "DreamEntry",
+    # Relationship to VoiceEntry
+    entry: Mapped["VoiceEntry"] = relationship(
+        "VoiceEntry",
         back_populates="transcriptions"
     )
 

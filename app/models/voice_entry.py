@@ -1,5 +1,5 @@
 """
-SQLAlchemy model for dream entries table.
+SQLAlchemy model for voice entries table.
 """
 import uuid
 from datetime import datetime, timezone
@@ -13,21 +13,22 @@ if TYPE_CHECKING:
     from app.models.transcription import Transcription
 
 
-class DreamEntry(Base):
+class VoiceEntry(Base):
     """
-    Dream entry model storing audio file metadata.
+    Voice entry model storing audio file metadata.
 
     Attributes:
         id: Unique identifier (UUID4)
         original_filename: Original name of uploaded file
         saved_filename: UUID-based filename on disk
         file_path: Absolute path to saved file
+        entry_type: Type of voice entry (dream, journal, meeting, note, etc.)
         uploaded_at: Upload timestamp (UTC)
         created_at: Record creation time
         updated_at: Last update time
     """
 
-    __tablename__ = "dream_entries"
+    __tablename__ = "voice_entries"
 
     # Primary key
     id: Mapped[uuid.UUID] = mapped_column(
@@ -52,6 +53,15 @@ class DreamEntry(Base):
     file_path: Mapped[str] = mapped_column(
         Text,
         nullable=False
+    )
+
+    # Entry metadata
+    entry_type: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="dream",
+        server_default="dream",
+        index=True
     )
 
     # Timestamps
@@ -84,9 +94,10 @@ class DreamEntry(Base):
 
     # Indexes for query performance and schema configuration
     __table_args__ = (
-        Index("idx_dream_entries_uploaded_at", "uploaded_at"),
+        Index("idx_voice_entries_uploaded_at", "uploaded_at"),
+        Index("idx_voice_entries_entry_type", "entry_type"),
         {"schema": "journal"}
     )
 
     def __repr__(self) -> str:
-        return f"<DreamEntry(id={self.id}, original_filename={self.original_filename})>"
+        return f"<VoiceEntry(id={self.id}, entry_type={self.entry_type}, original_filename={self.original_filename})>"

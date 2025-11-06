@@ -20,7 +20,7 @@ from unittest.mock import Mock, AsyncMock
 from app.config import Settings
 from app.database import Base, get_db
 from app.main import app
-from app.models.dream_entry import DreamEntry
+from app.models.voice_entry import VoiceEntry
 from app.models.transcription import Transcription
 
 
@@ -216,9 +216,9 @@ def invalid_file_path() -> Generator[Path, None, None]:
 
 
 @pytest.fixture
-async def sample_dream_entry(db_session: AsyncSession, test_storage_path: Path) -> DreamEntry:
+async def sample_voice_entry(db_session: AsyncSession, test_storage_path: Path) -> VoiceEntry:
     """
-    Create a sample dream entry in the test database.
+    Create a sample voice entry in the test database.
     Used for testing retrieval and other operations.
     """
     entry_id = uuid.uuid4()
@@ -230,7 +230,7 @@ async def sample_dream_entry(db_session: AsyncSession, test_storage_path: Path) 
     file_path.write_bytes(b"fake mp3 data")
 
     # Create database entry
-    entry = DreamEntry(
+    entry = VoiceEntry(
         id=entry_id,
         original_filename="test_dream.mp3",
         saved_filename=saved_filename,
@@ -293,17 +293,17 @@ def mock_transcription_service():
 @pytest.fixture
 async def sample_transcription(
     db_session: AsyncSession,
-    sample_dream_entry: DreamEntry
+    sample_voice_entry: VoiceEntry
 ) -> Transcription:
     """
     Create a sample completed transcription for testing.
-    Linked to the sample_dream_entry fixture.
+    Linked to the sample_voice_entry fixture.
     """
     from datetime import datetime, timezone
 
     transcription = Transcription(
         id=uuid.uuid4(),
-        entry_id=sample_dream_entry.id,
+        entry_id=sample_voice_entry.id,
         transcribed_text="I dreamt about flying over mountains.",
         status="completed",
         model_used="whisper-base",
@@ -323,14 +323,14 @@ async def sample_transcription(
 @pytest.fixture
 async def sample_pending_transcription(
     db_session: AsyncSession,
-    sample_dream_entry: DreamEntry
+    sample_voice_entry: VoiceEntry
 ) -> Transcription:
     """
     Create a sample pending transcription for testing status updates.
     """
     transcription = Transcription(
         id=uuid.uuid4(),
-        entry_id=sample_dream_entry.id,
+        entry_id=sample_voice_entry.id,
         transcribed_text=None,
         status="pending",
         model_used="whisper-base",

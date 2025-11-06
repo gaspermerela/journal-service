@@ -61,7 +61,7 @@ async def process_transcription_task(
 
     Args:
         transcription_id: UUID of transcription record
-        entry_id: UUID of dream entry
+        entry_id: UUID of voice entry
         audio_file_path: Path to audio file
         language: Language code for transcription
         transcription_service: Transcription service instance
@@ -149,13 +149,13 @@ async def trigger_transcription(
     transcription_service: TranscriptionService = Depends(get_transcription_service)
 ):
     """
-    Trigger transcription for a dream entry audio file.
+    Trigger transcription for a voice entry audio file.
 
     The transcription runs in the background using the configured Whisper model.
     Use the returned transcription_id to check status via GET /transcriptions/{transcription_id}.
 
     Args:
-        entry_id: UUID of the dream entry
+        entry_id: UUID of the voice entry
         request_data: Transcription parameters (language)
         background_tasks: FastAPI background tasks
         db: Database session
@@ -265,17 +265,17 @@ async def get_transcription(
     "/entries/{entry_id}/transcriptions",
     response_model=TranscriptionListResponse,
     summary="List all transcriptions for an entry",
-    description="Get all transcription attempts for a dream entry, ordered by creation date"
+    description="Get all transcription attempts for a voice entry, ordered by creation date"
 )
 async def list_transcriptions(
     entry_id: UUID,
     db: AsyncSession = Depends(get_db)
 ):
     """
-    List all transcriptions for a dream entry.
+    List all transcriptions for a voice entry.
 
     Args:
-        entry_id: UUID of the dream entry
+        entry_id: UUID of the voice entry
         db: Database session
 
     Returns:

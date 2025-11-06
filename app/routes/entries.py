@@ -1,12 +1,12 @@
 """
-Entries endpoint for retrieving dream entry metadata.
+Entries endpoint for retrieving voice entry metadata.
 """
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.schemas.dream_entry import DreamEntryResponse
+from app.schemas.voice_entry import VoiceEntryResponse
 from app.schemas.transcription import TranscriptionResponse
 from app.services.database import db_service
 from app.utils.logger import get_logger
@@ -17,10 +17,10 @@ router = APIRouter()
 
 @router.get(
     "/entries/{entry_id}",
-    response_model=DreamEntryResponse,
+    response_model=VoiceEntryResponse,
     status_code=status.HTTP_200_OK,
-    summary="Get dream entry",
-    description="Retrieve metadata for a specific dream entry by ID",
+    summary="Get voice entry",
+    description="Retrieve metadata for a specific voice entry by ID",
     responses={
         200: {"description": "Entry found"},
         404: {"description": "Entry not found"},
@@ -30,16 +30,16 @@ router = APIRouter()
 async def get_entry(
     entry_id: UUID,
     db: AsyncSession = Depends(get_db)
-) -> DreamEntryResponse:
+) -> VoiceEntryResponse:
     """
-    Get dream entry by ID.
+    Get voice entry by ID.
 
     Args:
         entry_id: UUID of the entry to retrieve
         db: Database session
 
     Returns:
-        DreamEntryResponse with entry metadata
+        VoiceEntryResponse with entry metadata
 
     Raises:
         HTTPException: 404 if entry not found
@@ -70,11 +70,12 @@ async def get_entry(
     else:
         logger.info(f"Entry retrieved without transcription", entry_id=str(entry_id))
 
-    return DreamEntryResponse(
+    return VoiceEntryResponse(
         id=entry.id,
         original_filename=entry.original_filename,
         saved_filename=entry.saved_filename,
         file_path=entry.file_path,
+        entry_type=entry.entry_type,
         uploaded_at=entry.uploaded_at,
         primary_transcription=primary_transcription_data
     )
