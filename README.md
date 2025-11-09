@@ -65,7 +65,13 @@ open http://localhost:8000/docs
 
 **Test the API:**
 ```bash
-# Upload audio file
+# Upload and transcribe in one request
+curl -X POST "http://localhost:8000/api/v1/upload-and-transcribe" \
+  -F "file=@recording.mp3;type=audio/mpeg" \
+  -F "entry_type=dream" \
+  -F "language=en"
+
+# Or upload only (requires separate transcription request)
 curl -X POST "http://localhost:8000/api/v1/upload" \
   -F "file=@recording.mp3;type=audio/mpeg"
 ```
