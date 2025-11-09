@@ -65,6 +65,14 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
+    # Ensure journal schema exists before Alembic tries to create version table
+    result = connection.execute(text(
+        "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'journal'"
+    ))
+    if not result.fetchone():
+        connection.execute(text("CREATE SCHEMA journal"))
+        connection.commit()
+
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
