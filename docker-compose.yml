@@ -31,7 +31,7 @@ services:
 
     # Mount volumes for persistent data
     volumes:
-      - ./data/audio:/app/data/audio
+      - ${AUDIO_STORAGE_PATH_HOST:-./data/audio}:/app/data/audio
 
     # Logging configuration
     logging:

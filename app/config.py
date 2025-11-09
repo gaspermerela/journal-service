@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     # Storage Configuration
-    AUDIO_STORAGE_PATH: str = "/data/audio"
+    AUDIO_STORAGE_PATH: str = "/app/data/audio"
     MAX_FILE_SIZE_MB: int = 100
 
     # Whisper Transcription Configuration
