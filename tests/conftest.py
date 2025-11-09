@@ -17,6 +17,9 @@ from sqlalchemy.pool import NullPool
 
 from unittest.mock import Mock, AsyncMock
 
+# Set JWT_SECRET_KEY before importing Settings to avoid validation error
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-testing-only-not-for-production")
+
 from app.config import Settings
 from app.database import Base, get_db
 from app.main import app
@@ -101,6 +104,7 @@ def test_storage_path(tmp_path) -> Generator[Path, None, None]:
 def test_settings(test_storage_path) -> Settings:
     """
     Create test settings with overridden storage path.
+    JWT configuration is set at module level in conftest.
     """
     settings = Settings()
     settings.AUDIO_STORAGE_PATH = str(test_storage_path)
