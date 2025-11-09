@@ -49,6 +49,20 @@ class HealthResponse(BaseModel):
     timestamp: datetime
 
 
+class VoiceEntryUploadAndTranscribeResponse(BaseModel):
+    """Schema for combined upload and transcribe endpoint response."""
+    entry_id: UUID
+    transcription_id: UUID
+    original_filename: str
+    saved_filename: str
+    file_path: str
+    entry_type: str
+    uploaded_at: datetime
+    transcription_status: str
+    transcription_language: str
+    message: str = "File uploaded and transcription started"
+
+
 class ErrorResponse(BaseModel):
     """Schema for error responses."""
     detail: str

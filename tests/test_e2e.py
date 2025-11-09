@@ -302,6 +302,166 @@ class TestE2EFullWorkflow:
             assert response.status_code == 200
 
 
+class TestE2EUploadAndTranscribe:
+    """End-to-end tests for combined upload and transcribe endpoint."""
+
+    def test_upload_and_transcribe_basic(self, temp_audio_file):
+        """Test basic upload and transcribe with valid MP3."""
+        with open(temp_audio_file, "rb") as f:
+            files = {"file": ("test.mp3", f, "audio/mpeg")}
+            response = requests.post(
+                f"{BASE_URL}/api/v1/upload-and-transcribe",
+                files=files,
+                timeout=TIMEOUT
+            )
+
+        assert response.status_code == 202  # Accepted
+        data = response.json()
+
+        # Check all required fields
+        assert "entry_id" in data
+        assert "transcription_id" in data
+        assert "original_filename" in data
+        assert "saved_filename" in data
+        assert "file_path" in data
+        assert "entry_type" in data
+        assert "uploaded_at" in data
+        assert "transcription_status" in data
+        assert "transcription_language" in data
+        assert "message" in data
+
+        # Check defaults
+        assert data["entry_type"] == "dream"
+        assert data["transcription_language"] == "en"
+        assert data["transcription_status"] == "processing"
+
+    def test_upload_and_transcribe_custom_entry_type(self, temp_audio_file):
+        """Test upload and transcribe with custom entry type."""
+        with open(temp_audio_file, "rb") as f:
+            files = {"file": ("meeting.mp3", f, "audio/mpeg")}
+            form_data = {"entry_type": "meeting"}
+            response = requests.post(
+                f"{BASE_URL}/api/v1/upload-and-transcribe",
+                files=files,
+                data=form_data,
+                timeout=TIMEOUT
+            )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["entry_type"] == "meeting"
+
+    def test_upload_and_transcribe_real_audio(self):
+        """Test upload and transcribe with real audio file and verify completion."""
+        audio_file = Path("tests/fixtures/crocodile.mp3")
+
+        if not audio_file.exists():
+            pytest.skip("Real audio file not found")
+
+        with open(audio_file, "rb") as f:
+            files = {"file": ("crocodile.mp3", f, "audio/mpeg")}
+            response = requests.post(
+                f"{BASE_URL}/api/v1/upload-and-transcribe",
+                files=files,
+                timeout=TIMEOUT
+            )
+
+        assert response.status_code == 202
+        data = response.json()
+
+        assert data["original_filename"] == "crocodile.mp3"
+        assert data["transcription_status"] == "processing"
+        transcription_id = data["transcription_id"]
+
+        # Wait briefly and check status should be processing
+        import time
+        time.sleep(1)
+
+        status_response = requests.get(
+            f"{BASE_URL}/api/v1/transcriptions/{transcription_id}",
+            timeout=TIMEOUT
+        )
+        assert status_response.status_code == 200
+        status_data = status_response.json()
+        assert status_data["status"] in ["processing"]
+
+        # Wait up to 30 seconds for transcription to complete
+        max_wait = 30
+        wait_interval = 2
+        waited = 0
+
+        while waited < max_wait:
+            time.sleep(wait_interval)
+            waited += wait_interval
+
+            status_response = requests.get(
+                f"{BASE_URL}/api/v1/transcriptions/{transcription_id}",
+                timeout=TIMEOUT
+            )
+
+            assert status_response.status_code == 200
+            status_data = status_response.json()
+
+            if status_data["status"] == "completed":
+                break
+
+        # Verify transcription completed successfully
+        assert status_data["status"] == "completed", f"Transcription did not complete within {max_wait}s. Status: {status_data['status']}"
+        assert status_data["error_message"] is None
+        assert status_data["transcribed_text"] is not None
+        assert len(status_data["transcribed_text"]) > 0
+        assert status_data["language_code"] == "en"
+
+        print(f"\nTranscription completed in ~{waited}s")
+        print(f"Transcribed text (first 100 chars): {status_data['transcribed_text'][:100]}...")
+
+    def test_upload_and_transcribe_check_status(self, temp_audio_file):
+        """Test that transcription status can be checked after upload."""
+        with open(temp_audio_file, "rb") as f:
+            files = {"file": ("test.mp3", f, "audio/mpeg")}
+            response = requests.post(
+                f"{BASE_URL}/api/v1/upload-and-transcribe",
+                files=files,
+                timeout=TIMEOUT
+            )
+
+        assert response.status_code == 202
+        data = response.json()
+        transcription_id = data["transcription_id"]
+
+        # Check status endpoint works
+        status_response = requests.get(
+            f"{BASE_URL}/api/v1/transcriptions/{transcription_id}",
+            timeout=TIMEOUT
+        )
+
+        assert status_response.status_code == 200
+        status_data = status_response.json()
+        assert status_data["id"] == transcription_id
+        assert "status" in status_data
+
+    def test_upload_and_transcribe_invalid_file(self, temp_invalid_file):
+        """Test upload and transcribe with invalid file type."""
+        with open(temp_invalid_file, "rb") as f:
+            files = {"file": ("test.txt", f, "text/plain")}
+            response = requests.post(
+                f"{BASE_URL}/api/v1/upload-and-transcribe",
+                files=files,
+                timeout=TIMEOUT
+            )
+
+        assert response.status_code == 400
+
+    def test_upload_and_transcribe_no_file(self):
+        """Test upload and transcribe without file."""
+        response = requests.post(
+            f"{BASE_URL}/api/v1/upload-and-transcribe",
+            timeout=TIMEOUT
+        )
+
+        assert response.status_code == 422  # Validation error
+
+
 class TestE2EDocumentation:
     """End-to-end tests for API documentation endpoints."""
 
