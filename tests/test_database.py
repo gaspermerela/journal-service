@@ -9,8 +9,8 @@ from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.database import DatabaseService
-from app.schemas.dream_entry import DreamEntryCreate
-from app.models.dream_entry import DreamEntry
+from app.schemas.voice_entry import VoiceEntryCreate
+from app.models.voice_entry import VoiceEntry
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def db_service():
 @pytest.mark.asyncio
 async def test_create_entry_success(db_session: AsyncSession, db_service: DatabaseService):
     """Test successful creation of dream entry."""
-    entry_data = DreamEntryCreate(
+    entry_data = VoiceEntryCreate(
         original_filename="test_dream.mp3",
         saved_filename="550e8400-e29b-41d4-a716-446655440000_20250131T120000.mp3",
         file_path="/data/audio/2025-01-31/550e8400-e29b-41d4-a716-446655440000_20250131T120000.mp3",
@@ -44,7 +44,7 @@ async def test_create_entry_success(db_session: AsyncSession, db_service: Databa
 @pytest.mark.asyncio
 async def test_create_entry_generates_uuid(db_session: AsyncSession, db_service: DatabaseService):
     """Test that create_entry generates a UUID for the entry."""
-    entry_data = DreamEntryCreate(
+    entry_data = VoiceEntryCreate(
         original_filename="test_dream.mp3",
         saved_filename="test_20250131T120000.mp3",
         file_path="/data/audio/test.mp3",
@@ -62,7 +62,7 @@ async def test_create_entry_timestamps(db_session: AsyncSession, db_service: Dat
     """Test that create_entry sets timestamps correctly."""
     before = datetime.now(timezone.utc)
 
-    entry_data = DreamEntryCreate(
+    entry_data = VoiceEntryCreate(
         original_filename="test_dream.mp3",
         saved_filename="test_20250131T120000.mp3",
         file_path="/data/audio/test.mp3",
@@ -81,14 +81,14 @@ async def test_create_entry_timestamps(db_session: AsyncSession, db_service: Dat
 
 
 @pytest.mark.asyncio
-async def test_get_entry_by_id_success(db_session: AsyncSession, db_service: DatabaseService, sample_dream_entry: DreamEntry):
+async def test_get_entry_by_id_success(db_session: AsyncSession, db_service: DatabaseService, sample_voice_entry: VoiceEntry):
     """Test retrieving entry by ID when it exists."""
-    entry = await db_service.get_entry_by_id(db_session, sample_dream_entry.id)
+    entry = await db_service.get_entry_by_id(db_session, sample_voice_entry.id)
 
     assert entry is not None
-    assert entry.id == sample_dream_entry.id
-    assert entry.original_filename == sample_dream_entry.original_filename
-    assert entry.saved_filename == sample_dream_entry.saved_filename
+    assert entry.id == sample_voice_entry.id
+    assert entry.original_filename == sample_voice_entry.original_filename
+    assert entry.saved_filename == sample_voice_entry.saved_filename
 
 
 @pytest.mark.asyncio
@@ -102,14 +102,14 @@ async def test_get_entry_by_id_not_found(db_session: AsyncSession, db_service: D
 
 
 @pytest.mark.asyncio
-async def test_delete_entry_success(db_session: AsyncSession, db_service: DatabaseService, sample_dream_entry: DreamEntry):
+async def test_delete_entry_success(db_session: AsyncSession, db_service: DatabaseService, sample_voice_entry: VoiceEntry):
     """Test successful deletion of entry."""
-    result = await db_service.delete_entry(db_session, sample_dream_entry.id)
+    result = await db_service.delete_entry(db_session, sample_voice_entry.id)
 
     assert result is True
 
     # Verify entry is deleted
-    deleted_entry = await db_service.get_entry_by_id(db_session, sample_dream_entry.id)
+    deleted_entry = await db_service.get_entry_by_id(db_session, sample_voice_entry.id)
     assert deleted_entry is None
 
 
@@ -127,7 +127,7 @@ async def test_delete_entry_not_found(db_session: AsyncSession, db_service: Data
 async def test_create_multiple_entries(db_session: AsyncSession, db_service: DatabaseService):
     """Test creating multiple entries."""
     entries_data = [
-        DreamEntryCreate(
+        VoiceEntryCreate(
             original_filename=f"dream_{i}.mp3",
             saved_filename=f"saved_{i}.mp3",
             file_path=f"/data/audio/dream_{i}.mp3",
@@ -155,7 +155,7 @@ async def test_create_multiple_entries(db_session: AsyncSession, db_service: Dat
 @pytest.mark.asyncio
 async def test_unique_saved_filename_constraint(db_session: AsyncSession, db_service: DatabaseService):
     """Test that saved_filename must be unique."""
-    entry_data_1 = DreamEntryCreate(
+    entry_data_1 = VoiceEntryCreate(
         original_filename="dream_1.mp3",
         saved_filename="duplicate_filename.mp3",
         file_path="/data/audio/dream_1.mp3",
@@ -167,7 +167,7 @@ async def test_unique_saved_filename_constraint(db_session: AsyncSession, db_ser
     await db_session.commit()
 
     # Second entry with same saved_filename should fail
-    entry_data_2 = DreamEntryCreate(
+    entry_data_2 = VoiceEntryCreate(
         original_filename="dream_2.mp3",
         saved_filename="duplicate_filename.mp3",  # Same as entry_1
         file_path="/data/audio/dream_2.mp3",
@@ -182,16 +182,16 @@ async def test_unique_saved_filename_constraint(db_session: AsyncSession, db_ser
 
 
 @pytest.mark.asyncio
-async def test_entry_updated_at_changes(db_session: AsyncSession, db_service: DatabaseService, sample_dream_entry: DreamEntry):
+async def test_entry_updated_at_changes(db_session: AsyncSession, db_service: DatabaseService, sample_voice_entry: VoiceEntry):
     """Test that updated_at changes when entry is modified."""
-    original_updated_at = sample_dream_entry.updated_at
+    original_updated_at = sample_voice_entry.updated_at
 
     # Modify the entry
-    sample_dream_entry.original_filename = "modified_dream.mp3"
+    sample_voice_entry.original_filename = "modified_dream.mp3"
     await db_session.flush()
-    await db_session.refresh(sample_dream_entry)
+    await db_session.refresh(sample_voice_entry)
 
     # updated_at should have changed
     # Note: This test might be flaky if execution is too fast
     # In production, the onupdate trigger should update this automatically
-    assert sample_dream_entry.updated_at >= original_updated_at
+    assert sample_voice_entry.updated_at >= original_updated_at

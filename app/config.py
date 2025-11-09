@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     AUDIO_STORAGE_PATH: str = "/data/audio"
     MAX_FILE_SIZE_MB: int = 100
 
+    # Whisper Transcription Configuration
+    WHISPER_MODEL: str = "base"  # Options: tiny, base, small, medium, large
+    WHISPER_DEVICE: str = "cpu"  # Options: cpu, cuda (for GPU)
+    TORCH_NUM_THREADS: int = 10  # Number of CPU threads for PyTorch
+
     # CORS Configuration
     CORS_ORIGINS: str = "*"
 

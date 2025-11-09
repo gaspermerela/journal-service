@@ -1,35 +1,43 @@
 """
-Pydantic schemas for dream entry request/response validation.
+Pydantic schemas for voice entry request/response validation.
 """
 from datetime import datetime
 from uuid import UUID
+from typing import Optional, Any
 from pydantic import BaseModel, Field, ConfigDict
 
 
-class DreamEntryBase(BaseModel):
+class VoiceEntryBase(BaseModel):
     """Base schema with common fields."""
     original_filename: str
     saved_filename: str
     file_path: str
+    entry_type: str = "dream"
 
 
-class DreamEntryCreate(BaseModel):
-    """Schema for creating a new dream entry."""
+class VoiceEntryCreate(BaseModel):
+    """Schema for creating a new voice entry."""
     original_filename: str
     saved_filename: str
     file_path: str
+    entry_type: str = "dream"
     uploaded_at: datetime
 
 
-class DreamEntryResponse(DreamEntryBase):
-    """Schema for dream entry API responses."""
+class VoiceEntryResponse(VoiceEntryBase):
+    """Schema for voice entry API responses."""
     id: UUID
     uploaded_at: datetime
+    entry_type: str
+    primary_transcription: Optional[Any] = Field(
+        default=None,
+        description="Primary transcription for this entry, if available"
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
 
-class DreamEntryUploadResponse(DreamEntryResponse):
+class VoiceEntryUploadResponse(VoiceEntryResponse):
     """Schema for upload endpoint response with success message."""
     message: str = "File uploaded successfully"
 

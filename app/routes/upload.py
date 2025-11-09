@@ -3,11 +3,11 @@ Upload endpoint for audio file uploads.
 """
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, UploadFile, File, Depends, HTTPException, status, Request
+from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.schemas.dream_entry import DreamEntryCreate, DreamEntryUploadResponse
+from app.schemas.voice_entry import VoiceEntryCreate, VoiceEntryUploadResponse
 from app.services.storage import storage_service
 from app.services.database import db_service
 from app.utils.validators import validate_audio_file
@@ -19,10 +19,10 @@ router = APIRouter()
 
 @router.post(
     "/upload",
-    response_model=DreamEntryUploadResponse,
+    response_model=VoiceEntryUploadResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Upload audio file",
-    description="Upload an MP3 audio file for dream journaling. File is saved to disk and metadata stored in database.",
+    description="Upload an audio file (MP3 or M4A) for dream journaling. File is saved to disk and metadata stored in database.",
     responses={
         201: {"description": "File uploaded successfully"},
         400: {"description": "Invalid file type or missing file"},
@@ -32,9 +32,10 @@ router = APIRouter()
 )
 async def upload_audio(
     request: Request,
-    file: UploadFile = File(..., description="MP3 audio file to upload"),
+    file: UploadFile = File(..., description="Audio file to upload (MP3 or M4A)"),
+    entry_type: str = Form("dream", description="Type of voice entry (dream, journal, meeting, note, etc.)"),
     db: AsyncSession = Depends(get_db)
-) -> DreamEntryUploadResponse:
+) -> VoiceEntryUploadResponse:
     """
     Upload audio file endpoint.
 
@@ -42,7 +43,7 @@ async def upload_audio(
     1. Validate file (type, size, extension)
     2. Generate UUID for entry
     3. Save file to disk
-    4. Create database entry
+    4. Create database entry with specified entry_type
     5. Return entry metadata
 
     If any step fails:
@@ -58,7 +59,8 @@ async def upload_audio(
         f"File upload request received",
         ip=client_ip,
         filename=file.filename,
-        content_type=file.content_type
+        content_type=file.content_type,
+        entry_type=entry_type
     )
 
     try:
@@ -70,10 +72,11 @@ async def upload_audio(
         saved_file_path = file_path  # Store for potential rollback
 
         # Step 3: Create database entry
-        entry_data = DreamEntryCreate(
+        entry_data = VoiceEntryCreate(
             original_filename=file.filename,
             saved_filename=saved_filename,
             file_path=file_path,
+            entry_type=entry_type,
             uploaded_at=datetime.now(timezone.utc)
         )
 
@@ -90,11 +93,12 @@ async def upload_audio(
         )
 
         # Return response
-        return DreamEntryUploadResponse(
+        return VoiceEntryUploadResponse(
             id=entry.id,
             original_filename=entry.original_filename,
             saved_filename=entry.saved_filename,
             file_path=entry.file_path,
+            entry_type=entry.entry_type,
             uploaded_at=entry.uploaded_at,
             message="File uploaded successfully"
         )

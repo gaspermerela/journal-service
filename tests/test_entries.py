@@ -6,21 +6,21 @@ import uuid
 import pytest
 from httpx import AsyncClient
 
-from app.models.dream_entry import DreamEntry
+from app.models.voice_entry import VoiceEntry
 
 
 @pytest.mark.asyncio
-async def test_get_entry_by_id_success(client: AsyncClient, sample_dream_entry: DreamEntry):
+async def test_get_entry_by_id_success(client: AsyncClient, sample_voice_entry: VoiceEntry):
     """Test retrieving an existing entry by ID."""
-    response = await client.get(f"/api/v1/entries/{sample_dream_entry.id}")
+    response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}")
 
     assert response.status_code == 200
 
     data = response.json()
-    assert data["id"] == str(sample_dream_entry.id)
-    assert data["original_filename"] == sample_dream_entry.original_filename
-    assert data["saved_filename"] == sample_dream_entry.saved_filename
-    assert data["file_path"] == sample_dream_entry.file_path
+    assert data["id"] == str(sample_voice_entry.id)
+    assert data["original_filename"] == sample_voice_entry.original_filename
+    assert data["saved_filename"] == sample_voice_entry.saved_filename
+    assert data["file_path"] == sample_voice_entry.file_path
     assert "uploaded_at" in data
 
 
@@ -46,9 +46,9 @@ async def test_get_entry_by_id_invalid_uuid(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_entry_response_format(client: AsyncClient, sample_dream_entry: DreamEntry):
+async def test_get_entry_response_format(client: AsyncClient, sample_voice_entry: VoiceEntry):
     """Test that entry response has correct format."""
-    response = await client.get(f"/api/v1/entries/{sample_dream_entry.id}")
+    response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}")
 
     assert response.status_code == 200
 
@@ -68,9 +68,9 @@ async def test_get_entry_response_format(client: AsyncClient, sample_dream_entry
 
 
 @pytest.mark.asyncio
-async def test_get_entry_uuid_format(client: AsyncClient, sample_dream_entry: DreamEntry):
+async def test_get_entry_uuid_format(client: AsyncClient, sample_voice_entry: VoiceEntry):
     """Test that returned UUID is valid."""
-    response = await client.get(f"/api/v1/entries/{sample_dream_entry.id}")
+    response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}")
 
     assert response.status_code == 200
 
@@ -79,15 +79,15 @@ async def test_get_entry_uuid_format(client: AsyncClient, sample_dream_entry: Dr
     # Should be able to parse as UUID
     try:
         parsed_uuid = uuid.UUID(data["id"])
-        assert parsed_uuid == sample_dream_entry.id
+        assert parsed_uuid == sample_voice_entry.id
     except ValueError:
         pytest.fail("Invalid UUID format in response")
 
 
 @pytest.mark.asyncio
-async def test_get_entry_timestamp_format(client: AsyncClient, sample_dream_entry: DreamEntry):
+async def test_get_entry_timestamp_format(client: AsyncClient, sample_voice_entry: VoiceEntry):
     """Test that timestamp is in ISO format."""
-    response = await client.get(f"/api/v1/entries/{sample_dream_entry.id}")
+    response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}")
 
     assert response.status_code == 200
 
@@ -105,7 +105,7 @@ async def test_get_entry_timestamp_format(client: AsyncClient, sample_dream_entr
 async def test_get_multiple_entries(client: AsyncClient, db_session):
     """Test retrieving multiple different entries."""
     from app.services.database import DatabaseService
-    from app.schemas.dream_entry import DreamEntryCreate
+    from app.schemas.voice_entry import VoiceEntryCreate
     from datetime import datetime, timezone
 
     db_service = DatabaseService()
@@ -113,7 +113,7 @@ async def test_get_multiple_entries(client: AsyncClient, db_session):
     # Create multiple entries
     entries = []
     for i in range(3):
-        entry_data = DreamEntryCreate(
+        entry_data = VoiceEntryCreate(
             original_filename=f"dream_{i}.mp3",
             saved_filename=f"saved_{i}.mp3",
             file_path=f"/data/audio/dream_{i}.mp3",

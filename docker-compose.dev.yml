@@ -47,6 +47,10 @@ services:
       - LOG_LEVEL=INFO
       - AUDIO_STORAGE_PATH=/app/data/audio
       - MAX_FILE_SIZE_MB=100
+      - WHISPER_MODEL=small
+      - WHISPER_LANGUAGE=en
+      - WHISPER_DEVICE=cpu
+      - TORCH_NUM_THREADS=10
       - CORS_ORIGINS=*
       - WORKERS=1
       - DB_POOL_SIZE=5

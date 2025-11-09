@@ -15,10 +15,13 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import NullPool
 
+from unittest.mock import Mock, AsyncMock
+
 from app.config import Settings
 from app.database import Base, get_db
 from app.main import app
-from app.models.dream_entry import DreamEntry
+from app.models.voice_entry import VoiceEntry
+from app.models.transcription import Transcription
 
 
 # Test database configuration
@@ -105,7 +108,7 @@ def test_settings(test_storage_path) -> Settings:
 
 
 @pytest.fixture
-async def client(db_session: AsyncSession, test_settings: Settings) -> AsyncGenerator[AsyncClient, None]:
+async def client(db_session: AsyncSession, test_settings: Settings, mock_transcription_service) -> AsyncGenerator[AsyncClient, None]:
     """
     Create an async test client for the FastAPI application.
     Overrides the database dependency to use test database.
@@ -120,6 +123,9 @@ async def client(db_session: AsyncSession, test_settings: Settings) -> AsyncGene
     from app import config
     config.settings = test_settings
 
+    # Mock transcription service to avoid loading Whisper in tests
+    app.state.transcription_service = mock_transcription_service
+
     # Create client
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -129,6 +135,7 @@ async def client(db_session: AsyncSession, test_settings: Settings) -> AsyncGene
 
     # Clear overrides
     app.dependency_overrides.clear()
+    app.state.transcription_service = None
 
 
 @pytest.fixture
@@ -209,9 +216,9 @@ def invalid_file_path() -> Generator[Path, None, None]:
 
 
 @pytest.fixture
-async def sample_dream_entry(db_session: AsyncSession, test_storage_path: Path) -> DreamEntry:
+async def sample_voice_entry(db_session: AsyncSession, test_storage_path: Path) -> VoiceEntry:
     """
-    Create a sample dream entry in the test database.
+    Create a sample voice entry in the test database.
     Used for testing retrieval and other operations.
     """
     entry_id = uuid.uuid4()
@@ -223,7 +230,7 @@ async def sample_dream_entry(db_session: AsyncSession, test_storage_path: Path) 
     file_path.write_bytes(b"fake mp3 data")
 
     # Create database entry
-    entry = DreamEntry(
+    entry = VoiceEntry(
         id=entry_id,
         original_filename="test_dream.mp3",
         saved_filename=saved_filename,
@@ -235,3 +242,104 @@ async def sample_dream_entry(db_session: AsyncSession, test_storage_path: Path) 
     await db_session.refresh(entry)
 
     return entry
+
+
+# ===== Transcription Test Fixtures =====
+
+@pytest.fixture
+def mock_whisper_model():
+    """
+    Mock Whisper model for testing without loading the actual model.
+    Returns predictable transcription results.
+    """
+    model = Mock()
+    model.transcribe.return_value = {
+        "text": "I had a dream about flying over mountains and vast oceans.",
+        "language": "en",
+        "segments": [
+            {
+                "start": 0.0,
+                "end": 2.5,
+                "text": "I had a dream about flying"
+            },
+            {
+                "start": 2.5,
+                "end": 5.0,
+                "text": "over mountains and vast oceans."
+            }
+        ]
+    }
+    return model
+
+
+@pytest.fixture
+def mock_transcription_service():
+    """
+    Mock transcription service for integration tests.
+    Avoids loading Whisper model while testing API endpoints.
+    """
+    service = AsyncMock()
+    service.transcribe_audio.return_value = {
+        "text": "This is a mocked transcription result.",
+        "language": "en",
+        "segments": []
+    }
+    service.get_supported_languages.return_value = ["en", "es", "fr", "de", "auto"]
+    # Use Mock (not AsyncMock) for non-async method
+    service.get_model_name = Mock(return_value="whisper-base")
+    return service
+
+
+@pytest.fixture
+async def sample_transcription(
+    db_session: AsyncSession,
+    sample_voice_entry: VoiceEntry
+) -> Transcription:
+    """
+    Create a sample completed transcription for testing.
+    Linked to the sample_voice_entry fixture.
+    """
+    from datetime import datetime, timezone
+
+    transcription = Transcription(
+        id=uuid.uuid4(),
+        entry_id=sample_voice_entry.id,
+        transcribed_text="I dreamt about flying over mountains.",
+        status="completed",
+        model_used="whisper-base",
+        language_code="en",
+        transcription_started_at=datetime.now(timezone.utc),
+        transcription_completed_at=datetime.now(timezone.utc),
+        is_primary=True
+    )
+
+    db_session.add(transcription)
+    await db_session.commit()
+    await db_session.refresh(transcription)
+
+    return transcription
+
+
+@pytest.fixture
+async def sample_pending_transcription(
+    db_session: AsyncSession,
+    sample_voice_entry: VoiceEntry
+) -> Transcription:
+    """
+    Create a sample pending transcription for testing status updates.
+    """
+    transcription = Transcription(
+        id=uuid.uuid4(),
+        entry_id=sample_voice_entry.id,
+        transcribed_text=None,
+        status="pending",
+        model_used="whisper-base",
+        language_code="en",
+        is_primary=False
+    )
+
+    db_session.add(transcription)
+    await db_session.commit()
+    await db_session.refresh(transcription)
+
+    return transcription

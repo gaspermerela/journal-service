@@ -2,9 +2,11 @@
 Health check endpoint for monitoring.
 """
 from datetime import datetime, timezone
-from fastapi import APIRouter, HTTPException, status
-from app.schemas.dream_entry import HealthResponse
-from app.database import check_db_connection
+from fastapi import APIRouter, HTTPException, status, Depends
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.schemas.voice_entry import HealthResponse
+from app.database import get_db
 from app.utils.logger import get_logger
 
 logger = get_logger("health")
@@ -21,7 +23,7 @@ router = APIRouter()
         503: {"description": "Service is unhealthy"}
     }
 )
-async def health_check() -> HealthResponse:
+async def health_check(db: AsyncSession = Depends(get_db)) -> HealthResponse:
     """
     Health check endpoint.
 
@@ -32,8 +34,13 @@ async def health_check() -> HealthResponse:
     Returns:
         HealthResponse with status and timestamp (200 if healthy, 503 if not)
     """
-    # Check database connection
-    db_healthy = await check_db_connection()
+    # Check database connection by executing a simple query
+    try:
+        await db.execute(text("SELECT 1"))
+        db_healthy = True
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+        db_healthy = False
 
     if db_healthy:
         logger.debug("Health check: all systems operational")

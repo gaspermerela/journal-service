@@ -7,8 +7,8 @@ from app.utils.logger import get_logger
 
 logger = get_logger("validators")
 
-ALLOWED_CONTENT_TYPES = ["audio/mpeg", "audio/mp3"]
-ALLOWED_EXTENSIONS = [".mp3"]
+ALLOWED_CONTENT_TYPES = ["audio/mpeg", "audio/mp3", "audio/mp4", "audio/x-m4a"]
+ALLOWED_EXTENSIONS = [".mp3", ".m4a"]
 
 
 async def validate_audio_file(file: UploadFile) -> None:
@@ -65,7 +65,7 @@ async def validate_audio_file(file: UploadFile) -> None:
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid content type. Expected audio/mpeg or audio/mp3"
+            detail=f"Invalid content type. Expected audio/mpeg, audio/mp3, audio/mp4, or audio/x-m4a"
         )
 
     # Check file size
