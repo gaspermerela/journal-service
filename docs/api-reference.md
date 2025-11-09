@@ -11,7 +11,8 @@ Complete API documentation is available through the interactive Swagger UI at `/
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/v1/upload` | POST | Upload audio file (MP3 or M4A) |
+| `/api/v1/upload-and-transcribe` | POST | **Recommended**: Upload audio and start transcription in one request |
+| `/api/v1/upload` | POST | Upload audio file only (MP3 or M4A) |
 | `/api/v1/entries/{id}` | GET | Get entry metadata with primary transcription |
 
 ### Transcription

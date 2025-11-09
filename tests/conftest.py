@@ -169,6 +169,21 @@ def sample_mp3_path() -> Generator[Path, None, None]:
 
 
 @pytest.fixture
+def real_audio_mp3_path() -> Path:
+    """
+    Return path to a real audio MP3 file for end-to-end transcription testing.
+    This file contains actual speech content for testing real transcription.
+    """
+    fixtures_dir = Path(__file__).parent / "fixtures"
+    mp3_path = fixtures_dir / "crocodile.mp3"
+
+    if not mp3_path.exists():
+        pytest.skip(f"Real audio fixture not found: {mp3_path}")
+
+    return mp3_path
+
+
+@pytest.fixture
 def large_mp3_path(test_settings: Settings) -> Generator[Path, None, None]:
     """
     Create an MP3 file that exceeds the maximum file size.

@@ -43,6 +43,7 @@ class DatabaseService:
                 original_filename=entry_data.original_filename,
                 saved_filename=entry_data.saved_filename,
                 file_path=entry_data.file_path,
+                entry_type=entry_data.entry_type,
                 uploaded_at=entry_data.uploaded_at
             )
 
