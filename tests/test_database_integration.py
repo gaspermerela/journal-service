@@ -1,5 +1,5 @@
 """
-Unit tests for database service.
+Integration tests for database service.
 """
 import uuid
 from datetime import datetime, timezone

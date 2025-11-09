@@ -1,5 +1,5 @@
 """
-Unit tests for transcription database operations.
+Integration tests for transcription database operations.
 Tests DatabaseService transcription CRUD methods.
 """
 import pytest
