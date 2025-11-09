@@ -1,6 +1,7 @@
 """
 Integration tests for transcription API endpoints.
 Tests routes with mocked transcription service.
+Requires authentication.
 """
 import pytest
 import asyncio
@@ -10,13 +11,13 @@ from app.routes.transcription import get_transcription_service
 
 
 @pytest.mark.asyncio
-async def test_trigger_transcription_success(client, sample_voice_entry, mock_transcription_service):
+async def test_trigger_transcription_success(authenticated_client, sample_voice_entry, mock_transcription_service):
     """Test triggering transcription for an entry."""
     # Override transcription service dependency
     from app.main import app
     app.state.transcription_service = mock_transcription_service
 
-    response = await client.post(
+    response = await authenticated_client.post(
         f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
         json={"language": "en"}
     )
@@ -30,14 +31,14 @@ async def test_trigger_transcription_success(client, sample_voice_entry, mock_tr
 
 
 @pytest.mark.asyncio
-async def test_trigger_transcription_entry_not_found(client, mock_transcription_service):
+async def test_trigger_transcription_entry_not_found(authenticated_client, mock_transcription_service):
     """Test triggering transcription for non-existent entry."""
     from app.main import app
     app.state.transcription_service = mock_transcription_service
 
     non_existent_id = uuid4()
 
-    response = await client.post(
+    response = await authenticated_client.post(
         f"/api/v1/entries/{non_existent_id}/transcribe",
         json={"language": "en"}
     )
@@ -47,12 +48,12 @@ async def test_trigger_transcription_entry_not_found(client, mock_transcription_
 
 
 @pytest.mark.asyncio
-async def test_trigger_transcription_service_unavailable(client, sample_voice_entry):
+async def test_trigger_transcription_service_unavailable(authenticated_client, sample_voice_entry):
     """Test triggering transcription when service is unavailable."""
     from app.main import app
     app.state.transcription_service = None  # Simulate service unavailable
 
-    response = await client.post(
+    response = await authenticated_client.post(
         f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
         json={"language": "en"}
     )
@@ -62,9 +63,9 @@ async def test_trigger_transcription_service_unavailable(client, sample_voice_en
 
 
 @pytest.mark.asyncio
-async def test_get_transcription_success(client, sample_transcription):
+async def test_get_transcription_success(authenticated_client, sample_transcription):
     """Test retrieving a transcription by ID."""
-    response = await client.get(f"/api/v1/transcriptions/{sample_transcription.id}")
+    response = await authenticated_client.get(f"/api/v1/transcriptions/{sample_transcription.id}")
 
     assert response.status_code == 200
     data = response.json()
@@ -77,18 +78,18 @@ async def test_get_transcription_success(client, sample_transcription):
 
 
 @pytest.mark.asyncio
-async def test_get_transcription_not_found(client):
+async def test_get_transcription_not_found(authenticated_client):
     """Test retrieving non-existent transcription."""
     non_existent_id = uuid4()
 
-    response = await client.get(f"/api/v1/transcriptions/{non_existent_id}")
+    response = await authenticated_client.get(f"/api/v1/transcriptions/{non_existent_id}")
 
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
 
 
 @pytest.mark.asyncio
-async def test_list_transcriptions_for_entry(client, sample_voice_entry, db_session):
+async def test_list_transcriptions_for_entry(authenticated_client, sample_voice_entry, db_session):
     """Test listing all transcriptions for an entry."""
     from app.services.database import db_service
     from app.schemas.transcription import TranscriptionCreate
@@ -105,7 +106,7 @@ async def test_list_transcriptions_for_entry(client, sample_voice_entry, db_sess
         await db_service.create_transcription(db_session, trans_data)
     await db_session.commit()
 
-    response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}/transcriptions")
+    response = await authenticated_client.get(f"/api/v1/entries/{sample_voice_entry.id}/transcriptions")
 
     assert response.status_code == 200
     data = response.json()
@@ -116,9 +117,9 @@ async def test_list_transcriptions_for_entry(client, sample_voice_entry, db_sess
 
 
 @pytest.mark.asyncio
-async def test_list_transcriptions_empty(client, sample_voice_entry):
+async def test_list_transcriptions_empty(authenticated_client, sample_voice_entry):
     """Test listing transcriptions for entry with none."""
-    response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}/transcriptions")
+    response = await authenticated_client.get(f"/api/v1/entries/{sample_voice_entry.id}/transcriptions")
 
     assert response.status_code == 200
     data = response.json()
@@ -127,17 +128,17 @@ async def test_list_transcriptions_empty(client, sample_voice_entry):
 
 
 @pytest.mark.asyncio
-async def test_list_transcriptions_entry_not_found(client):
+async def test_list_transcriptions_entry_not_found(authenticated_client):
     """Test listing transcriptions for non-existent entry."""
     non_existent_id = uuid4()
 
-    response = await client.get(f"/api/v1/entries/{non_existent_id}/transcriptions")
+    response = await authenticated_client.get(f"/api/v1/entries/{non_existent_id}/transcriptions")
 
     assert response.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_set_primary_transcription_success(client, sample_voice_entry, db_session):
+async def test_set_primary_transcription_success(authenticated_client, sample_voice_entry, db_session):
     """Test setting a transcription as primary."""
     from app.services.database import db_service
     from app.schemas.transcription import TranscriptionCreate
@@ -163,7 +164,7 @@ async def test_set_primary_transcription_success(client, sample_voice_entry, db_
     await db_session.commit()
 
     # Set trans2 as primary
-    response = await client.put(f"/api/v1/transcriptions/{trans2.id}/set-primary")
+    response = await authenticated_client.put(f"/api/v1/transcriptions/{trans2.id}/set-primary")
 
     assert response.status_code == 200
     data = response.json()
@@ -176,9 +177,9 @@ async def test_set_primary_transcription_success(client, sample_voice_entry, db_
 
 
 @pytest.mark.asyncio
-async def test_set_primary_transcription_not_completed(client, sample_pending_transcription):
+async def test_set_primary_transcription_not_completed(authenticated_client, sample_pending_transcription):
     """Test cannot set non-completed transcription as primary."""
-    response = await client.put(
+    response = await authenticated_client.put(
         f"/api/v1/transcriptions/{sample_pending_transcription.id}/set-primary"
     )
 
@@ -187,19 +188,19 @@ async def test_set_primary_transcription_not_completed(client, sample_pending_tr
 
 
 @pytest.mark.asyncio
-async def test_set_primary_transcription_not_found(client):
+async def test_set_primary_transcription_not_found(authenticated_client):
     """Test setting non-existent transcription as primary."""
     non_existent_id = uuid4()
 
-    response = await client.put(f"/api/v1/transcriptions/{non_existent_id}/set-primary")
+    response = await authenticated_client.put(f"/api/v1/transcriptions/{non_existent_id}/set-primary")
 
     assert response.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_get_entry_with_primary_transcription(client, sample_voice_entry, sample_transcription):
+async def test_get_entry_with_primary_transcription(authenticated_client, sample_voice_entry, sample_transcription):
     """Test that GET /entries/{id} includes primary transcription."""
-    response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}")
+    response = await authenticated_client.get(f"/api/v1/entries/{sample_voice_entry.id}")
 
     assert response.status_code == 200
     data = response.json()
@@ -210,9 +211,9 @@ async def test_get_entry_with_primary_transcription(client, sample_voice_entry, 
 
 
 @pytest.mark.asyncio
-async def test_get_entry_without_transcription(client, sample_voice_entry):
+async def test_get_entry_without_transcription(authenticated_client, sample_voice_entry):
     """Test that GET /entries/{id} works without transcription."""
-    response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}")
+    response = await authenticated_client.get(f"/api/v1/entries/{sample_voice_entry.id}")
 
     assert response.status_code == 200
     data = response.json()
@@ -221,12 +222,12 @@ async def test_get_entry_without_transcription(client, sample_voice_entry):
 
 
 @pytest.mark.asyncio
-async def test_trigger_transcription_uses_configured_model(client, sample_voice_entry, mock_transcription_service, db_session):
+async def test_trigger_transcription_uses_configured_model(authenticated_client, sample_voice_entry, mock_transcription_service, db_session):
     """Test that transcription uses the model configured in the service (not from request)."""
     from app.main import app
     app.state.transcription_service = mock_transcription_service
 
-    response = await client.post(
+    response = await authenticated_client.post(
         f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
         json={"language": "en"}
     )
@@ -242,7 +243,7 @@ async def test_trigger_transcription_uses_configured_model(client, sample_voice_
 
 
 @pytest.mark.asyncio
-async def test_trigger_transcription_with_different_languages(client, sample_voice_entry, mock_transcription_service):
+async def test_trigger_transcription_with_different_languages(authenticated_client, sample_voice_entry, mock_transcription_service):
     """Test triggering transcription with different languages."""
     from app.main import app
     app.state.transcription_service = mock_transcription_service
@@ -250,7 +251,7 @@ async def test_trigger_transcription_with_different_languages(client, sample_voi
     languages = ["en", "es", "fr", "sl", "auto"]
 
     for lang in languages:
-        response = await client.post(
+        response = await authenticated_client.post(
             f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
             json={"language": lang}
         )
@@ -259,12 +260,12 @@ async def test_trigger_transcription_with_different_languages(client, sample_voi
 
 
 @pytest.mark.asyncio
-async def test_transcription_background_task_execution(client, sample_voice_entry, mock_transcription_service, db_session):
+async def test_transcription_background_task_execution(authenticated_client, sample_voice_entry, mock_transcription_service, db_session):
     """Test that background task actually processes transcription."""
     from app.main import app
     app.state.transcription_service = mock_transcription_service
 
-    response = await client.post(
+    response = await authenticated_client.post(
         f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
         json={"language": "en"}
     )

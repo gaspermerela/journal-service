@@ -1,5 +1,6 @@
 """
 Integration tests for entries endpoint.
+Requires authentication.
 """
 import uuid
 
@@ -10,9 +11,9 @@ from app.models.voice_entry import VoiceEntry
 
 
 @pytest.mark.asyncio
-async def test_get_entry_by_id_success(client: AsyncClient, sample_voice_entry: VoiceEntry):
+async def test_get_entry_by_id_success(authenticated_client: AsyncClient, sample_voice_entry: VoiceEntry):
     """Test retrieving an existing entry by ID."""
-    response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}")
+    response = await authenticated_client.get(f"/api/v1/entries/{sample_voice_entry.id}")
 
     assert response.status_code == 200
 
@@ -25,10 +26,10 @@ async def test_get_entry_by_id_success(client: AsyncClient, sample_voice_entry: 
 
 
 @pytest.mark.asyncio
-async def test_get_entry_by_id_not_found(client: AsyncClient):
+async def test_get_entry_by_id_not_found(authenticated_client: AsyncClient):
     """Test retrieving a non-existent entry."""
     non_existent_id = uuid.uuid4()
-    response = await client.get(f"/api/v1/entries/{non_existent_id}")
+    response = await authenticated_client.get(f"/api/v1/entries/{non_existent_id}")
 
     assert response.status_code == 404
 
@@ -38,17 +39,17 @@ async def test_get_entry_by_id_not_found(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_entry_by_id_invalid_uuid(client: AsyncClient):
+async def test_get_entry_by_id_invalid_uuid(authenticated_client: AsyncClient):
     """Test retrieving entry with invalid UUID format."""
-    response = await client.get("/api/v1/entries/invalid-uuid")
+    response = await authenticated_client.get("/api/v1/entries/invalid-uuid")
 
     assert response.status_code == 422  # FastAPI validation error
 
 
 @pytest.mark.asyncio
-async def test_get_entry_response_format(client: AsyncClient, sample_voice_entry: VoiceEntry):
+async def test_get_entry_response_format(authenticated_client: AsyncClient, sample_voice_entry: VoiceEntry):
     """Test that entry response has correct format."""
-    response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}")
+    response = await authenticated_client.get(f"/api/v1/entries/{sample_voice_entry.id}")
 
     assert response.status_code == 200
 
@@ -68,9 +69,9 @@ async def test_get_entry_response_format(client: AsyncClient, sample_voice_entry
 
 
 @pytest.mark.asyncio
-async def test_get_entry_uuid_format(client: AsyncClient, sample_voice_entry: VoiceEntry):
+async def test_get_entry_uuid_format(authenticated_client: AsyncClient, sample_voice_entry: VoiceEntry):
     """Test that returned UUID is valid."""
-    response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}")
+    response = await authenticated_client.get(f"/api/v1/entries/{sample_voice_entry.id}")
 
     assert response.status_code == 200
 
@@ -85,9 +86,9 @@ async def test_get_entry_uuid_format(client: AsyncClient, sample_voice_entry: Vo
 
 
 @pytest.mark.asyncio
-async def test_get_entry_timestamp_format(client: AsyncClient, sample_voice_entry: VoiceEntry):
+async def test_get_entry_timestamp_format(authenticated_client: AsyncClient, sample_voice_entry: VoiceEntry):
     """Test that timestamp is in ISO format."""
-    response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}")
+    response = await authenticated_client.get(f"/api/v1/entries/{sample_voice_entry.id}")
 
     assert response.status_code == 200
 
@@ -102,30 +103,30 @@ async def test_get_entry_timestamp_format(client: AsyncClient, sample_voice_entr
 
 
 @pytest.mark.asyncio
-async def test_get_multiple_entries(client: AsyncClient, db_session):
+async def test_get_multiple_entries(authenticated_client: AsyncClient, db_session, test_user):
     """Test retrieving multiple different entries."""
-    from app.services.database import DatabaseService
-    from app.schemas.voice_entry import VoiceEntryCreate
+    from app.models.voice_entry import VoiceEntry
     from datetime import datetime, timezone
-
-    db_service = DatabaseService()
+    import uuid
 
     # Create multiple entries
     entries = []
     for i in range(3):
-        entry_data = VoiceEntryCreate(
+        entry = VoiceEntry(
+            id=uuid.uuid4(),
             original_filename=f"dream_{i}.mp3",
             saved_filename=f"saved_{i}.mp3",
             file_path=f"/data/audio/dream_{i}.mp3",
-            uploaded_at=datetime.now(timezone.utc)
+            user_id=test_user.id
         )
-        entry = await db_service.create_entry(db_session, entry_data)
+        db_session.add(entry)
         await db_session.commit()
+        await db_session.refresh(entry)
         entries.append(entry)
 
     # Retrieve each entry
     for entry in entries:
-        response = await client.get(f"/api/v1/entries/{entry.id}")
+        response = await authenticated_client.get(f"/api/v1/entries/{entry.id}")
         assert response.status_code == 200
 
         data = response.json()
@@ -134,19 +135,19 @@ async def test_get_multiple_entries(client: AsyncClient, db_session):
 
 
 @pytest.mark.asyncio
-async def test_get_entry_after_upload(client: AsyncClient, sample_mp3_path):
+async def test_get_entry_after_upload(authenticated_client: AsyncClient, sample_mp3_path):
     """Test retrieving an entry after uploading a file."""
     # First upload a file
     with open(sample_mp3_path, 'rb') as f:
         files = {"file": ("test.mp3", f, "audio/mpeg")}
-        upload_response = await client.post("/api/v1/upload", files=files)
+        upload_response = await authenticated_client.post("/api/v1/upload", files=files)
 
     assert upload_response.status_code == 201
     upload_data = upload_response.json()
     entry_id = upload_data["id"]
 
     # Now retrieve the entry
-    get_response = await client.get(f"/api/v1/entries/{entry_id}")
+    get_response = await authenticated_client.get(f"/api/v1/entries/{entry_id}")
 
     assert get_response.status_code == 200
     get_data = get_response.json()

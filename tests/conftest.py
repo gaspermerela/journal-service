@@ -25,6 +25,9 @@ from app.database import Base, get_db
 from app.main import app
 from app.models.voice_entry import VoiceEntry
 from app.models.transcription import Transcription
+from app.models.user import User
+from app.schemas.auth import UserCreate
+from app.services.database import db_service
 
 
 # Test database configuration
@@ -143,6 +146,53 @@ async def client(db_session: AsyncSession, test_settings: Settings, mock_transcr
 
 
 @pytest.fixture
+async def test_user(db_session: AsyncSession) -> User:
+    """
+    Create a test user for authentication testing.
+    Email: testuser@example.com
+    Password: TestPassword123!
+    """
+    user_data = UserCreate(
+        email="testuser@example.com",
+        password="TestPassword123!"
+    )
+    user = await db_service.create_user(db_session, user_data)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user
+
+
+@pytest.fixture
+async def authenticated_client(
+    client: AsyncClient,
+    test_user: User
+) -> AsyncGenerator[AsyncClient, None]:
+    """
+    Create an authenticated test client with a valid access token.
+    The client automatically includes the Authorization header.
+    """
+    # Login to get token
+    login_response = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": "testuser@example.com",
+            "password": "TestPassword123!"
+        }
+    )
+    assert login_response.status_code == 200
+    tokens = login_response.json()
+    access_token = tokens["access_token"]
+
+    # Add authorization header to client
+    client.headers["Authorization"] = f"Bearer {access_token}"
+
+    yield client
+
+    # Clean up authorization header
+    client.headers.pop("Authorization", None)
+
+
+@pytest.fixture
 def sample_mp3_path() -> Generator[Path, None, None]:
     """
     Create a minimal valid MP3 file for testing.
@@ -235,10 +285,11 @@ def invalid_file_path() -> Generator[Path, None, None]:
 
 
 @pytest.fixture
-async def sample_voice_entry(db_session: AsyncSession, test_storage_path: Path) -> VoiceEntry:
+async def sample_voice_entry(db_session: AsyncSession, test_storage_path: Path, test_user: User) -> VoiceEntry:
     """
     Create a sample voice entry in the test database.
     Used for testing retrieval and other operations.
+    Associated with the test_user fixture.
     """
     entry_id = uuid.uuid4()
     saved_filename = f"{entry_id}_20250131T120000.mp3"
@@ -254,6 +305,7 @@ async def sample_voice_entry(db_session: AsyncSession, test_storage_path: Path) 
         original_filename="test_dream.mp3",
         saved_filename=saved_filename,
         file_path=str(file_path),
+        user_id=test_user.id,  # Associate with test user
     )
 
     db_session.add(entry)
