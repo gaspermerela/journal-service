@@ -8,11 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from fastapi import HTTPException, status
 
+from app.models.user import User
 from app.models.voice_entry import VoiceEntry
 from app.models.transcription import Transcription
+from app.schemas.auth import UserCreate
 from app.schemas.voice_entry import VoiceEntryCreate
 from app.schemas.transcription import TranscriptionCreate
 from app.utils.logger import get_logger
+from app.utils.security import hash_password
 
 logger = get_logger("database_service")
 
@@ -462,6 +465,151 @@ class DatabaseService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to set primary transcription"
+            )
+
+    # ===== User Management Methods =====
+
+    async def create_user(
+        self,
+        db: AsyncSession,
+        user_data: UserCreate
+    ) -> User:
+        """
+        Create a new user in the database.
+
+        Args:
+            db: Database session
+            user_data: User registration data
+
+        Returns:
+            Created User instance
+
+        Raises:
+            HTTPException: If user already exists or database operation fails
+        """
+        try:
+            # Check if user with this email already exists
+            existing_user = await self.get_user_by_email(db, user_data.email)
+            if existing_user:
+                logger.warning(f"User registration failed - email already exists", email=user_data.email)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Email already registered"
+                )
+
+            # Create new user with hashed password
+            user = User(
+                email=user_data.email,
+                hashed_password=hash_password(user_data.password),
+                is_active=True
+            )
+
+            db.add(user)
+            await db.flush()
+            await db.refresh(user)
+
+            logger.info(f"User created successfully", user_id=str(user.id), email=user.email)
+
+            return user
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Failed to create user",
+                email=user_data.email,
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create user"
+            )
+
+    async def get_user_by_email(
+        self,
+        db: AsyncSession,
+        email: str
+    ) -> Optional[User]:
+        """
+        Get a user by email address.
+
+        Args:
+            db: Database session
+            email: User's email address
+
+        Returns:
+            User instance if found, None otherwise
+
+        Raises:
+            HTTPException: If database operation fails
+        """
+        try:
+            result = await db.execute(
+                select(User).where(User.email == email)
+            )
+            user = result.scalar_one_or_none()
+
+            if user:
+                logger.debug(f"User found by email", email=email, user_id=str(user.id))
+            else:
+                logger.debug(f"User not found by email", email=email)
+
+            return user
+
+        except Exception as e:
+            logger.error(
+                f"Failed to get user by email",
+                email=email,
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve user"
+            )
+
+    async def get_user_by_id(
+        self,
+        db: AsyncSession,
+        user_id: UUID
+    ) -> Optional[User]:
+        """
+        Get a user by ID.
+
+        Args:
+            db: Database session
+            user_id: User's UUID
+
+        Returns:
+            User instance if found, None otherwise
+
+        Raises:
+            HTTPException: If database operation fails
+        """
+        try:
+            result = await db.execute(
+                select(User).where(User.id == user_id)
+            )
+            user = result.scalar_one_or_none()
+
+            if user:
+                logger.debug(f"User found by ID", user_id=str(user_id))
+            else:
+                logger.debug(f"User not found by ID", user_id=str(user_id))
+
+            return user
+
+        except Exception as e:
+            logger.error(
+                f"Failed to get user by ID",
+                user_id=str(user_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve user"
             )
 
 
