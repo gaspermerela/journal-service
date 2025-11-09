@@ -75,17 +75,17 @@ async def test_health_check_multiple_calls(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_health_check_with_database_operations(client: AsyncClient, sample_mp3_path):
+async def test_health_check_with_database_operations(authenticated_client: AsyncClient, sample_mp3_path):
     """Test health check after performing database operations."""
     # Upload a file (which involves database operations)
     with open(sample_mp3_path, 'rb') as f:
         files = {"file": ("test.mp3", f, "audio/mpeg")}
-        upload_response = await client.post("/api/v1/upload", files=files)
+        upload_response = await authenticated_client.post("/api/v1/upload", files=files)
 
     assert upload_response.status_code == 201
 
-    # Health check should still work
-    health_response = await client.get("/health")
+    # Health check should still work (doesn't require auth)
+    health_response = await authenticated_client.get("/health")
 
     assert health_response.status_code == 200
     data = health_response.json()

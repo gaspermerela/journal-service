@@ -1,6 +1,9 @@
 """
 End-to-end tests for running service instance.
 
+NOTE: Most tests in this file are DEPRECATED and skipped because they don't include authentication.
+For comprehensive E2E tests with authentication, see tests/test_e2e_auth.py
+
 These tests require the service to be running externally.
 Start the service with: python -m uvicorn app.main:app
 
@@ -18,6 +21,12 @@ import requests
 # Configuration
 BASE_URL = os.getenv("E2E_BASE_URL", "http://localhost:8000")
 TIMEOUT = 10  # seconds
+
+# Skip reason for deprecated tests
+SKIP_REASON = (
+    "These tests are deprecated - they don't include authentication which is now required. "
+    "See tests/test_e2e_auth.py for comprehensive E2E tests with authentication."
+)
 
 
 def is_service_available() -> bool:
@@ -93,6 +102,7 @@ class TestE2EHealth:
         assert data["status"] in ["healthy", "degraded"]
 
 
+@pytest.mark.skip(reason=SKIP_REASON)
 class TestE2EUpload:
     """End-to-end tests for upload endpoint."""
 
@@ -169,6 +179,7 @@ class TestE2EUpload:
         assert response.status_code == 400
 
 
+@pytest.mark.skip(reason=SKIP_REASON)
 class TestE2EEntries:
     """End-to-end tests for entries retrieval."""
 
@@ -221,6 +232,7 @@ class TestE2EEntries:
         assert response.status_code == 422
 
 
+@pytest.mark.skip(reason=SKIP_REASON)
 class TestE2EFullWorkflow:
     """End-to-end tests for complete workflows."""
 
@@ -302,6 +314,7 @@ class TestE2EFullWorkflow:
             assert response.status_code == 200
 
 
+@pytest.mark.skip(reason=SKIP_REASON)
 class TestE2EUploadAndTranscribe:
     """End-to-end tests for combined upload and transcribe endpoint."""
 

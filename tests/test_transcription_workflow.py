@@ -7,7 +7,7 @@ import asyncio
 
 
 @pytest.mark.asyncio
-async def test_complete_transcription_workflow(client, sample_mp3_path, mock_transcription_service):
+async def test_complete_transcription_workflow(authenticated_client, sample_mp3_path, mock_transcription_service):
     """
     Test the complete transcription workflow from upload to retrieval.
 
@@ -23,7 +23,7 @@ async def test_complete_transcription_workflow(client, sample_mp3_path, mock_tra
 
     # Step 1: Upload audio file
     with open(sample_mp3_path, "rb") as f:
-        upload_response = await client.post(
+        upload_response = await authenticated_client.post(
             "/api/v1/upload",
             files={"file": ("dream_recording.mp3", f, "audio/mpeg")}
         )
@@ -32,7 +32,7 @@ async def test_complete_transcription_workflow(client, sample_mp3_path, mock_tra
     entry_id = upload_response.json()["id"]
 
     # Step 2: Trigger transcription
-    transcribe_response = await client.post(
+    transcribe_response = await authenticated_client.post(
         f"/api/v1/entries/{entry_id}/transcribe",
         json={"language": "en"}
     )
@@ -45,7 +45,7 @@ async def test_complete_transcription_workflow(client, sample_mp3_path, mock_tra
     await asyncio.sleep(0.2)
 
     # Step 4: Check transcription status
-    status_response = await client.get(f"/api/v1/transcriptions/{transcription_id}")
+    status_response = await authenticated_client.get(f"/api/v1/transcriptions/{transcription_id}")
 
     assert status_response.status_code == 200
     status_data = status_response.json()
@@ -53,7 +53,7 @@ async def test_complete_transcription_workflow(client, sample_mp3_path, mock_tra
     assert status_data["status"] in ["pending", "processing", "completed"]
 
     # Step 5: Get entry with transcription
-    entry_response = await client.get(f"/api/v1/entries/{entry_id}")
+    entry_response = await authenticated_client.get(f"/api/v1/entries/{entry_id}")
 
     assert entry_response.status_code == 200
     entry_data = entry_response.json()
@@ -62,7 +62,7 @@ async def test_complete_transcription_workflow(client, sample_mp3_path, mock_tra
 
 
 @pytest.mark.asyncio
-async def test_multiple_transcription_attempts(client, sample_voice_entry, mock_transcription_service):
+async def test_multiple_transcription_attempts(authenticated_client, sample_voice_entry, mock_transcription_service):
     """
     Test creating multiple transcriptions for the same entry.
     Simulates: trying multiple times (e.g., retries or different language attempts).
@@ -74,7 +74,7 @@ async def test_multiple_transcription_attempts(client, sample_voice_entry, mock_
     transcription_ids = []
 
     for i in range(3):
-        response = await client.post(
+        response = await authenticated_client.post(
             f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
             json={"language": "en"}
         )
@@ -83,7 +83,7 @@ async def test_multiple_transcription_attempts(client, sample_voice_entry, mock_
         transcription_ids.append(response.json()["transcription_id"])
 
     # List all transcriptions
-    list_response = await client.get(
+    list_response = await authenticated_client.get(
         f"/api/v1/entries/{sample_voice_entry.id}/transcriptions"
     )
 
@@ -94,7 +94,7 @@ async def test_multiple_transcription_attempts(client, sample_voice_entry, mock_
 
 
 @pytest.mark.asyncio
-async def test_set_primary_after_comparison(client, sample_voice_entry, db_session, mock_transcription_service):
+async def test_set_primary_after_comparison(authenticated_client, sample_voice_entry, db_session, mock_transcription_service):
     """
     Test workflow: create multiple transcriptions, then set one as primary.
     Simulates: user tries different models, picks best one.
@@ -135,14 +135,14 @@ async def test_set_primary_after_comparison(client, sample_voice_entry, db_sessi
     await db_session.commit()
 
     # User decides trans2 (large model) is better
-    set_primary_response = await client.put(
+    set_primary_response = await authenticated_client.put(
         f"/api/v1/transcriptions/{trans2.id}/set-primary"
     )
 
     assert set_primary_response.status_code == 200
 
     # Verify entry now shows trans2 as primary
-    entry_response = await client.get(f"/api/v1/entries/{sample_voice_entry.id}")
+    entry_response = await authenticated_client.get(f"/api/v1/entries/{sample_voice_entry.id}")
     entry_data = entry_response.json()
 
     assert entry_data["primary_transcription"] is not None
@@ -151,7 +151,7 @@ async def test_set_primary_after_comparison(client, sample_voice_entry, db_sessi
 
 
 @pytest.mark.asyncio
-async def test_retry_failed_transcription(client, sample_voice_entry, db_session):
+async def test_retry_failed_transcription(authenticated_client, sample_voice_entry, db_session):
     """
     Test workflow: transcription fails, user retries.
     """
@@ -176,11 +176,11 @@ async def test_retry_failed_transcription(client, sample_voice_entry, db_session
     await db_session.commit()
 
     # Verify failed status
-    failed_response = await client.get(f"/api/v1/transcriptions/{failed_trans.id}")
+    failed_response = await authenticated_client.get(f"/api/v1/transcriptions/{failed_trans.id}")
     assert failed_response.json()["status"] == "failed"
 
     # User can see all attempts including failed one
-    list_response = await client.get(
+    list_response = await authenticated_client.get(
         f"/api/v1/entries/{sample_voice_entry.id}/transcriptions"
     )
 
@@ -191,14 +191,14 @@ async def test_retry_failed_transcription(client, sample_voice_entry, db_session
 
 
 @pytest.mark.asyncio
-async def test_transcription_with_auto_language_detection(client, sample_voice_entry, mock_transcription_service):
+async def test_transcription_with_auto_language_detection(authenticated_client, sample_voice_entry, mock_transcription_service):
     """
     Test transcription with automatic language detection.
     """
     from app.main import app
     app.state.transcription_service = mock_transcription_service
 
-    response = await client.post(
+    response = await authenticated_client.post(
         f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
         json={"language": "auto"}
     )
@@ -207,7 +207,7 @@ async def test_transcription_with_auto_language_detection(client, sample_voice_e
     transcription_id = response.json()["transcription_id"]
 
     # Check transcription was created with "auto" language code
-    status_response = await client.get(f"/api/v1/transcriptions/{transcription_id}")
+    status_response = await authenticated_client.get(f"/api/v1/transcriptions/{transcription_id}")
     assert status_response.json()["language_code"] == "auto"
 
 
@@ -241,7 +241,7 @@ async def test_entry_deletion_cascades_to_transcriptions(client, sample_voice_en
 
 
 @pytest.mark.asyncio
-async def test_upload_and_immediate_transcription(client, sample_mp3_path, mock_transcription_service):
+async def test_upload_and_immediate_transcription(authenticated_client, sample_mp3_path, mock_transcription_service):
     """
     Test realistic user flow: upload file and immediately trigger transcription.
     """
@@ -250,7 +250,7 @@ async def test_upload_and_immediate_transcription(client, sample_mp3_path, mock_
 
     # Upload
     with open(sample_mp3_path, "rb") as f:
-        upload_response = await client.post(
+        upload_response = await authenticated_client.post(
             "/api/v1/upload",
             files={"file": ("voice_note.mp3", f, "audio/mpeg")}
         )
@@ -258,7 +258,7 @@ async def test_upload_and_immediate_transcription(client, sample_mp3_path, mock_
     entry_id = upload_response.json()["id"]
 
     # Immediately trigger transcription
-    transcribe_response = await client.post(
+    transcribe_response = await authenticated_client.post(
         f"/api/v1/entries/{entry_id}/transcribe",
         json={"language": "en"}
     )
@@ -270,12 +270,12 @@ async def test_upload_and_immediate_transcription(client, sample_mp3_path, mock_
 
     for _ in range(3):
         await asyncio.sleep(0.1)
-        status_response = await client.get(f"/api/v1/transcriptions/{transcription_id}")
+        status_response = await authenticated_client.get(f"/api/v1/transcriptions/{transcription_id}")
         assert status_response.status_code == 200
 
         if status_response.json()["status"] == "completed":
             break
 
     # User gets entry to see result
-    final_response = await client.get(f"/api/v1/entries/{entry_id}")
+    final_response = await authenticated_client.get(f"/api/v1/entries/{entry_id}")
     assert final_response.status_code == 200
