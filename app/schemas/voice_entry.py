@@ -22,6 +22,7 @@ class VoiceEntryCreate(BaseModel):
     file_path: str
     entry_type: str = "dream"
     uploaded_at: datetime
+    user_id: Optional[UUID] = None
 
 
 class VoiceEntryResponse(VoiceEntryBase):

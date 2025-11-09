@@ -7,8 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.user import User
 from app.services.database import db_service
 from app.services.transcription import TranscriptionService
+from app.middleware.jwt import get_current_user
 from app.schemas.transcription import (
     TranscriptionTriggerRequest,
     TranscriptionTriggerResponse,
@@ -146,7 +148,8 @@ async def trigger_transcription(
     request_data: TranscriptionTriggerRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    transcription_service: TranscriptionService = Depends(get_transcription_service)
+    transcription_service: TranscriptionService = Depends(get_transcription_service),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Trigger transcription for a voice entry audio file.
@@ -177,8 +180,8 @@ async def trigger_transcription(
         language=request_data.language
     )
 
-    # Verify entry exists
-    entry = await db_service.get_entry_by_id(db, entry_id)
+    # Verify entry exists and belongs to current user
+    entry = await db_service.get_entry_by_id(db, entry_id, current_user.id)
     if not entry:
         logger.warning(f"Entry not found for transcription", entry_id=str(entry_id))
         raise HTTPException(
@@ -232,7 +235,8 @@ async def trigger_transcription(
 )
 async def get_transcription(
     transcription_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Get transcription by ID.
@@ -256,6 +260,19 @@ async def get_transcription(
             detail=f"Transcription not found: {transcription_id}"
         )
 
+    # Verify the transcription's entry belongs to the current user
+    entry = await db_service.get_entry_by_id(db, transcription.entry_id, current_user.id)
+    if not entry:
+        logger.warning(
+            f"Unauthorized access to transcription",
+            transcription_id=str(transcription_id),
+            user_id=str(current_user.id)
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Transcription not found: {transcription_id}"
+        )
+
     logger.info(f"Transcription retrieved", transcription_id=str(transcription_id))
 
     return TranscriptionStatusResponse.model_validate(transcription)
@@ -269,7 +286,8 @@ async def get_transcription(
 )
 async def list_transcriptions(
     entry_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     List all transcriptions for a voice entry.
@@ -284,8 +302,8 @@ async def list_transcriptions(
     Raises:
         HTTPException: If entry not found
     """
-    # Verify entry exists
-    entry = await db_service.get_entry_by_id(db, entry_id)
+    # Verify entry exists and belongs to current user
+    entry = await db_service.get_entry_by_id(db, entry_id, current_user.id)
     if not entry:
         logger.warning(f"Entry not found", entry_id=str(entry_id))
         raise HTTPException(
@@ -293,7 +311,7 @@ async def list_transcriptions(
             detail=f"Entry not found: {entry_id}"
         )
 
-    transcriptions = await db_service.get_transcriptions_for_entry(db, entry_id)
+    transcriptions = await db_service.get_transcriptions_for_entry(db, entry_id, current_user.id)
 
     logger.info(f"Transcriptions listed", entry_id=str(entry_id), count=len(transcriptions))
 
@@ -311,7 +329,8 @@ async def list_transcriptions(
 )
 async def set_primary_transcription(
     transcription_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
     Set a transcription as primary for its entry.
@@ -332,6 +351,19 @@ async def set_primary_transcription(
 
     if not transcription:
         logger.warning(f"Transcription not found", transcription_id=str(transcription_id))
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Transcription not found: {transcription_id}"
+        )
+
+    # Verify the transcription's entry belongs to the current user
+    entry = await db_service.get_entry_by_id(db, transcription.entry_id, current_user.id)
+    if not entry:
+        logger.warning(
+            f"Unauthorized access to transcription",
+            transcription_id=str(transcription_id),
+            user_id=str(current_user.id)
+        )
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Transcription not found: {transcription_id}"

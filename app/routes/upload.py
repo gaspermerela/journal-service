@@ -7,11 +7,13 @@ from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, s
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.user import User
 from app.schemas.voice_entry import VoiceEntryCreate, VoiceEntryUploadResponse, VoiceEntryUploadAndTranscribeResponse
 from app.schemas.transcription import TranscriptionCreate
 from app.services.storage import storage_service
 from app.services.database import db_service
 from app.services.transcription import TranscriptionService
+from app.middleware.jwt import get_current_user
 from app.utils.validators import validate_audio_file
 from app.utils.logger import get_logger
 
@@ -61,7 +63,8 @@ async def upload_audio(
     request: Request,
     file: UploadFile = File(..., description="Audio file to upload (MP3 or M4A)"),
     entry_type: str = Form("dream", description="Type of voice entry (dream, journal, meeting, note, etc.)"),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ) -> VoiceEntryUploadResponse:
     """
     Upload audio file endpoint.
@@ -104,7 +107,8 @@ async def upload_audio(
             saved_filename=saved_filename,
             file_path=file_path,
             entry_type=entry_type,
-            uploaded_at=datetime.now(timezone.utc)
+            uploaded_at=datetime.now(timezone.utc),
+            user_id=current_user.id
         )
 
         entry = await db_service.create_entry(db, entry_data)
@@ -177,7 +181,8 @@ async def upload_and_transcribe(
     entry_type: str = Form("dream", description="Type of voice entry (dream, journal, meeting, note, etc.)"),
     language: str = Form("en", description="Language code for transcription (e.g., 'en', 'es', 'sl') or 'auto' for detection"),
     db: AsyncSession = Depends(get_db),
-    transcription_service: TranscriptionService = Depends(get_transcription_service)
+    transcription_service: TranscriptionService = Depends(get_transcription_service),
+    current_user: User = Depends(get_current_user)
 ) -> VoiceEntryUploadAndTranscribeResponse:
     """
     Combined endpoint to upload audio file and start transcription.
@@ -223,7 +228,8 @@ async def upload_and_transcribe(
             saved_filename=saved_filename,
             file_path=file_path,
             entry_type=entry_type,
-            uploaded_at=datetime.now(timezone.utc)
+            uploaded_at=datetime.now(timezone.utc),
+            user_id=current_user.id
         )
 
         entry = await db_service.create_entry(db, entry_data)

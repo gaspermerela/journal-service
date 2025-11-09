@@ -47,7 +47,8 @@ class DatabaseService:
                 saved_filename=entry_data.saved_filename,
                 file_path=entry_data.file_path,
                 entry_type=entry_data.entry_type,
-                uploaded_at=entry_data.uploaded_at
+                uploaded_at=entry_data.uploaded_at,
+                user_id=entry_data.user_id
             )
 
             db.add(entry)
@@ -76,22 +77,28 @@ class DatabaseService:
     async def get_entry_by_id(
         self,
         db: AsyncSession,
-        entry_id: UUID
+        entry_id: UUID,
+        user_id: Optional[UUID] = None
     ) -> Optional[VoiceEntry]:
         """
-        Retrieve a voice entry by ID.
+        Retrieve a voice entry by ID, optionally filtered by user_id.
 
         Args:
             db: Database session
             entry_id: UUID of the entry to retrieve
+            user_id: Optional UUID to filter by user ownership
 
         Returns:
             VoiceEntry if found, None otherwise
         """
         try:
-            result = await db.execute(
-                select(VoiceEntry).where(VoiceEntry.id == entry_id)
-            )
+            query = select(VoiceEntry).where(VoiceEntry.id == entry_id)
+
+            # Add user_id filter if provided
+            if user_id is not None:
+                query = query.where(VoiceEntry.user_id == user_id)
+
+            result = await db.execute(query)
             entry = result.scalar_one_or_none()
 
             if entry:
@@ -253,19 +260,32 @@ class DatabaseService:
     async def get_transcriptions_for_entry(
         self,
         db: AsyncSession,
-        entry_id: UUID
+        entry_id: UUID,
+        user_id: Optional[UUID] = None
     ) -> list[Transcription]:
         """
-        Get all transcriptions for a specific voice entry.
+        Get all transcriptions for a specific voice entry, with optional user verification.
 
         Args:
             db: Database session
             entry_id: UUID of the entry
+            user_id: Optional UUID to verify entry ownership before retrieving transcriptions
 
         Returns:
-            List of Transcription objects
+            List of Transcription objects (empty list if entry not found or user doesn't own it)
         """
         try:
+            # If user_id provided, first verify the entry belongs to the user
+            if user_id is not None:
+                entry = await self.get_entry_by_id(db, entry_id, user_id)
+                if not entry:
+                    logger.warning(
+                        f"Entry not found or user doesn't have access",
+                        entry_id=str(entry_id),
+                        user_id=str(user_id)
+                    )
+                    return []
+
             result = await db.execute(
                 select(Transcription)
                 .where(Transcription.entry_id == entry_id)
