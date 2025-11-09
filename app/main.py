@@ -8,7 +8,7 @@ import whisper
 
 from app.config import settings
 from app.database import check_db_connection
-from app.routes import upload, health, entries, transcription
+from app.routes import upload, health, entries, transcription, auth
 from app.middleware.logging import RequestLoggingMiddleware
 from app.services.transcription import create_transcription_service
 from app.utils.logger import get_logger
@@ -98,6 +98,11 @@ app.add_middleware(RequestLoggingMiddleware)
 
 # Include routers
 app.include_router(health.router, tags=["Health"])
+app.include_router(
+    auth.router,
+    prefix="/api/v1/auth",
+    tags=["Authentication"]
+)
 app.include_router(
     upload.router,
     prefix="/api/v1",
