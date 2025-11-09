@@ -46,7 +46,7 @@ services:
       - PORT=8000
       - LOG_LEVEL=INFO
       - MAX_FILE_SIZE_MB=100
-      - WHISPER_MODEL=small
+      - WHISPER_MODEL=tiny
       - WHISPER_LANGUAGE=en
       - WHISPER_DEVICE=cpu
       - TORCH_NUM_THREADS=10
@@ -56,6 +56,7 @@ services:
       - DB_MAX_OVERFLOW=10
       - DEBUG=false
       - RELOAD=false
+      - JWT_SECRET_KEY=test-secret-key-for-testing-only-not-for-production
     volumes:
       - ${AUDIO_STORAGE_PATH_HOST:-./data/audio}:/app/data/audio
     logging:
