@@ -37,23 +37,24 @@ class CleanedEntry(Base):
     from processing the original transcription through a local LLM.
     """
     __tablename__ = "cleaned_entries"
+    __table_args__ = {"schema": "journal"}
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     voice_entry_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("voice_entries.id", ondelete="CASCADE"),
+        ForeignKey("journal.voice_entries.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
     transcription_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("transcriptions.id", ondelete="CASCADE"),
+        ForeignKey("journal.transcriptions.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
     user_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
+        ForeignKey("journal.users.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
@@ -66,7 +67,7 @@ class CleanedEntry(Base):
     prompt_used = Column(Text, nullable=True)
     model_name = Column(String(100), nullable=False)
     status = Column(
-        SQLEnum(CleanupStatus, name="cleanupstatus"),
+        SQLEnum(CleanupStatus, name="cleanupstatus", schema="journal"),
         nullable=False,
         default=CleanupStatus.PENDING,
         index=True

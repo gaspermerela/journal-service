@@ -118,11 +118,10 @@ async def trigger_cleanup(
 
     Query the cleanup status using GET /api/v1/cleaned-entries/{cleanup_id}
     """
-    # Get the transcription and verify it belongs to user
+    # Get the transcription
     transcription = await db_service.get_transcription_by_id(
         db=db,
-        transcription_id=transcription_id,
-        user_id=current_user.id
+        transcription_id=transcription_id
     )
 
     if not transcription:
