@@ -12,6 +12,7 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.models.transcription import Transcription
     from app.models.user import User
+    from app.models.cleaned_entry import CleanedEntry
 
 
 class VoiceEntry(Base):
@@ -104,6 +105,13 @@ class VoiceEntry(Base):
     transcriptions: Mapped[list["Transcription"]] = relationship(
         "Transcription",
         back_populates="entry",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+
+    cleaned_entries: Mapped[list["CleanedEntry"]] = relationship(
+        "CleanedEntry",
+        back_populates="voice_entry",
         cascade="all, delete-orphan",
         lazy="selectin"
     )

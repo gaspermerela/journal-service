@@ -11,6 +11,7 @@ from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.voice_entry import VoiceEntry
+    from app.models.cleaned_entry import CleanedEntry
 
 
 class User(Base):
@@ -73,6 +74,13 @@ class User(Base):
     # Relationships
     voice_entries: Mapped[list["VoiceEntry"]] = relationship(
         "VoiceEntry",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+
+    cleaned_entries: Mapped[list["CleanedEntry"]] = relationship(
+        "CleanedEntry",
         back_populates="user",
         cascade="all, delete-orphan",
         lazy="selectin"

@@ -11,6 +11,7 @@ from fastapi import HTTPException, status
 from app.models.user import User
 from app.models.voice_entry import VoiceEntry
 from app.models.transcription import Transcription
+from app.models.cleaned_entry import CleanedEntry, CleanupStatus
 from app.schemas.auth import UserCreate
 from app.schemas.voice_entry import VoiceEntryCreate
 from app.schemas.transcription import TranscriptionCreate
@@ -630,6 +631,244 @@ class DatabaseService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to retrieve user"
+            )
+
+    # ==========================================
+    # Cleaned Entry Operations
+    # ==========================================
+
+    async def create_cleaned_entry(
+        self,
+        db: AsyncSession,
+        voice_entry_id: UUID,
+        transcription_id: UUID,
+        user_id: UUID,
+        model_name: str,
+        prompt_used: Optional[str] = None
+    ) -> CleanedEntry:
+        """
+        Create a new cleaned entry record.
+
+        Args:
+            db: Database session
+            voice_entry_id: Voice entry UUID
+            transcription_id: Transcription UUID
+            user_id: User UUID
+            model_name: LLM model name used
+            prompt_used: Prompt template used (optional)
+
+        Returns:
+            Created CleanedEntry instance
+
+        Raises:
+            HTTPException: If database operation fails
+        """
+        try:
+            cleaned_entry = CleanedEntry(
+                voice_entry_id=voice_entry_id,
+                transcription_id=transcription_id,
+                user_id=user_id,
+                model_name=model_name,
+                prompt_used=prompt_used,
+                status=CleanupStatus.PENDING
+            )
+
+            db.add(cleaned_entry)
+            await db.flush()
+            await db.refresh(cleaned_entry)
+
+            logger.info(
+                f"Cleaned entry created",
+                cleaned_entry_id=str(cleaned_entry.id),
+                transcription_id=str(transcription_id)
+            )
+
+            return cleaned_entry
+
+        except Exception as e:
+            logger.error(
+                f"Failed to create cleaned entry",
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create cleaned entry record"
+            )
+
+    async def get_cleaned_entry_by_id(
+        self,
+        db: AsyncSession,
+        cleaned_entry_id: UUID,
+        user_id: Optional[UUID] = None
+    ) -> Optional[CleanedEntry]:
+        """
+        Retrieve a cleaned entry by ID, optionally filtered by user_id.
+
+        Args:
+            db: Database session
+            cleaned_entry_id: UUID of the cleaned entry
+            user_id: Optional UUID to filter by user ownership
+
+        Returns:
+            CleanedEntry if found, None otherwise
+        """
+        try:
+            query = select(CleanedEntry).where(CleanedEntry.id == cleaned_entry_id)
+
+            if user_id is not None:
+                query = query.where(CleanedEntry.user_id == user_id)
+
+            result = await db.execute(query)
+            cleaned_entry = result.scalar_one_or_none()
+
+            if cleaned_entry:
+                logger.debug(
+                    f"Cleaned entry found",
+                    cleaned_entry_id=str(cleaned_entry_id)
+                )
+            else:
+                logger.debug(
+                    f"Cleaned entry not found",
+                    cleaned_entry_id=str(cleaned_entry_id)
+                )
+
+            return cleaned_entry
+
+        except Exception as e:
+            logger.error(
+                f"Failed to get cleaned entry",
+                cleaned_entry_id=str(cleaned_entry_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve cleaned entry"
+            )
+
+    async def update_cleaned_entry_processing(
+        self,
+        db: AsyncSession,
+        cleaned_entry_id: UUID,
+        status: CleanupStatus,
+        cleaned_text: Optional[str] = None,
+        analysis: Optional[dict] = None,
+        error_message: Optional[str] = None
+    ) -> CleanedEntry:
+        """
+        Update cleaned entry with processing results.
+
+        Args:
+            db: Database session
+            cleaned_entry_id: UUID of the cleaned entry
+            status: New status
+            cleaned_text: Cleaned text result
+            analysis: Analysis data dict
+            error_message: Error message if failed
+
+        Returns:
+            Updated CleanedEntry instance
+
+        Raises:
+            HTTPException: If entry not found or update fails
+        """
+        try:
+            cleaned_entry = await self.get_cleaned_entry_by_id(db, cleaned_entry_id)
+
+            if not cleaned_entry:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Cleaned entry not found"
+                )
+
+            # Update fields
+            cleaned_entry.status = status
+            if cleaned_text is not None:
+                cleaned_entry.cleaned_text = cleaned_text
+            if analysis is not None:
+                cleaned_entry.analysis = analysis
+            if error_message is not None:
+                cleaned_entry.error_message = error_message
+
+            # Update timestamps based on status
+            if status == CleanupStatus.PROCESSING and not cleaned_entry.processing_started_at:
+                cleaned_entry.processing_started_at = datetime.now(timezone.utc)
+            elif status in [CleanupStatus.COMPLETED, CleanupStatus.FAILED]:
+                cleaned_entry.processing_completed_at = datetime.now(timezone.utc)
+
+            await db.flush()
+            await db.refresh(cleaned_entry)
+
+            logger.info(
+                f"Cleaned entry updated",
+                cleaned_entry_id=str(cleaned_entry_id),
+                status=status.value
+            )
+
+            return cleaned_entry
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Failed to update cleaned entry",
+                cleaned_entry_id=str(cleaned_entry_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update cleaned entry"
+            )
+
+    async def get_cleaned_entries_by_voice_entry(
+        self,
+        db: AsyncSession,
+        voice_entry_id: UUID,
+        user_id: Optional[UUID] = None
+    ) -> list[CleanedEntry]:
+        """
+        Get all cleaned entries for a voice entry.
+
+        Args:
+            db: Database session
+            voice_entry_id: Voice entry UUID
+            user_id: Optional UUID to filter by user ownership
+
+        Returns:
+            List of CleanedEntry instances
+        """
+        try:
+            query = select(CleanedEntry).where(
+                CleanedEntry.voice_entry_id == voice_entry_id
+            )
+
+            if user_id is not None:
+                query = query.where(CleanedEntry.user_id == user_id)
+
+            query = query.order_by(CleanedEntry.created_at.desc())
+
+            result = await db.execute(query)
+            cleaned_entries = result.scalars().all()
+
+            logger.debug(
+                f"Found {len(cleaned_entries)} cleaned entries for voice entry",
+                voice_entry_id=str(voice_entry_id)
+            )
+
+            return list(cleaned_entries)
+
+        except Exception as e:
+            logger.error(
+                f"Failed to get cleaned entries by voice entry",
+                voice_entry_id=str(voice_entry_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve cleaned entries"
             )
 
 

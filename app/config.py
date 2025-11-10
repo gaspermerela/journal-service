@@ -30,6 +30,12 @@ class Settings(BaseSettings):
     WHISPER_DEVICE: str = "cpu"  # Options: cpu, cuda (for GPU)
     TORCH_NUM_THREADS: int = 10  # Number of CPU threads for PyTorch
 
+    # LLM Cleanup Configuration
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "llama3.2:3b"
+    LLM_TIMEOUT_SECONDS: int = 120
+    LLM_MAX_RETRIES: int = 2
+
     # CORS Configuration
     CORS_ORIGINS: str = "*"
 
