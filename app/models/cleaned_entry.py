@@ -67,7 +67,19 @@ class CleanedEntry(Base):
     prompt_used = Column(Text, nullable=True)
     model_name = Column(String(100), nullable=False)
     status = Column(
-        SQLEnum(CleanupStatus, name="cleanupstatus", schema="journal"),
+        SQLEnum(
+            CleanupStatus,
+            name="cleanupstatus",
+            schema="journal",
+            create_constraint=False, # Don't try to create the enum type (Alembic migration already created it)
+            # SQLAlchemy uses PostgreSQL's native ENUM type and sends the Python enum's .name attribute (uppercase: COMPLETED).
+            # With False: SQLAlchemy treats it as a string column and we control what gets sent
+            native_enum=False,
+            #  This lambda extracts the .value attribute from each enum member
+            #   - CleanupStatus.COMPLETED.value → "completed" (lowercase)
+            #   - Without this, it would use .name → "COMPLETED" (uppercase)
+            values_callable=lambda x: [e.value for e in x]
+        ),
         nullable=False,
         default=CleanupStatus.PENDING,
         index=True

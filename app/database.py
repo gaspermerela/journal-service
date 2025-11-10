@@ -61,6 +61,21 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+def get_session():
+    """
+    Context manager for getting async database sessions in background tasks.
+
+    Returns:
+        AsyncSession context manager
+
+    Example:
+        async with get_session() as db:
+            # Use db session
+            ...
+    """
+    return AsyncSessionLocal()
+
+
 async def check_db_connection() -> bool:
     """
     Check if database connection is working.
