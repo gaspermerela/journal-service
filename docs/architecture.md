@@ -7,13 +7,15 @@ High-level design decisions and trade-offs.
 ### Upload Flow
 
 ```
-1. Client POSTs MP3 file
-2. Validate file type + size
-3. Generate UUID + timestamp filename
-4. Save mp3 file to disk
-5. Create database record
-   - If DB fails: delete mp3 file
-7. Return entry metadata
+1. User authenticates (JWT)
+2. Client POSTs MP3/M4A file
+3. Validate file type + size
+4. Generate UUID + timestamp filename
+5. Save audio file to disk
+6. Create database record
+   - If DB fails: delete audio file
+7. Start background transcription (Whisper)
+8. Return entry metadata + transcription_id
 ```
 
 **Cleanup mechanism:** If database write fails, saved file is deleted automatically. No orphaned files.
@@ -33,7 +35,7 @@ File structure:
 ```
 
 ### 2. Async Architecture
-**Why:** Future phases need I/O-bound operations (Whisper API, LLM calls)
+**Why:** I/O-bound operations (file uploads, database, Whisper transcription)
 
 ### 3. Docker + rsync Deployment
 
@@ -52,16 +54,16 @@ File structure:
 
 **Why:** Version-controlled schema evolution, easy rollbacks
 
-### 5. No Authentication (Yet)
+### 5. JWT Authentication
 
-**Current:** Open API, no auth required. If interest grows, auth will be added.
+**Why:** User data isolation, stateless auth \
+**Implementation:** Access and refresh tokens
 
 ## Current Limitations
 
-- No authentication
 - No rate limiting
+- No file deletion API
 - No file retrieval (only metadata)
-- No deletion
 - Single server only
 
 ## Tech Stack
@@ -69,6 +71,8 @@ File structure:
 - **FastAPI:** Async + auto OpenAPI docs
 - **PostgreSQL**
 - **SQLAlchemy:** Async ORM
+- **Whisper:** Local speech-to-text
+- **JWT:** Token-based auth
 - **Docker:** Consistent deployment
 - **Pytest:** Testing
 

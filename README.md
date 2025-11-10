@@ -39,9 +39,13 @@ This approach could extend to general voice-based daily journaling.
 - Primary transcription selection
 - Language detection and multi-language support
 
+**Current - Phase 3 (Authentication & Security):** ✅
+- JWT-based authentication with access and refresh tokens
+- User registration and login
+
 **Future Phases:**
-- **Phase 3**: LLM-based text cleanup and analysis
-- **Phase 4**: Notion synchronization
+- **Phase 4**: LLM-based text cleanup and analysis
+- **Phase 5**: Notion synchronization
 - Frontend UI under consideration for future expansion
 
 ## Quick Start
@@ -63,18 +67,18 @@ curl http://localhost:8000/health
 open http://localhost:8000/docs
 ```
 
-**Test the API:**
-```bash
-# Upload and transcribe in one request
-curl -X POST "http://localhost:8000/api/v1/upload-and-transcribe" \
-  -F "file=@recording.mp3;type=audio/mpeg" \
-  -F "entry_type=dream" \
-  -F "language=en"
+**Using the API:**
 
-# Or upload only (requires separate transcription request)
-curl -X POST "http://localhost:8000/api/v1/upload" \
-  -F "file=@recording.mp3;type=audio/mpeg"
+The service requires authentication for all endpoints except `/health` and `/docs`.
+
+```bash
+# 1. Register and login via interactive docs
+open http://localhost:8000/docs
+
+# 2. Or use curl - see docs/api-reference.md for examples
 ```
+
+See [API Reference](docs/api-reference.md) for complete authentication flow and endpoint examples.
 
 **Stop services:**
 ```bash
@@ -89,31 +93,11 @@ docker compose -f docker-compose.dev.yml down -v
 
 For production deployment with PostgreSQL running on the host via systemctl, see [DOCKER.md](DOCKER.md).
 
+## API Documentation
 
-## API Endpoints
-
-### Voice Entry Management
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/upload` | POST | Upload audio file (MP3 or M4A) |
-| `/api/v1/entries/{id}` | GET | Retrieve entry metadata with primary transcription |
-
-### Transcription
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/entries/{id}/transcribe` | POST | Trigger background transcription |
-| `/api/v1/transcriptions/{id}` | GET | Get transcription status and result |
-| `/api/v1/entries/{id}/transcriptions` | GET | List all transcriptions for an entry |
-| `/api/v1/transcriptions/{id}/set-primary` | PUT | Set transcription as primary |
-
-### System
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check with database status |
-| `/docs` | GET | Interactive API documentation (Swagger) |
-| `/redoc` | GET | Alternative API documentation |
-
-See [API Reference](docs/api-reference.md) for detailed request/response schemas.
+- **Interactive Swagger UI:** http://localhost:8000/docs (try endpoints directly)
+- **ReDoc:** http://localhost:8000/redoc (alternative format)
+- **Detailed Reference:** [docs/api-reference.md](docs/api-reference.md) (curl examples, schemas)
 
 ## Architecture
 
@@ -130,7 +114,8 @@ pytest --cov=app --cov-report=term-missing  # With coverage
 ## Documentation
 
 - [Architecture](docs/architecture.md) - Design decisions and trade-offs
-- [API Reference](docs/api-reference.md) - Endpoints (or use `/docs` for interactive)
+- [API Reference](docs/api-reference.md) - Complete endpoint documentation with examples
+- [Docker Deployment](DOCKER.md) - Production deployment guide
 
 ## Contributing
 
