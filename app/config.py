@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     RELOAD: bool = False
 
+    # Authentication & JWT Configuration
+    JWT_SECRET_KEY: str  # Required - no default for security
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_DAYS: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

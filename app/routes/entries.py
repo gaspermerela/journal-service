@@ -6,9 +6,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.models.user import User
 from app.schemas.voice_entry import VoiceEntryResponse
 from app.schemas.transcription import TranscriptionResponse
 from app.services.database import db_service
+from app.middleware.jwt import get_current_user
 from app.utils.logger import get_logger
 
 logger = get_logger("entries")
@@ -29,25 +31,27 @@ router = APIRouter()
 )
 async def get_entry(
     entry_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ) -> VoiceEntryResponse:
     """
-    Get voice entry by ID.
+    Get voice entry by ID (user can only access their own entries).
 
     Args:
         entry_id: UUID of the entry to retrieve
         db: Database session
+        current_user: Authenticated user from JWT token
 
     Returns:
         VoiceEntryResponse with entry metadata
 
     Raises:
-        HTTPException: 404 if entry not found
+        HTTPException: 404 if entry not found or doesn't belong to user
     """
-    logger.info(f"Entry retrieval requested", entry_id=str(entry_id))
+    logger.info(f"Entry retrieval requested", entry_id=str(entry_id), user_id=str(current_user.id))
 
-    # Retrieve entry from database
-    entry = await db_service.get_entry_by_id(db, entry_id)
+    # Retrieve entry from database (filtered by user_id)
+    entry = await db_service.get_entry_by_id(db, entry_id, current_user.id)
 
     if not entry:
         logger.warning(f"Entry not found", entry_id=str(entry_id))

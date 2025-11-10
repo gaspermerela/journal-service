@@ -1,5 +1,6 @@
 """
 Integration tests for upload endpoint.
+Requires authentication.
 """
 import io
 import uuid
@@ -10,11 +11,11 @@ from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_upload_valid_mp3(client: AsyncClient, sample_mp3_path: Path, test_storage_path: Path):
+async def test_upload_valid_mp3(authenticated_client: AsyncClient, sample_mp3_path: Path, test_storage_path: Path):
     """Test uploading a valid MP3 file."""
     with open(sample_mp3_path, 'rb') as f:
         files = {"file": ("dream_recording.mp3", f, "audio/mpeg")}
-        response = await client.post("/api/v1/upload", files=files)
+        response = await authenticated_client.post("/api/v1/upload", files=files)
 
     assert response.status_code == 201
 
@@ -44,19 +45,19 @@ async def test_upload_valid_mp3(client: AsyncClient, sample_mp3_path: Path, test
 
 
 @pytest.mark.asyncio
-async def test_upload_no_file(client: AsyncClient):
+async def test_upload_no_file(authenticated_client: AsyncClient):
     """Test upload endpoint with no file."""
-    response = await client.post("/api/v1/upload")
+    response = await authenticated_client.post("/api/v1/upload")
 
     assert response.status_code == 422  # FastAPI validation error
 
 
 @pytest.mark.asyncio
-async def test_upload_invalid_file_type(client: AsyncClient, invalid_file_path: Path):
+async def test_upload_invalid_file_type(authenticated_client: AsyncClient, invalid_file_path: Path):
     """Test uploading a non-MP3 file."""
     with open(invalid_file_path, 'rb') as f:
         files = {"file": ("document.txt", f, "text/plain")}
-        response = await client.post("/api/v1/upload", files=files)
+        response = await authenticated_client.post("/api/v1/upload", files=files)
 
     assert response.status_code == 400
 
@@ -66,11 +67,11 @@ async def test_upload_invalid_file_type(client: AsyncClient, invalid_file_path: 
 
 
 @pytest.mark.asyncio
-async def test_upload_file_too_large(client: AsyncClient, large_mp3_path: Path):
+async def test_upload_file_too_large(authenticated_client: AsyncClient, large_mp3_path: Path):
     """Test uploading a file that exceeds size limit."""
     with open(large_mp3_path, 'rb') as f:
         files = {"file": ("large_dream.mp3", f, "audio/mpeg")}
-        response = await client.post("/api/v1/upload", files=files)
+        response = await authenticated_client.post("/api/v1/upload", files=files)
 
     assert response.status_code == 413
 
@@ -80,10 +81,10 @@ async def test_upload_file_too_large(client: AsyncClient, large_mp3_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_upload_empty_file(client: AsyncClient):
+async def test_upload_empty_file(authenticated_client: AsyncClient):
     """Test uploading an empty file."""
     files = {"file": ("empty.mp3", io.BytesIO(b""), "audio/mpeg")}
-    response = await client.post("/api/v1/upload", files=files)
+    response = await authenticated_client.post("/api/v1/upload", files=files)
 
     assert response.status_code == 400
 
@@ -93,13 +94,13 @@ async def test_upload_empty_file(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_upload_creates_date_folder(client: AsyncClient, sample_mp3_path: Path, test_storage_path: Path):
+async def test_upload_creates_date_folder(authenticated_client: AsyncClient, sample_mp3_path: Path, test_storage_path: Path):
     """Test that upload creates date-based folder structure."""
     from datetime import datetime, timezone
 
     with open(sample_mp3_path, 'rb') as f:
         files = {"file": ("dream.mp3", f, "audio/mpeg")}
-        response = await client.post("/api/v1/upload", files=files)
+        response = await authenticated_client.post("/api/v1/upload", files=files)
 
     assert response.status_code == 201
 
@@ -112,14 +113,14 @@ async def test_upload_creates_date_folder(client: AsyncClient, sample_mp3_path: 
 
 
 @pytest.mark.asyncio
-async def test_upload_multiple_files(client: AsyncClient, sample_mp3_path: Path):
+async def test_upload_multiple_files(authenticated_client: AsyncClient, sample_mp3_path: Path):
     """Test uploading multiple files creates separate entries."""
     file_ids = []
 
     for i in range(3):
         with open(sample_mp3_path, 'rb') as f:
             files = {"file": (f"dream_{i}.mp3", f, "audio/mpeg")}
-            response = await client.post("/api/v1/upload", files=files)
+            response = await authenticated_client.post("/api/v1/upload", files=files)
 
         assert response.status_code == 201
         data = response.json()
@@ -130,23 +131,23 @@ async def test_upload_multiple_files(client: AsyncClient, sample_mp3_path: Path)
 
 
 @pytest.mark.asyncio
-async def test_upload_with_audio_mp3_content_type(client: AsyncClient, sample_mp3_path: Path):
+async def test_upload_with_audio_mp3_content_type(authenticated_client: AsyncClient, sample_mp3_path: Path):
     """Test upload with audio/mp3 content type."""
     with open(sample_mp3_path, 'rb') as f:
         files = {"file": ("dream.mp3", f, "audio/mp3")}
-        response = await client.post("/api/v1/upload", files=files)
+        response = await authenticated_client.post("/api/v1/upload", files=files)
 
     assert response.status_code == 201
 
 
 @pytest.mark.asyncio
-async def test_upload_preserves_original_filename(client: AsyncClient, sample_mp3_path: Path):
+async def test_upload_preserves_original_filename(authenticated_client: AsyncClient, sample_mp3_path: Path):
     """Test that original filename is preserved in response."""
     original_filename = "my_special_dream_2025.mp3"
 
     with open(sample_mp3_path, 'rb') as f:
         files = {"file": (original_filename, f, "audio/mpeg")}
-        response = await client.post("/api/v1/upload", files=files)
+        response = await authenticated_client.post("/api/v1/upload", files=files)
 
     assert response.status_code == 201
 
@@ -155,11 +156,11 @@ async def test_upload_preserves_original_filename(client: AsyncClient, sample_mp
 
 
 @pytest.mark.asyncio
-async def test_upload_saved_filename_format(client: AsyncClient, sample_mp3_path: Path):
+async def test_upload_saved_filename_format(authenticated_client: AsyncClient, sample_mp3_path: Path):
     """Test that saved filename follows expected format."""
     with open(sample_mp3_path, 'rb') as f:
         files = {"file": ("dream.mp3", f, "audio/mpeg")}
-        response = await client.post("/api/v1/upload", files=files)
+        response = await authenticated_client.post("/api/v1/upload", files=files)
 
     assert response.status_code == 201
 
@@ -173,11 +174,11 @@ async def test_upload_saved_filename_format(client: AsyncClient, sample_mp3_path
 
 
 @pytest.mark.asyncio
-async def test_upload_response_format(client: AsyncClient, sample_mp3_path: Path):
+async def test_upload_response_format(authenticated_client: AsyncClient, sample_mp3_path: Path):
     """Test that upload response has correct format."""
     with open(sample_mp3_path, 'rb') as f:
         files = {"file": ("dream.mp3", f, "audio/mpeg")}
-        response = await client.post("/api/v1/upload", files=files)
+        response = await authenticated_client.post("/api/v1/upload", files=files)
 
     assert response.status_code == 201
 
@@ -198,24 +199,24 @@ async def test_upload_response_format(client: AsyncClient, sample_mp3_path: Path
 
 
 @pytest.mark.asyncio
-async def test_upload_case_insensitive_extension(client: AsyncClient, sample_mp3_path: Path):
+async def test_upload_case_insensitive_extension(authenticated_client: AsyncClient, sample_mp3_path: Path):
     """Test that upload accepts uppercase .MP3 extension."""
     with open(sample_mp3_path, 'rb') as f:
         files = {"file": ("dream.MP3", f, "audio/mpeg")}
-        response = await client.post("/api/v1/upload", files=files)
+        response = await authenticated_client.post("/api/v1/upload", files=files)
 
     assert response.status_code == 201
 
 
 @pytest.mark.asyncio
-async def test_upload_file_content_integrity(client: AsyncClient, sample_mp3_path: Path):
+async def test_upload_file_content_integrity(authenticated_client: AsyncClient, sample_mp3_path: Path):
     """Test that uploaded file content matches original."""
     with open(sample_mp3_path, 'rb') as f:
         original_content = f.read()
 
     with open(sample_mp3_path, 'rb') as f:
         files = {"file": ("dream.mp3", f, "audio/mpeg")}
-        response = await client.post("/api/v1/upload", files=files)
+        response = await authenticated_client.post("/api/v1/upload", files=files)
 
     assert response.status_code == 201
 

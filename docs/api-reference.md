@@ -5,86 +5,133 @@ Complete API documentation is available through the interactive Swagger UI at `/
 - **Swagger UI**: http://localhost:8000/docs
 - **ReDoc**: http://localhost:8000/redoc
 
+## Authentication
+
+All API endpoints (except `/health`, `/docs`, `/redoc`, and authentication endpoints) require authentication using JWT Bearer tokens.
+
+### Authentication Flow
+
+1. **Register** a new user account (`/api/v1/auth/register`)
+2. **Login** to receive access and refresh tokens (`/api/v1/auth/login`)
+3. **Include the access token** in the `Authorization` header for all protected endpoints
+4. **Refresh** your access token when it expires using the refresh token (`/api/v1/auth/refresh`)
+
+Access tokens expire after `ACCESS_TOKEN_EXPIRE_DAYS` days (7 by default). Refresh tokens expire after `REFRESH_TOKEN_EXPIRE_DAYS` days (30 by default).
+
 ## Quick Reference
 
-### Voice Entry Management
+### Authentication 🔐
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/upload-and-transcribe` | POST | **Recommended**: Upload audio and start transcription in one request |
-| `/api/v1/upload` | POST | Upload audio file only (MP3 or M4A) |
-| `/api/v1/entries/{id}` | GET | Get entry metadata with primary transcription |
+| Endpoint | Method | Auth Required | Description |
+|----------|--------|---------------|-------------|
+| `/api/v1/auth/register` | POST | No | Register new user account |
+| `/api/v1/auth/login` | POST | No | Login and receive JWT tokens |
+| `/api/v1/auth/refresh` | POST | No | Refresh access token using refresh token |
 
-### Transcription
+### Voice Entry Management 🎙️
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/entries/{id}/transcribe` | POST | Trigger background transcription for an entry |
-| `/api/v1/transcriptions/{id}` | GET | Get transcription status and result |
-| `/api/v1/entries/{id}/transcriptions` | GET | List all transcriptions for an entry |
-| `/api/v1/transcriptions/{id}/set-primary` | PUT | Set a transcription as primary for display |
+| Endpoint | Method | Auth Required | Description |
+|----------|--------|---------------|-------------|
+| `/api/v1/upload-and-transcribe` | POST | Yes | Upload audio and start transcription in one request |
+| `/api/v1/entries/{id}` | GET | Yes | Get entry metadata with transcription |
 
-### System
+**Note:** Manual workflow endpoints (separate upload/transcribe) are also available. See `/docs` for details.
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check (includes DB status) |
-| `/docs` | GET | Interactive API documentation (Swagger UI) |
-| `/redoc` | GET | Alternative API documentation (ReDoc) |
-| `/openapi.json` | GET | OpenAPI 3.0 specification |
+### System 💚
+
+| Endpoint | Method | Auth Required | Description |
+|----------|--------|---------------|-------------|
+| `/health` | GET | No | Health check (includes DB status) |
+| `/docs` | GET | No | Interactive API documentation (Swagger UI) |
+| `/redoc` | GET | No | Alternative API documentation (ReDoc) |
+| `/openapi.json` | GET | No | OpenAPI 3.0 specification |
 
 ## Quick Examples
 
-### Voice Entry Workflow
+### Authentication Workflow
 
-**Upload audio file:**
+**1. Register a new user:**
 ```bash
-# Default entry_type (dream)
-curl -X POST "http://localhost:8000/api/v1/upload" \
-  -F "file=@recording.mp3;type=audio/mpeg"
-
-# Specify entry_type
-curl -X POST "http://localhost:8000/api/v1/upload" \
-  -F "file=@recording.mp3;type=audio/mpeg" \
-  -F "entry_type=journal"
-```
-
-The `entry_type` parameter is optional and defaults to "dream". Supported types: dream, journal, meeting, note, or any custom type.
-
-**Get entry metadata:**
-```bash
-curl "http://localhost:8000/api/v1/entries/{entry_id}"
-```
-
-Returns entry metadata including primary transcription if available.
-
-### Transcription Workflow
-
-**1. Trigger transcription:**
-```bash
-curl -X POST "http://localhost:8000/api/v1/entries/{entry_id}/transcribe" \
+curl -X POST "http://localhost:8000/api/v1/auth/register" \
   -H "Content-Type: application/json" \
-  -d '{"language": "auto"}'
+  -d '{
+    "email": "user@example.com",
+    "password": "SecurePass123!"
+  }'
 ```
 
-Returns `transcription_id` for status tracking. Transcription runs in background.
+Response:
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "user@example.com",
+  "is_active": true,
+  "created_at": "2025-11-10T12:00:00Z"
+}
+```
 
-**2. Check transcription status:**
+**2. Login to get tokens:**
 ```bash
-curl "http://localhost:8000/api/v1/transcriptions/{transcription_id}"
+curl -X POST "http://localhost:8000/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "SecurePass123!"
+  }'
 ```
 
-Status values: `pending`, `processing`, `completed`, `failed`
+Response:
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer"
+}
+```
 
-**3. List all transcriptions for an entry:**
+**3. Refresh access token:**
 ```bash
-curl "http://localhost:8000/api/v1/entries/{entry_id}/transcriptions"
+curl -X POST "http://localhost:8000/api/v1/auth/refresh" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }'
 ```
 
-**4. Set primary transcription (optional):**
+Response includes new `access_token` and `refresh_token`.
+
+**Important**: Save your access token and include it in the `Authorization` header for all subsequent requests.
+
+### Upload and Transcribe Workflow
+
+**Note:** All examples below require authentication. Set your token first:
 ```bash
-curl -X PUT "http://localhost:8000/api/v1/transcriptions/{transcription_id}/set-primary"
+export ACCESS_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
+
+**Upload audio file and start transcription:**
+```bash
+curl -X POST "http://localhost:8000/api/v1/upload-and-transcribe" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "file=@recording.mp3;type=audio/mpeg" \
+  -F "language=auto" \
+  -F "entry_type=dream"
+```
+
+Response includes `entry_id` and `transcription_id`. Transcription runs in the background.
+
+**Parameters:**
+- `file` (required): MP3 or M4A audio file
+- `language` (optional): Language code (e.g., `en`, `es`, `sl`) or `auto` for automatic detection. Defaults to `auto`.
+- `entry_type` (optional): Entry type (e.g., `dream`, `journal`, `meeting`, `note`). Defaults to `dream`.
+
+**Get entry with transcription:**
+```bash
+curl "http://localhost:8000/api/v1/entries/{entry_id}" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Returns entry metadata including transcription status and text (when completed).
 
 ### System
 

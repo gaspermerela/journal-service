@@ -3,14 +3,15 @@ SQLAlchemy model for voice entries table.
 """
 import uuid
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
-from sqlalchemy import String, Text, DateTime, Index
+from typing import TYPE_CHECKING, Optional
+from sqlalchemy import String, Text, DateTime, Index, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 if TYPE_CHECKING:
     from app.models.transcription import Transcription
+    from app.models.user import User
 
 
 class VoiceEntry(Base):
@@ -19,6 +20,7 @@ class VoiceEntry(Base):
 
     Attributes:
         id: Unique identifier (UUID4)
+        user_id: Foreign key to users table
         original_filename: Original name of uploaded file
         saved_filename: UUID-based filename on disk
         file_path: Absolute path to saved file
@@ -35,6 +37,14 @@ class VoiceEntry(Base):
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4
+    )
+
+    # Foreign key to user
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("journal.users.id", ondelete="CASCADE"),
+        nullable=True,  # Nullable for backward compatibility
+        index=True
     )
 
     # File metadata
@@ -85,6 +95,12 @@ class VoiceEntry(Base):
     )
 
     # Relationships
+    user: Mapped[Optional["User"]] = relationship(
+        "User",
+        back_populates="voice_entries",
+        lazy="selectin"
+    )
+
     transcriptions: Mapped[list["Transcription"]] = relationship(
         "Transcription",
         back_populates="entry",
@@ -96,6 +112,7 @@ class VoiceEntry(Base):
     __table_args__ = (
         Index("idx_voice_entries_uploaded_at", "uploaded_at"),
         Index("idx_voice_entries_entry_type", "entry_type"),
+        Index("idx_voice_entries_user_id", "user_id"),
         {"schema": "journal"}
     )
 
