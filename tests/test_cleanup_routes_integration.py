@@ -83,7 +83,7 @@ async def sample_cleaned_entry(
             "characters": [],
             "locations": ["mountains", "oceans"]
         },
-        prompt_used="dream_cleanup",
+        prompt_template_id=1,  # Reference to dream_v1 prompt
         model_name="llama3.2:3b",
         processing_started_at=datetime.utcnow(),
         processing_completed_at=datetime.utcnow()
