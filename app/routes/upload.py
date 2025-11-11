@@ -435,8 +435,7 @@ async def upload_transcribe_and_cleanup(
             voice_entry_id=entry.id,
             transcription_id=transcription.id,
             user_id=current_user.id,
-            model_name=settings.OLLAMA_MODEL,
-            prompt_used=f"{entry_type}_cleanup"
+            model_name=settings.OLLAMA_MODEL
         )
         await db.commit()
 
