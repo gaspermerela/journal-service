@@ -41,9 +41,10 @@ async def process_cleanup_background(
     """
     from app.database import get_session
 
-    llm_service = LLMCleanupService()
-
     async with get_session() as db:
+        # Create LLM service with database session for prompt lookup
+        llm_service = LLMCleanupService(db_session=db)
+
         try:
             # Update status to processing
             await db_service.update_cleaned_entry_processing(
@@ -67,7 +68,8 @@ async def process_cleanup_background(
                 cleaned_entry_id=cleaned_entry_id,
                 cleanup_status=CleanupStatus.COMPLETED,
                 cleaned_text=result["cleaned_text"],
-                analysis=result["analysis"]
+                analysis=result["analysis"],
+                prompt_template_id=result.get("prompt_template_id")
             )
             await db.commit()
 
@@ -163,8 +165,7 @@ async def trigger_cleanup(
         voice_entry_id=voice_entry.id,
         transcription_id=transcription_id,
         user_id=current_user.id,
-        model_name=settings.OLLAMA_MODEL,
-        prompt_used=f"{voice_entry.entry_type}_cleanup"
+        model_name=settings.OLLAMA_MODEL
     )
 
     await db.commit()

@@ -643,8 +643,7 @@ class DatabaseService:
         voice_entry_id: UUID,
         transcription_id: UUID,
         user_id: UUID,
-        model_name: str,
-        prompt_used: Optional[str] = None
+        model_name: str
     ) -> CleanedEntry:
         """
         Create a new cleaned entry record.
@@ -655,7 +654,6 @@ class DatabaseService:
             transcription_id: Transcription UUID
             user_id: User UUID
             model_name: LLM model name used
-            prompt_used: Prompt template used (optional)
 
         Returns:
             Created CleanedEntry instance
@@ -669,7 +667,6 @@ class DatabaseService:
                 transcription_id=transcription_id,
                 user_id=user_id,
                 model_name=model_name,
-                prompt_used=prompt_used,
                 status=CleanupStatus.PENDING
             )
 
@@ -754,7 +751,8 @@ class DatabaseService:
         cleanup_status: CleanupStatus,
         cleaned_text: Optional[str] = None,
         analysis: Optional[dict] = None,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        prompt_template_id: Optional[int] = None
     ) -> CleanedEntry:
         """
         Update cleaned entry with processing results.
@@ -766,6 +764,7 @@ class DatabaseService:
             cleaned_text: Cleaned text result
             analysis: Analysis data dict
             error_message: Error message if failed
+            prompt_template_id: ID of prompt template used (optional)
 
         Returns:
             Updated CleanedEntry instance
@@ -790,6 +789,8 @@ class DatabaseService:
                 cleaned_entry.analysis = analysis
             if error_message is not None:
                 cleaned_entry.error_message = error_message
+            if prompt_template_id is not None:
+                cleaned_entry.prompt_template_id = prompt_template_id
 
             # Update timestamps based on status (use timezone-naive datetime)
             if cleanup_status == CleanupStatus.PROCESSING and not cleaned_entry.processing_started_at:

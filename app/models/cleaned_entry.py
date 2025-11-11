@@ -14,6 +14,7 @@ from sqlalchemy import (
     Enum as SQLEnum,
     ForeignKey,
     JSON,
+    Integer,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -64,7 +65,12 @@ class CleanedEntry(Base):
     analysis = Column(JSON, nullable=True)  # Structured data: themes, emotions, etc.
 
     # Processing metadata
-    prompt_used = Column(Text, nullable=True)
+    prompt_template_id = Column(
+        Integer,
+        ForeignKey("journal.prompt_templates.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
     model_name = Column(String(100), nullable=False)
     status = Column(
         SQLEnum(
@@ -95,6 +101,7 @@ class CleanedEntry(Base):
     voice_entry = relationship("VoiceEntry", back_populates="cleaned_entries")
     transcription = relationship("Transcription", back_populates="cleaned_entries")
     user = relationship("User", back_populates="cleaned_entries")
+    prompt_template = relationship("PromptTemplate", back_populates="cleaned_entries")
 
     def __repr__(self) -> str:
         return (
