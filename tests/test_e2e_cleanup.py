@@ -14,71 +14,15 @@ Tests will be skipped if services are not available.
 """
 import os
 import pytest
-import asyncio
 from pathlib import Path
 from httpx import AsyncClient
 from typing import Tuple
 
+from tests.e2e_utils import wait_for_transcription, wait_for_cleanup
+from tests.conftest import cleanup_service_available
+
 # Real audio file to use for all tests
 REAL_AUDIO_FILE = Path("tests/fixtures/crocodile.mp3")
-
-
-@pytest.fixture
-async def authenticated_e2e_cleanup_client(real_api_client: AsyncClient) -> Tuple[AsyncClient, str]:
-    """
-    Create a new user, authenticate, and return the real HTTP client with auth token.
-
-    Uses real_api_client which makes actual HTTP requests to the Docker container.
-
-    Returns:
-        Tuple of (authenticated client, user email)
-    """
-    # Generate unique email for this test
-    email = f"e2e_cleanup_{os.urandom(4).hex()}@example.com"
-    password = "E2ECleanup123!"
-
-    # Register
-    register_response = await real_api_client.post(
-        "/api/v1/auth/register",
-        json={"email": email, "password": password}
-    )
-    assert register_response.status_code == 201
-
-    # Login
-    login_response = await real_api_client.post(
-        "/api/v1/auth/login",
-        json={"email": email, "password": password}
-    )
-    assert login_response.status_code == 200
-
-    # Set authorization header
-    access_token = login_response.json()["access_token"]
-    real_api_client.headers["Authorization"] = f"Bearer {access_token}"
-
-    return real_api_client, email
-
-
-def cleanup_service_available() -> bool:
-    """
-    Check if cleanup service (Ollama) is available.
-
-    For e2e tests, we check if:
-    1. The app is reachable via HTTP
-    2. Ollama is reachable
-    """
-    try:
-        import httpx
-        # Check if app is running
-        app_response = httpx.get("http://localhost:8000/health", timeout=2)
-        if app_response.status_code != 200:
-            return False
-
-        # Check if Ollama is running
-        ollama_response = httpx.get("http://localhost:11434/api/tags", timeout=2)
-        return ollama_response.status_code == 200
-    except Exception:
-        return False
-
 
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
@@ -87,7 +31,7 @@ def cleanup_service_available() -> bool:
 )
 @pytest.mark.asyncio
 async def test_e2e_cleanup_full_workflow(
-    authenticated_e2e_cleanup_client: Tuple[AsyncClient, str]
+    authenticated_e2e_client: Tuple[AsyncClient, str]
 ):
     """
     Test complete cleanup workflow with real Whisper and Ollama:
@@ -98,7 +42,7 @@ async def test_e2e_cleanup_full_workflow(
 
     This test uses REAL services (no mocks).
     """
-    client, email = authenticated_e2e_cleanup_client
+    client, email = authenticated_e2e_client
 
     # Check if real audio file exists
     if not REAL_AUDIO_FILE.exists():
@@ -123,27 +67,12 @@ async def test_e2e_cleanup_full_workflow(
     print(f"✓ Started transcription: {transcription_id}")
 
     # Step 3: Wait for transcription to complete
-    max_wait_transcribe = 90
-    wait_interval = 3
-    waited = 0
-    transcription = None
-
-    print(f"\nWaiting for transcription...")
-    while waited < max_wait_transcribe:
-        await asyncio.sleep(wait_interval)
-        waited += wait_interval
-
-        response = await client.get(f"/api/v1/transcriptions/{transcription_id}")
-        transcription = response.json()
-
-        print(f"  [{waited}s] Transcription status: {transcription['status']}")
-
-        if transcription["status"] == "completed":
-            break
-        elif transcription["status"] == "failed":
-            pytest.fail(f"Transcription failed: {transcription.get('error_message')}")
-
-    assert transcription["status"] == "completed", f"Transcription timeout after {max_wait_transcribe}s"
+    transcription = await wait_for_transcription(
+        client=client,
+        transcription_id=transcription_id,
+        max_wait=90,
+        poll_interval=3
+    )
     assert transcription["transcribed_text"] is not None
     print(f"✓ Transcription completed: {transcription['transcribed_text'][:80]}...")
 
@@ -158,27 +87,14 @@ async def test_e2e_cleanup_full_workflow(
     print(f"\n✓ Started cleanup: {cleanup_id}")
 
     # Step 5: Wait for cleanup to complete
-    max_wait_cleanup = 120
-    waited = 0
-    cleaned_entry = None
-
-    print(f"\nWaiting for LLM cleanup...")
-    while waited < max_wait_cleanup:
-        await asyncio.sleep(wait_interval)
-        waited += wait_interval
-
-        response = await client.get(f"/api/v1/cleaned-entries/{cleanup_id}")
-        cleaned_entry = response.json()
-
-        print(f"  [{waited}s] Cleanup status: {cleaned_entry['status']}")
-
-        if cleaned_entry["status"] == "completed":
-            break
-        elif cleaned_entry["status"] == "failed":
-            pytest.fail(f"Cleanup failed: {cleaned_entry.get('error_message')}")
+    cleaned_entry = await wait_for_cleanup(
+        client=client,
+        cleanup_id=cleanup_id,
+        max_wait=120,
+        poll_interval=3
+    )
 
     # Step 6: Verify real LLM results
-    assert cleaned_entry["status"] == "completed", f"Cleanup timeout after {max_wait_cleanup}s"
     assert cleaned_entry["cleaned_text"] is not None
     assert len(cleaned_entry["cleaned_text"]) > 0
 
@@ -206,7 +122,7 @@ async def test_e2e_cleanup_full_workflow(
 )
 @pytest.mark.asyncio
 async def test_e2e_cleanup_multiple_attempts(
-    authenticated_e2e_cleanup_client: Tuple[AsyncClient, str]
+    authenticated_e2e_client: Tuple[AsyncClient, str]
 ):
     """
     Test multiple cleanup attempts on the same transcription.
@@ -216,7 +132,7 @@ async def test_e2e_cleanup_multiple_attempts(
     2. Each cleanup creates a separate cleaned entry
     3. All cleanups are linked to the same transcription
     """
-    client, email = authenticated_e2e_cleanup_client
+    client, email = authenticated_e2e_client
 
     # Check if real audio file exists
     if not REAL_AUDIO_FILE.exists():
@@ -236,22 +152,12 @@ async def test_e2e_cleanup_multiple_attempts(
     transcription_id = transcribe_response.json()["transcription_id"]
 
     # Wait for transcription
-    max_wait = 240
-    wait_interval = 3
-    waited = 0
-
-    print(f"\nWaiting for transcription...")
-    while waited < max_wait:
-        await asyncio.sleep(wait_interval)
-        waited += wait_interval
-
-        response = await client.get(f"/api/v1/transcriptions/{transcription_id}")
-        transcription = response.json()
-
-        if transcription["status"] == "completed":
-            break
-
-    assert transcription["status"] == "completed"
+    transcription = await wait_for_transcription(
+        client=client,
+        transcription_id=transcription_id,
+        max_wait=240,
+        poll_interval=3
+    )
     print(f"✓ Transcription completed")
 
     # Step 2: Trigger first cleanup
@@ -274,23 +180,12 @@ async def test_e2e_cleanup_multiple_attempts(
     assert cleanup1_id != cleanup2_id, "Should create separate cleanup entries"
 
     # Step 4: Wait for first cleanup to complete
-    max_wait_cleanup = 45
-    waited = 0
-
-    print(f"\nWaiting for first cleanup...")
-    while waited < max_wait_cleanup:
-        await asyncio.sleep(wait_interval)
-        waited += wait_interval
-
-        response = await client.get(f"/api/v1/cleaned-entries/{cleanup1_id}")
-        cleaned1 = response.json()
-
-        print(f"  [{waited}s] Cleanup 1 status: {cleaned1['status']}")
-
-        if cleaned1["status"] in ["completed", "failed"]:
-            break
-
-    assert cleaned1["status"] == "completed", "First cleanup should complete"
+    cleaned1 = await wait_for_cleanup(
+        client=client,
+        cleanup_id=cleanup1_id,
+        max_wait=45,
+        poll_interval=3
+    )
     print(f"✓ First cleanup completed")
 
     # Step 5: List all cleaned entries for the entry
@@ -320,10 +215,10 @@ async def test_e2e_cleanup_multiple_attempts(
 )
 @pytest.mark.asyncio
 async def test_e2e_cleanup_invalid_transcription(
-    authenticated_e2e_cleanup_client: Tuple[AsyncClient, str]
+    authenticated_e2e_client: Tuple[AsyncClient, str]
 ):
     """Test cleanup fails gracefully with invalid transcription ID."""
-    client, email = authenticated_e2e_cleanup_client
+    client, email = authenticated_e2e_client
 
     fake_transcription_id = "00000000-0000-0000-0000-000000000000"
 
@@ -344,10 +239,10 @@ async def test_e2e_cleanup_invalid_transcription(
 )
 @pytest.mark.asyncio
 async def test_e2e_cleanup_list_for_entry(
-    authenticated_e2e_cleanup_client: Tuple[AsyncClient, str]
+    authenticated_e2e_client: Tuple[AsyncClient, str]
 ):
     """Test retrieving all cleanups for a voice entry."""
-    client, email = authenticated_e2e_cleanup_client
+    client, email = authenticated_e2e_client
 
     # Check if real audio file exists
     if not REAL_AUDIO_FILE.exists():
@@ -416,19 +311,12 @@ async def test_e2e_cleanup_user_isolation(
     transcription_a_id = transcribe_a.json()["transcription_id"]
 
     # Wait for transcription
-    max_wait = 90
-    wait_interval = 3
-    waited = 0
-
-    while waited < max_wait:
-        await asyncio.sleep(wait_interval)
-        waited += wait_interval
-
-        response = await real_api_client.get(f"/api/v1/transcriptions/{transcription_a_id}")
-        transcription = response.json()
-
-        if transcription["status"] == "completed":
-            break
+    transcription = await wait_for_transcription(
+        client=real_api_client,
+        transcription_id=transcription_a_id,
+        max_wait=90,
+        poll_interval=3
+    )
 
     # Trigger cleanup for User A
     cleanup_a = await real_api_client.post(

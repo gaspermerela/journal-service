@@ -7,7 +7,7 @@ import shutil
 import tempfile
 import uuid
 from pathlib import Path
-from typing import AsyncGenerator, Generator
+from typing import AsyncGenerator, Generator, Tuple
 
 import pytest
 from httpx import AsyncClient, ASGITransport
@@ -439,3 +439,74 @@ async def real_api_client() -> AsyncGenerator[AsyncClient, None]:
         timeout=120.0  # Longer timeout for e2e operations
     ) as client:
         yield client
+
+
+@pytest.fixture
+async def authenticated_e2e_client(real_api_client: AsyncClient) -> Tuple[AsyncClient, str]:
+    """
+    Create a new user, authenticate, and return the real HTTP client with auth token.
+
+    Uses real_api_client which makes actual HTTP requests to the Docker container.
+    This is a shared fixture for all e2e tests.
+
+    Returns:
+        Tuple of (authenticated client, user email)
+    """
+    import os
+    from typing import Tuple
+
+    # Generate unique email for this test
+    email = f"e2e_user_{os.urandom(4).hex()}@example.com"
+    password = "E2EPassword123!"
+
+    # Register
+    register_response = await real_api_client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "password": password}
+    )
+    assert register_response.status_code == 201
+
+    # Login
+    login_response = await real_api_client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "password": password}
+    )
+    assert login_response.status_code == 200
+
+    # Set authorization header
+    access_token = login_response.json()["access_token"]
+    real_api_client.headers["Authorization"] = f"Bearer {access_token}"
+
+    return real_api_client, email
+
+
+# E2E Service Availability Checks
+
+def app_is_available() -> bool:
+    """Check if the app is reachable at http://localhost:8000."""
+    try:
+        import httpx
+        response = httpx.get("http://localhost:8000/health", timeout=2)
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
+def transcription_service_available() -> bool:
+    """Check if transcription service (app) is available for e2e tests."""
+    return app_is_available()
+
+
+def ollama_available() -> bool:
+    """Check if Ollama service is available at http://localhost:11434."""
+    try:
+        import httpx
+        response = httpx.get("http://localhost:11434/api/tags", timeout=2)
+        return response.status_code == 200
+    except Exception:
+        return False
+
+
+def cleanup_service_available() -> bool:
+    """Check if cleanup service (app + Ollama) is available for e2e tests."""
+    return app_is_available() and ollama_available()

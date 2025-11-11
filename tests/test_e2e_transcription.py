@@ -14,66 +14,15 @@ Tests will be skipped if transcription service is not available.
 """
 import os
 import pytest
-import asyncio
 from pathlib import Path
 from httpx import AsyncClient
 from typing import Tuple
 
+from tests.e2e_utils import wait_for_transcription
+from tests.conftest import transcription_service_available
+
 # Real audio file to use for all tests
 REAL_AUDIO_FILE = Path("tests/fixtures/crocodile.mp3")
-
-
-@pytest.fixture
-async def authenticated_e2e_client(real_api_client: AsyncClient) -> Tuple[AsyncClient, str]:
-    """
-    Create a new user, authenticate, and return the real HTTP client with auth token.
-
-    Uses real_api_client which makes actual HTTP requests to the Docker container.
-
-    Returns:
-        Tuple of (authenticated client, user email)
-    """
-    # Generate unique email for this test
-    email = f"e2e_user_{os.urandom(4).hex()}@example.com"
-    password = "E2EPassword123!"
-
-    # Register
-    register_response = await real_api_client.post(
-        "/api/v1/auth/register",
-        json={"email": email, "password": password}
-    )
-    assert register_response.status_code == 201
-
-    # Login
-    login_response = await real_api_client.post(
-        "/api/v1/auth/login",
-        json={"email": email, "password": password}
-    )
-    assert login_response.status_code == 200
-
-    # Set authorization header
-    access_token = login_response.json()["access_token"]
-    real_api_client.headers["Authorization"] = f"Bearer {access_token}"
-
-    return real_api_client, email
-
-
-def transcription_service_available() -> bool:
-    """
-    Check if transcription service is available.
-
-    For e2e tests, we check if the app is reachable via HTTP.
-    This works whether the app is running locally or in Docker.
-    """
-    try:
-        import httpx
-        # Try to reach the health endpoint
-        # Adjust the URL if your app runs on a different host/port
-        response = httpx.get("http://localhost:8000/health", timeout=2)
-        return response.status_code == 200
-    except Exception:
-        # If we can't reach the app, transcription service is not available
-        return False
 
 
 @pytest.mark.e2e_real
@@ -114,29 +63,14 @@ async def test_e2e_basic_transcription_flow(
     transcription_id = transcribe_response.json()["transcription_id"]
 
     # Step 3: Wait for transcription to complete
-    max_wait = 60  # Whisper can take time
-    wait_interval = 2
-    waited = 0
-    transcription = None
-
-    print(f"\nWaiting for real transcription...")
-    while waited < max_wait:
-        await asyncio.sleep(wait_interval)
-        waited += wait_interval
-
-        response = await client.get(f"/api/v1/transcriptions/{transcription_id}")
-        transcription = response.json()
-
-        print(f"  [{waited}s] Status: {transcription['status']}")
-
-        if transcription["status"] == "completed":
-            break
-        elif transcription["status"] == "failed":
-            pytest.fail(f"Transcription failed: {transcription.get('error_message')}")
+    transcription = await wait_for_transcription(
+        client=client,
+        transcription_id=transcription_id,
+        max_wait=60,
+        poll_interval=2
+    )
 
     # Step 4: Verify transcription completed successfully
-    assert transcription is not None, "Transcription response was None"
-    assert transcription["status"] == "completed", f"Transcription did not complete in {max_wait}s"
     assert transcription["id"] == transcription_id
     assert transcription["transcribed_text"] is not None
     assert len(transcription["transcribed_text"]) > 0
@@ -200,24 +134,12 @@ async def test_e2e_full_transcription_lifecycle(
     assert transcription1_id != transcription2_id, "Should create separate transcriptions"
 
     # Step 4: Wait for first transcription to complete
-    max_wait = 60
-    wait_interval = 2
-    waited = 0
-
-    print(f"\nWaiting for first transcription...")
-    while waited < max_wait:
-        await asyncio.sleep(wait_interval)
-        waited += wait_interval
-
-        response = await client.get(f"/api/v1/transcriptions/{transcription1_id}")
-        transcription1 = response.json()
-
-        print(f"  [{waited}s] Transcription 1 status: {transcription1['status']}")
-
-        if transcription1["status"] in ["completed", "failed"]:
-            break
-
-    assert transcription1["status"] == "completed", "First transcription should complete"
+    transcription1 = await wait_for_transcription(
+        client=client,
+        transcription_id=transcription1_id,
+        max_wait=60,
+        poll_interval=2
+    )
     print(f"✓ First transcription completed")
 
     # Step 5: Check entry includes transcription data
@@ -291,28 +213,14 @@ async def test_e2e_transcription_with_real_audio(
     transcription_id = transcribe_response.json()["transcription_id"]
 
     # Step 3: Wait for transcription to complete
-    max_wait = 90  # Real audio may take longer
-    wait_interval = 3
-    waited = 0
-    transcription = None
-
-    print(f"\nWaiting for transcription of real audio file...")
-    while waited < max_wait:
-        await asyncio.sleep(wait_interval)
-        waited += wait_interval
-
-        response = await client.get(f"/api/v1/transcriptions/{transcription_id}")
-        transcription = response.json()
-
-        print(f"  [{waited}s] Status: {transcription['status']}")
-
-        if transcription["status"] == "completed":
-            break
-        elif transcription["status"] == "failed":
-            pytest.fail(f"Transcription failed: {transcription.get('error_message')}")
+    transcription = await wait_for_transcription(
+        client=client,
+        transcription_id=transcription_id,
+        max_wait=90,  # Real audio may take longer
+        poll_interval=3
+    )
 
     # Step 4: Verify results
-    assert transcription["status"] == "completed", f"Transcription timeout after {max_wait}s"
     assert transcription["transcribed_text"] is not None
     assert len(transcription["transcribed_text"]) > 10  # Should have substantial text
 
