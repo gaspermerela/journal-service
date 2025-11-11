@@ -751,7 +751,7 @@ class DatabaseService:
         self,
         db: AsyncSession,
         cleaned_entry_id: UUID,
-        status: CleanupStatus,
+        cleanup_status: CleanupStatus,
         cleaned_text: Optional[str] = None,
         analysis: Optional[dict] = None,
         error_message: Optional[str] = None
@@ -762,7 +762,7 @@ class DatabaseService:
         Args:
             db: Database session
             cleaned_entry_id: UUID of the cleaned entry
-            status: New status
+            cleanup_status: New cleanup status
             cleaned_text: Cleaned text result
             analysis: Analysis data dict
             error_message: Error message if failed
@@ -783,7 +783,7 @@ class DatabaseService:
                 )
 
             # Update fields
-            cleaned_entry.status = status
+            cleaned_entry.status = cleanup_status
             if cleaned_text is not None:
                 cleaned_entry.cleaned_text = cleaned_text
             if analysis is not None:
@@ -791,11 +791,11 @@ class DatabaseService:
             if error_message is not None:
                 cleaned_entry.error_message = error_message
 
-            # Update timestamps based on status
-            if status == CleanupStatus.PROCESSING and not cleaned_entry.processing_started_at:
-                cleaned_entry.processing_started_at = datetime.now(timezone.utc)
-            elif status in [CleanupStatus.COMPLETED, CleanupStatus.FAILED]:
-                cleaned_entry.processing_completed_at = datetime.now(timezone.utc)
+            # Update timestamps based on status (use timezone-naive datetime)
+            if cleanup_status == CleanupStatus.PROCESSING and not cleaned_entry.processing_started_at:
+                cleaned_entry.processing_started_at = datetime.utcnow()
+            elif cleanup_status in [CleanupStatus.COMPLETED, CleanupStatus.FAILED]:
+                cleaned_entry.processing_completed_at = datetime.utcnow()
 
             await db.flush()
             await db.refresh(cleaned_entry)
@@ -803,7 +803,7 @@ class DatabaseService:
             logger.info(
                 f"Cleaned entry updated",
                 cleaned_entry_id=str(cleaned_entry_id),
-                status=status.value
+                status=cleanup_status.value
             )
 
             return cleaned_entry

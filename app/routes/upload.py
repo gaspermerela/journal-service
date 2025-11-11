@@ -493,7 +493,7 @@ async def upload_transcribe_and_cleanup(
                     await db_service.update_cleaned_entry_processing(
                         db=db,
                         cleaned_entry_id=cleaned_entry_id,
-                        status=CleanupStatus.FAILED,
+                        cleanup_status=CleanupStatus.FAILED,
                         error_message="Transcription failed or produced no text"
                     )
                     await db.commit()
