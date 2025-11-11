@@ -32,10 +32,31 @@ Access tokens expire after `ACCESS_TOKEN_EXPIRE_DAYS` days (7 by default). Refre
 
 | Endpoint | Method | Auth Required | Description |
 |----------|--------|---------------|-------------|
-| `/api/v1/upload-and-transcribe` | POST | Yes | Upload audio and start transcription in one request |
+| `/api/v1/upload-transcribe-cleanup` | POST | Yes | **RECOMMENDED**: Complete workflow - upload, transcribe, and cleanup |
+| `/api/v1/upload-and-transcribe` | POST | Yes | Upload audio and start transcription |
 | `/api/v1/entries/{id}` | GET | Yes | Get entry metadata with transcription |
+| `/api/v1/entries/{id}/cleaned` | GET | Yes | List all cleaned entries for a voice entry |
 
-**Note:** Manual workflow endpoints (separate upload/transcribe) are also available. See `/docs` for details.
+**Note:** Manual workflow endpoints (separate upload/transcribe/cleanup) are also available. See `/docs` for details.
+
+### Transcription & Cleanup 🤖
+
+| Endpoint | Method | Auth Required | Description |
+|----------|--------|---------------|-------------|
+| `/api/v1/transcriptions/{id}` | GET | Yes | Get transcription status and text |
+| `/api/v1/transcriptions/{id}/cleanup` | POST | Yes | Start LLM cleanup of transcription |
+| `/api/v1/transcriptions/{id}/set-primary` | PUT | Yes | Set transcription as primary for entry |
+| `/api/v1/cleaned-entries/{id}` | GET | Yes | Get cleaned text with analysis |
+
+### Manual Workflow (Advanced) 🔧
+
+For granular control, use separate endpoints:
+
+| Endpoint | Method | Auth Required | Description |
+|----------|--------|---------------|-------------|
+| `/api/v1/upload` | POST | Yes | Upload audio file only |
+| `/api/v1/entries/{id}/transcribe` | POST | Yes | Trigger transcription for uploaded entry |
+| `/api/v1/entries/{id}/transcriptions` | GET | Yes | List all transcriptions for an entry |
 
 ### System 💚
 
@@ -102,28 +123,66 @@ Response includes new `access_token` and `refresh_token`.
 
 **Important**: Save your access token and include it in the `Authorization` header for all subsequent requests.
 
-### Upload and Transcribe Workflow
+### Complete Workflow (Recommended)
 
 **Note:** All examples below require authentication. Set your token first:
 ```bash
 export ACCESS_TOKEN="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
-**Upload audio file and start transcription:**
+**Upload, transcribe, and cleanup in one request:**
 ```bash
-curl -X POST "http://localhost:8000/api/v1/upload-and-transcribe" \
+curl -X POST "http://localhost:8000/api/v1/upload-transcribe-cleanup" \
   -H "Authorization: Bearer $ACCESS_TOKEN" \
   -F "file=@recording.mp3;type=audio/mpeg" \
   -F "language=auto" \
   -F "entry_type=dream"
 ```
 
-Response includes `entry_id` and `transcription_id`. Transcription runs in the background.
+Response:
+```json
+{
+  "entry_id": "550e8400-e29b-41d4-a716-446655440000",
+  "transcription_id": "660e8400-e29b-41d4-a716-446655440001",
+  "cleanup_id": "770e8400-e29b-41d4-a716-446655440002",
+  "transcription_status": "processing",
+  "cleanup_status": "pending",
+  "message": "File uploaded, transcription and cleanup started"
+}
+```
+
+This endpoint:
+1. Uploads the audio file
+2. Starts transcription (Whisper)
+3. Starts cleanup (LLM) after transcription completes
+4. Returns all IDs immediately
 
 **Parameters:**
 - `file` (required): MP3 or M4A audio file
-- `language` (optional): Language code (e.g., `en`, `es`, `sl`) or `auto` for automatic detection. Defaults to `auto`.
-- `entry_type` (optional): Entry type (e.g., `dream`, `journal`, `meeting`, `note`). Defaults to `dream`.
+- `language` (optional): Language code (`en`, `es`, `sl`) or `auto`. Default: `auto`
+- `entry_type` (optional): Entry type (`dream`, `journal`, `meeting`, `note`). Default: `dream`
+
+**Check cleanup status:**
+```bash
+curl "http://localhost:8000/api/v1/cleaned-entries/{cleanup_id}" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Returns cleaned text with theme and emotion analysis when complete.
+
+### Upload and Transcribe Only
+
+If you don't need LLM cleanup, use the simpler endpoint:
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/upload-and-transcribe" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "file=@recording.mp3;type=audio/mpeg" \
+  -F "language=en" \
+  -F "entry_type=journal"
+```
+
+Response includes `entry_id` and `transcription_id`. Transcription runs in the background.
 
 **Get entry with transcription:**
 ```bash

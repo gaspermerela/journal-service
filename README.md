@@ -43,8 +43,13 @@ This approach could extend to general voice-based daily journaling.
 - JWT-based authentication with access and refresh tokens
 - User registration and login
 
+**Current - Phase 4 (LLM Text Cleanup):** ✅
+- Ollama-based LLM text cleanup and analysis
+- Background cleanup processing with status tracking
+- Theme and emotion extraction from transcriptions
+- Multiple cleanup attempts per transcription
+
 **Future Phases:**
-- **Phase 4**: LLM-based text cleanup and analysis
 - **Phase 5**: Notion synchronization
 - Frontend UI under consideration for future expansion
 
@@ -109,6 +114,7 @@ FastAPI + PostgreSQL + async SQLAlchemy | [Full details](docs/architecture.md)
 ```bash
 pytest -v                                    # All tests
 pytest --cov=app --cov-report=term-missing  # With coverage
+pytest -m e2e_real                           # E2E tests (requires complete Docker setup)
 ```
 
 ## Documentation
