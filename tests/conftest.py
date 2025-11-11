@@ -421,3 +421,21 @@ async def sample_pending_transcription(
     await db_session.refresh(transcription)
 
     return transcription
+
+@pytest.fixture
+async def real_api_client() -> AsyncGenerator[AsyncClient, None]:
+    """
+    Create a real HTTP client for e2e tests that connects to the running Docker app.
+
+    This makes actual HTTP requests to http://localhost:8000 instead of using ASGI transport.
+    Use this fixture for true end-to-end tests that need real services (Whisper, Ollama, etc.)
+
+    Prerequisites:
+    - Docker container must be running
+    - App must be accessible at http://localhost:8000
+    """
+    async with AsyncClient(
+        base_url="http://localhost:8000",
+        timeout=120.0  # Longer timeout for e2e operations
+    ) as client:
+        yield client
