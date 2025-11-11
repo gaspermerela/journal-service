@@ -113,10 +113,16 @@ class Transcription(Base):
         onupdate=lambda: datetime.now(timezone.utc)
     )
 
-    # Relationship to VoiceEntry
+    # Relationships
     entry: Mapped["VoiceEntry"] = relationship(
         "VoiceEntry",
         back_populates="transcriptions"
+    )
+
+    cleaned_entries: Mapped[list["CleanedEntry"]] = relationship(
+        "CleanedEntry",
+        back_populates="transcription",
+        cascade="all, delete-orphan"
     )
 
     # Indexes for query performance and schema configuration

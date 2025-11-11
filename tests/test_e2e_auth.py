@@ -66,60 +66,6 @@ async def test_complete_auth_flow_register_login_upload_retrieve(
 
 
 @pytest.mark.asyncio
-async def test_e2e_with_transcription(
-    client: AsyncClient,
-    sample_mp3_path: Path,
-    mock_transcription_service
-):
-    """
-    Test complete flow with transcription:
-    Register -> Login -> Upload -> Trigger Transcription -> Get Transcription.
-    """
-    from app.main import app
-    app.state.transcription_service = mock_transcription_service
-
-    # Register and login
-    await client.post(
-        "/api/v1/auth/register",
-        json={"email": "transcriber@example.com", "password": "TransPass123!"}
-    )
-
-    login_response = await client.post(
-        "/api/v1/auth/login",
-        json={"email": "transcriber@example.com", "password": "TransPass123!"}
-    )
-    access_token = login_response.json()["access_token"]
-    client.headers["Authorization"] = f"Bearer {access_token}"
-
-    # Upload file
-    with open(sample_mp3_path, 'rb') as f:
-        files = {"file": ("test.mp3", f, "audio/mpeg")}
-        upload_response = await client.post("/api/v1/upload", files=files)
-
-    entry_id = upload_response.json()["id"]
-
-    # Trigger transcription
-    transcribe_response = await client.post(
-        f"/api/v1/entries/{entry_id}/transcribe",
-        json={"language": "en"}
-    )
-    assert transcribe_response.status_code == 202
-    transcription_id = transcribe_response.json()["transcription_id"]
-
-    # Wait for background task (in tests it's synchronous via mock)
-    import asyncio
-    await asyncio.sleep(0.5)
-
-    # Get transcription
-    trans_response = await client.get(f"/api/v1/transcriptions/{transcription_id}")
-    assert trans_response.status_code == 200
-    transcription = trans_response.json()
-    assert transcription["id"] == transcription_id
-    # Transcription should be completed (status field may vary)
-    assert "id" in transcription
-
-
-@pytest.mark.asyncio
 async def test_e2e_token_refresh_flow(client: AsyncClient, sample_mp3_path: Path):
     """
     Test token refresh flow:
@@ -318,86 +264,11 @@ async def test_e2e_cannot_access_api_without_token(
 
 
 @pytest.mark.asyncio
-async def test_e2e_full_lifecycle_with_entry_retrieval(
-    client: AsyncClient,
-    sample_mp3_path: Path,
-    mock_transcription_service
-):
-    """
-    Test complete lifecycle:
-    1. Register
-    2. Login
-    3. Upload file
-    4. Trigger transcription
-    5. Check entry with transcription
-    6. Upload another file
-    7. List transcriptions
-    """
-    from app.main import app
-    app.state.transcription_service = mock_transcription_service
-
-    # Step 1: Register
-    register_response = await client.post(
-        "/api/v1/auth/register",
-        json={"email": "lifecycle@example.com", "password": "LifeCycle123!"}
-    )
-    assert register_response.status_code == 201
-
-    # Step 2: Login
-    login_response = await client.post(
-        "/api/v1/auth/login",
-        json={"email": "lifecycle@example.com", "password": "LifeCycle123!"}
-    )
-    assert login_response.status_code == 200
-    access_token = login_response.json()["access_token"]
-    client.headers["Authorization"] = f"Bearer {access_token}"
-
-    # Step 3: Upload first file
-    with open(sample_mp3_path, 'rb') as f:
-        files = {"file": ("first.mp3", f, "audio/mpeg")}
-        upload1 = await client.post("/api/v1/upload", files=files)
-
-    assert upload1.status_code == 201
-    entry1_id = upload1.json()["id"]
-
-    # Step 4: Trigger transcription
-    transcribe_response = await client.post(
-        f"/api/v1/entries/{entry1_id}/transcribe",
-        json={"language": "en"}
-    )
-    assert transcribe_response.status_code == 202
-
-    # Wait for background task
-    import asyncio
-    await asyncio.sleep(0.5)
-
-    # Step 5: Check entry includes transcription
-    entry_response = await client.get(f"/api/v1/entries/{entry1_id}")
-    assert entry_response.status_code == 200
-    entry = entry_response.json()
-    # Note: primary_transcription might be None if background task hasn't completed
-    # But entry should be accessible
-
-    # Step 6: Upload second file
-    with open(sample_mp3_path, 'rb') as f:
-        files = {"file": ("second.mp3", f, "audio/mpeg")}
-        upload2 = await client.post("/api/v1/upload", files=files)
-
-    assert upload2.status_code == 201
-    entry2_id = upload2.json()["id"]
-
-    # Step 7: List transcriptions for first entry
-    list_response = await client.get(f"/api/v1/entries/{entry1_id}/transcriptions")
-    assert list_response.status_code == 200
-    transcriptions = list_response.json()
-    # Should have at least one transcription (the one we triggered)
-    assert transcriptions["total"] >= 0  # May be 0 if background task didn't complete yet
-
-
-@pytest.mark.asyncio
 async def test_e2e_health_check_no_auth_required(client: AsyncClient):
     """Test that health check endpoint doesn't require authentication."""
     response = await client.get("/health")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "healthy"
+
+

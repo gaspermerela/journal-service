@@ -1,3 +1,4 @@
+
 """
 Alembic environment configuration for async migrations.
 """
@@ -15,6 +16,7 @@ from app.database import Base
 from app.models.user import User  # noqa: F401
 from app.models.voice_entry import VoiceEntry  # noqa: F401
 from app.models.transcription import Transcription  # noqa: F401
+from app.models.cleaned_entry import CleanedEntry  # noqa: F401
 from app.config import settings
 
 # this is the Alembic Config object, which provides
@@ -66,14 +68,6 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    # Ensure journal schema exists before Alembic tries to create version table
-    result = connection.execute(text(
-        "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'journal'"
-    ))
-    if not result.fetchone():
-        connection.execute(text("CREATE SCHEMA journal"))
-        connection.commit()
-
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
@@ -82,6 +76,14 @@ def do_run_migrations(connection: Connection) -> None:
     )
 
     with context.begin_transaction():
+        # Ensure journal schema exists before running migrations
+        # Must be INSIDE the transaction context
+        result = connection.execute(text(
+            "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'journal'"
+        ))
+        if not result.fetchone():
+            connection.execute(text("CREATE SCHEMA journal"))
+
         context.run_migrations()
 
 
