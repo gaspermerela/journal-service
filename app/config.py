@@ -2,7 +2,7 @@
 Configuration management using Pydantic Settings.
 Loads configuration from environment variables and .env file.
 """
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -56,6 +56,17 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_DAYS: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
+    # Notion Integration Configuration
+    NOTION_RATE_LIMIT_REQUESTS: int = 3  # Requests per second
+    NOTION_RATE_LIMIT_PERIOD: int = 1    # Period in seconds
+    NOTION_MAX_RETRIES: int = 3          # Max retry attempts on failure
+    NOTION_RETRY_DELAY: int = 5          # Seconds between retries
+
+    # Encryption Configuration
+    # Uses JWT_SECRET_KEY for encryption by default
+    # Can be overridden with dedicated ENCRYPTION_KEY for better security
+    ENCRYPTION_KEY: Optional[str] = None  # Optional - falls back to JWT_SECRET_KEY
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -81,6 +92,14 @@ class Settings(BaseSettings):
     def max_file_size_bytes(self) -> int:
         """Convert max file size from MB to bytes."""
         return self.MAX_FILE_SIZE_MB * 1024 * 1024
+
+    @property
+    def api_encryption_key(self) -> str:
+        """
+        Key for encrypting API keys in database.
+        Falls back to JWT_SECRET_KEY if ENCRYPTION_KEY not set.
+        """
+        return self.ENCRYPTION_KEY or self.JWT_SECRET_KEY
 
 
 # Global settings instance
