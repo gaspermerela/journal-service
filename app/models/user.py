@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from sqlalchemy import String, Boolean, DateTime, Index
+from typing import Optional
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
@@ -12,6 +13,7 @@ from app.database import Base
 if TYPE_CHECKING:
     from app.models.voice_entry import VoiceEntry
     from app.models.cleaned_entry import CleanedEntry
+    from app.models.notion_sync import NotionSync
 
 
 class User(Base):
@@ -57,6 +59,31 @@ class User(Base):
         server_default="true"
     )
 
+    # Notion integration fields
+    notion_api_key_encrypted: Mapped[Optional[str]] = mapped_column(
+        String(500),
+        nullable=True
+    )
+
+    notion_database_id: Mapped[Optional[str]] = mapped_column(
+        String(100),
+        nullable=True
+    )
+
+    notion_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false"
+    )
+
+    notion_auto_sync: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true"
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -81,6 +108,13 @@ class User(Base):
 
     cleaned_entries: Mapped[list["CleanedEntry"]] = relationship(
         "CleanedEntry",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+
+    notion_syncs: Mapped[list["NotionSync"]] = relationship(
+        "NotionSync",
         back_populates="user",
         cascade="all, delete-orphan",
         lazy="selectin"

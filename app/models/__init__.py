@@ -6,6 +6,7 @@ from app.models.voice_entry import VoiceEntry
 from app.models.transcription import Transcription
 from app.models.cleaned_entry import CleanedEntry, CleanupStatus
 from app.models.prompt_template import PromptTemplate
+from app.models.notion_sync import NotionSync, SyncStatus
 
 __all__ = [
     "User",
@@ -14,4 +15,6 @@ __all__ = [
     "CleanedEntry",
     "CleanupStatus",
     "PromptTemplate",
+    "NotionSync",
+    "SyncStatus",
 ]
