@@ -29,7 +29,9 @@ router = APIRouter()
 async def process_cleanup_background(
     cleaned_entry_id: UUID,
     transcription_text: str,
-    entry_type: str
+    entry_type: str,
+    user_id: UUID,
+    voice_entry_id: UUID
 ):
     """
     Background task to process LLM cleanup.
@@ -38,8 +40,12 @@ async def process_cleanup_background(
         cleaned_entry_id: UUID of the cleaned entry to update
         transcription_text: Raw transcription text to clean
         entry_type: Type of entry (dream, journal, etc.)
+        user_id: User ID (for auto-sync)
+        voice_entry_id: Voice entry ID (for auto-sync)
     """
     from app.database import get_session
+    from app.models.notion_sync import SyncStatus as NotionSyncStatus
+    from app.routes.notion import process_notion_sync_background
 
     async with get_session() as db:
         # Create LLM service with database session for prompt lookup
@@ -74,6 +80,47 @@ async def process_cleanup_background(
             await db.commit()
 
             logger.info(f"LLM cleanup completed for entry {cleaned_entry_id}")
+
+            # Auto-sync to Notion if enabled
+            try:
+                user = await db_service.get_user_by_id(db, user_id)
+                if user and user.notion_enabled and user.notion_auto_sync and user.notion_api_key_encrypted:
+                    logger.info(
+                        f"Auto-sync enabled, triggering Notion sync",
+                        user_id=user_id,
+                        voice_entry_id=voice_entry_id
+                    )
+
+                    # Create sync record
+                    sync_record = await db_service.create_notion_sync(
+                        db=db,
+                        user_id=user_id,
+                        entry_id=voice_entry_id,
+                        notion_database_id=user.notion_database_id,
+                        status=NotionSyncStatus.PENDING
+                    )
+                    await db.commit()
+
+                    # Trigger Notion sync in background
+                    import asyncio
+                    asyncio.create_task(process_notion_sync_background(
+                        sync_id=sync_record.id,
+                        user_id=user_id,
+                        entry_id=voice_entry_id,
+                        database_id=user.notion_database_id,
+                        encrypted_api_key=user.notion_api_key_encrypted
+                    ))
+
+                    logger.info(
+                        f"Notion sync triggered automatically",
+                        sync_id=sync_record.id
+                    )
+            except Exception as sync_error:
+                # Don't fail cleanup if auto-sync fails
+                logger.error(
+                    f"Failed to auto-sync to Notion: {str(sync_error)}",
+                    exc_info=True
+                )
 
         except Exception as e:
             logger.error(
@@ -175,7 +222,9 @@ async def trigger_cleanup(
         process_cleanup_background,
         cleaned_entry_id=cleaned_entry.id,
         transcription_text=transcription.transcribed_text,
-        entry_type=voice_entry.entry_type
+        entry_type=voice_entry.entry_type,
+        user_id=current_user.id,
+        voice_entry_id=voice_entry.id
     )
 
     logger.info(

@@ -13,6 +13,7 @@ from app.models.voice_entry import VoiceEntry
 from app.models.transcription import Transcription
 from app.models.cleaned_entry import CleanedEntry, CleanupStatus
 from app.models.prompt_template import PromptTemplate
+from app.models.notion_sync import NotionSync, SyncStatus
 from app.schemas.auth import UserCreate
 from app.schemas.voice_entry import VoiceEntryCreate
 from app.schemas.transcription import TranscriptionCreate
@@ -871,6 +872,265 @@ class DatabaseService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to retrieve cleaned entries"
+            )
+
+    # Notion Sync Methods
+
+    async def create_notion_sync(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        entry_id: UUID,
+        notion_database_id: str,
+        status: SyncStatus = SyncStatus.PENDING
+    ) -> NotionSync:
+        """
+        Create a new Notion sync record.
+
+        Args:
+            db: Database session
+            user_id: User ID
+            entry_id: Voice entry ID to sync
+            notion_database_id: Target Notion database ID
+            status: Initial sync status (default: PENDING)
+
+        Returns:
+            Created NotionSync instance
+
+        Raises:
+            HTTPException: If database operation fails
+        """
+        try:
+            sync_record = NotionSync(
+                user_id=user_id,
+                entry_id=entry_id,
+                notion_database_id=notion_database_id,
+                status=status,
+                retry_count=0
+            )
+
+            db.add(sync_record)
+            await db.flush()
+
+            logger.info(
+                "Created Notion sync record",
+                sync_id=str(sync_record.id),
+                entry_id=str(entry_id),
+                status=status.value
+            )
+
+            return sync_record
+
+        except Exception as e:
+            logger.error(
+                "Failed to create Notion sync record",
+                user_id=str(user_id),
+                entry_id=str(entry_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create sync record"
+            )
+
+    async def get_notion_sync_by_id(
+        self,
+        db: AsyncSession,
+        sync_id: UUID
+    ) -> Optional[NotionSync]:
+        """
+        Get a Notion sync record by ID.
+
+        Args:
+            db: Database session
+            sync_id: Sync record ID
+
+        Returns:
+            NotionSync instance or None if not found
+
+        Raises:
+            HTTPException: If database operation fails
+        """
+        try:
+            query = select(NotionSync).where(NotionSync.id == sync_id)
+            result = await db.execute(query)
+            return result.scalar_one_or_none()
+
+        except Exception as e:
+            logger.error(
+                "Failed to get Notion sync by ID",
+                sync_id=str(sync_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve sync record"
+            )
+
+    async def get_notion_syncs_by_user(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        limit: int = 50,
+        offset: int = 0
+    ) -> list[NotionSync]:
+        """
+        Get all Notion sync records for a user.
+
+        Args:
+            db: Database session
+            user_id: User ID
+            limit: Maximum number of records to return
+            offset: Number of records to skip
+
+        Returns:
+            List of NotionSync instances
+
+        Raises:
+            HTTPException: If database operation fails
+        """
+        try:
+            query = (
+                select(NotionSync)
+                .where(NotionSync.user_id == user_id)
+                .order_by(NotionSync.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+            result = await db.execute(query)
+            return list(result.scalars().all())
+
+        except Exception as e:
+            logger.error(
+                "Failed to get Notion syncs by user",
+                user_id=str(user_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve sync records"
+            )
+
+    async def count_notion_syncs_by_user(
+        self,
+        db: AsyncSession,
+        user_id: UUID
+    ) -> int:
+        """
+        Count total Notion sync records for a user.
+
+        Args:
+            db: Database session
+            user_id: User ID
+
+        Returns:
+            Total count of sync records
+
+        Raises:
+            HTTPException: If database operation fails
+        """
+        try:
+            from sqlalchemy import func
+            query = select(func.count()).select_from(NotionSync).where(NotionSync.user_id == user_id)
+            result = await db.execute(query)
+            return result.scalar() or 0
+
+        except Exception as e:
+            logger.error(
+                "Failed to count Notion syncs",
+                user_id=str(user_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to count sync records"
+            )
+
+    async def update_notion_sync_status(
+        self,
+        db: AsyncSession,
+        sync_id: UUID,
+        status: SyncStatus,
+        notion_page_id: Optional[str] = None,
+        error_message: Optional[str] = None,
+        retry_count: Optional[int] = None,
+        cleaned_entry_id: Optional[UUID] = None
+    ) -> NotionSync:
+        """
+        Update Notion sync record status.
+
+        Args:
+            db: Database session
+            sync_id: Sync record ID
+            status: New sync status
+            notion_page_id: Notion page ID (if sync completed)
+            error_message: Error message (if sync failed)
+            retry_count: New retry count
+            cleaned_entry_id: Cleaned entry ID used for sync
+
+        Returns:
+            Updated NotionSync instance
+
+        Raises:
+            HTTPException: If database operation fails or record not found
+        """
+        try:
+            sync_record = await self.get_notion_sync_by_id(db, sync_id)
+            if not sync_record:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Sync record {sync_id} not found"
+                )
+
+            # Update fields
+            sync_record.status = status
+
+            if notion_page_id is not None:
+                sync_record.notion_page_id = notion_page_id
+
+            if error_message is not None:
+                sync_record.error_message = error_message
+
+            if retry_count is not None:
+                sync_record.retry_count = retry_count
+
+            if cleaned_entry_id is not None:
+                sync_record.cleaned_entry_id = cleaned_entry_id
+
+            # Update timestamps
+            if status == SyncStatus.PROCESSING and not sync_record.sync_started_at:
+                sync_record.sync_started_at = datetime.now(timezone.utc)
+
+            if status == SyncStatus.COMPLETED:
+                sync_record.sync_completed_at = datetime.now(timezone.utc)
+
+            await db.flush()
+
+            logger.info(
+                "Updated Notion sync status",
+                sync_id=str(sync_id),
+                status=status.value,
+                notion_page_id=notion_page_id
+            )
+
+            return sync_record
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                "Failed to update Notion sync status",
+                sync_id=str(sync_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update sync record"
             )
 
     # ==========================================
