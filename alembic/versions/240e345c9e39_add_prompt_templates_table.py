@@ -36,12 +36,12 @@ def upgrade() -> None:
         schema='journal'
     )
 
-    # Create indexes
+    # Create unique partial index to ensure only one active prompt per entry_type
     op.create_index(
-        'ix_prompt_templates_active',
+        'ix_prompt_templates_unique_active',
         'prompt_templates',
-        ['entry_type', 'is_active'],
-        unique=False,
+        ['entry_type'],
+        unique=True,
         schema='journal',
         postgresql_where=sa.text('is_active = true')
     )
@@ -231,7 +231,7 @@ def downgrade() -> None:
 
     # Drop indexes
     op.drop_index('ix_prompt_templates_entry_type', 'prompt_templates', schema='journal')
-    op.drop_index('ix_prompt_templates_active', 'prompt_templates', schema='journal')
+    op.drop_index('ix_prompt_templates_unique_active', 'prompt_templates', schema='journal')
 
     # Drop table
     op.drop_table('prompt_templates', schema='journal')

@@ -28,9 +28,9 @@ class PromptTemplate(Base):
     __tablename__ = "prompt_templates"
     __table_args__ = (
         Index(
-            'ix_prompt_templates_active',
+            'ix_prompt_templates_unique_active',
             'entry_type',
-            'is_active',
+            unique=True,
             postgresql_where=Column('is_active') == True
         ),
         {"schema": "journal"}

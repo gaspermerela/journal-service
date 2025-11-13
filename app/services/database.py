@@ -12,6 +12,7 @@ from app.models.user import User
 from app.models.voice_entry import VoiceEntry
 from app.models.transcription import Transcription
 from app.models.cleaned_entry import CleanedEntry, CleanupStatus
+from app.models.prompt_template import PromptTemplate
 from app.schemas.auth import UserCreate
 from app.schemas.voice_entry import VoiceEntryCreate
 from app.schemas.transcription import TranscriptionCreate
@@ -870,6 +871,81 @@ class DatabaseService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to retrieve cleaned entries"
+            )
+
+    # ==========================================
+    # Prompt Template Operations
+    # ==========================================
+
+    async def activate_prompt_template(
+        self,
+        db: AsyncSession,
+        template_id: int
+    ) -> PromptTemplate:
+        """
+        Activate a prompt template and deactivate all others for the same entry_type.
+        This ensures only one prompt is active per entry_type.
+
+        Args:
+            db: Database session
+            template_id: ID of the prompt template to activate
+
+        Returns:
+            Activated PromptTemplate instance
+
+        Raises:
+            HTTPException: If template not found or update fails
+        """
+        try:
+            # Get the template to activate
+            result = await db.execute(
+                select(PromptTemplate).where(PromptTemplate.id == template_id)
+            )
+            template = result.scalar_one_or_none()
+
+            if not template:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Prompt template {template_id} not found"
+                )
+
+            # Deactivate all other prompts for the same entry_type
+            await db.execute(
+                update(PromptTemplate)
+                .where(
+                    PromptTemplate.entry_type == template.entry_type,
+                    PromptTemplate.id != template_id
+                )
+                .values(is_active=False)
+            )
+
+            # Activate the target template
+            template.is_active = True
+            template.updated_at = datetime.utcnow()
+            await db.flush()
+            await db.refresh(template)
+
+            logger.info(
+                f"Prompt template activated",
+                template_id=template_id,
+                entry_type=template.entry_type,
+                template_name=template.name
+            )
+
+            return template
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Failed to activate prompt template",
+                template_id=template_id,
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to activate prompt template"
             )
 
 
