@@ -8,7 +8,7 @@ import whisper
 
 from app.config import settings
 from app.database import check_db_connection
-from app.routes import upload, health, entries, transcription, auth, cleanup
+from app.routes import upload, health, entries, transcription, auth, cleanup, notion
 from app.middleware.logging import RequestLoggingMiddleware
 from app.services.transcription import create_transcription_service
 from app.utils.logger import get_logger
@@ -122,6 +122,11 @@ app.include_router(
     cleanup.router,
     prefix="/api/v1",
     tags=["Cleanup"]
+)
+app.include_router(
+    notion.router,
+    prefix="/api/v1/notion",
+    tags=["Notion"]
 )
 
 
