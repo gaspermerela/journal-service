@@ -35,3 +35,9 @@ aiofiles==24.1.0
 openai-whisper==20250625
 torch==2.9.0
 torchaudio==2.9.0
+
+# Notion Integration
+notion-client==2.7.0
+
+# Encryption
+cryptography==46.0.3
