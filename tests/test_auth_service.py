@@ -26,11 +26,13 @@ def mock_db_session():
 @pytest.fixture
 def sample_user():
     """Create a sample user for testing."""
+    from datetime import datetime, timezone
     user = User(
         id=uuid.uuid4(),
         email="test@example.com",
         hashed_password="$2b$12$hashedpassword",
-        is_active=True
+        is_active=True,
+        created_at=datetime.now(timezone.utc)
     )
     return user
 
@@ -100,6 +102,9 @@ async def test_authenticate_user_success(auth_service, mock_db_session, sample_u
         assert result.access_token == "access_token_string"
         assert result.refresh_token == "refresh_token_string"
         assert result.token_type == "bearer"
+        assert result.user.id == sample_user.id
+        assert result.user.email == sample_user.email
+        assert result.user.is_active == sample_user.is_active
 
         mock_get_user.assert_called_once_with(mock_db_session, login_data.email)
         mock_verify.assert_called_once_with(login_data.password, sample_user.hashed_password)
@@ -143,11 +148,13 @@ async def test_authenticate_user_wrong_password(auth_service, mock_db_session, s
 @pytest.mark.asyncio
 async def test_authenticate_user_inactive(auth_service, mock_db_session):
     """Test authentication with inactive user."""
+    from datetime import datetime, timezone
     inactive_user = User(
         id=uuid.uuid4(),
         email="inactive@example.com",
         hashed_password="$2b$12$hashedpassword",
-        is_active=False
+        is_active=False,
+        created_at=datetime.now(timezone.utc)
     )
     login_data = UserLogin(email="inactive@example.com", password="Password123!")
 
@@ -192,6 +199,9 @@ async def test_refresh_access_token_success(auth_service, mock_db_session, sampl
         assert result.access_token == "new_access_token"
         assert result.refresh_token == "new_refresh_token"
         assert result.token_type == "bearer"
+        assert result.user.id == sample_user.id
+        assert result.user.email == sample_user.email
+        assert result.user.is_active == sample_user.is_active
 
         mock_verify.assert_called_once_with(refresh_token, expected_type="refresh")
         mock_get_user.assert_called_once_with(mock_db_session, sample_user.id)
@@ -240,11 +250,13 @@ async def test_refresh_access_token_user_not_found(auth_service, mock_db_session
 @pytest.mark.asyncio
 async def test_refresh_access_token_inactive_user(auth_service, mock_db_session):
     """Test token refresh with inactive user."""
+    from datetime import datetime, timezone
     inactive_user = User(
         id=uuid.uuid4(),
         email="inactive@example.com",
         hashed_password="$2b$12$hashedpassword",
-        is_active=False
+        is_active=False,
+        created_at=datetime.now(timezone.utc)
     )
 
     from app.schemas.auth import TokenData

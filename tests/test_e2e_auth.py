@@ -43,6 +43,8 @@ async def test_complete_auth_flow_register_login_upload_retrieve(
     tokens = login_response.json()
     assert "access_token" in tokens
     assert "refresh_token" in tokens
+    assert "user" in tokens
+    assert tokens["user"]["email"] == "e2e_user@example.com"
     access_token = tokens["access_token"]
 
     # Step 3: Upload a file using the access token
@@ -114,6 +116,11 @@ async def test_e2e_token_refresh_flow(client: AsyncClient, sample_mp3_path: Path
 
     # Verify new token is different
     assert new_access_token != original_access_token
+
+    # Verify user data is included in refresh response
+    assert "user" in new_tokens
+    assert new_tokens["user"]["email"] == "refresh_user@example.com"
+    assert new_tokens["user"]["is_active"] is True
 
     # Use new access token to access the same entry
     client.headers["Authorization"] = f"Bearer {new_access_token}"

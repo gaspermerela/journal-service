@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from jose import JWTError
 
 from app.models.user import User
-from app.schemas.auth import UserCreate, UserLogin, Token
+from app.schemas.auth import UserCreate, UserLogin, Token, UserResponse
 from app.services.database import db_service
 from app.utils.security import verify_password
 from app.utils.jwt import create_access_token, create_refresh_token, verify_token
@@ -111,7 +111,8 @@ class AuthService:
             return Token(
                 access_token=access_token,
                 refresh_token=refresh_token,
-                token_type="bearer"
+                token_type="bearer",
+                user=UserResponse.model_validate(user)
             )
 
         except HTTPException:
@@ -185,7 +186,8 @@ class AuthService:
             return Token(
                 access_token=new_access_token,
                 refresh_token=new_refresh_token,
-                token_type="bearer"
+                token_type="bearer",
+                user=UserResponse.model_validate(user)
             )
 
         except JWTError as e:

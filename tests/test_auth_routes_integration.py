@@ -106,6 +106,12 @@ async def test_login_success(client: AsyncClient, db_session: AsyncSession):
     assert data["token_type"] == "bearer"
     assert len(data["access_token"]) > 0
     assert len(data["refresh_token"]) > 0
+    assert "user" in data
+    assert data["user"]["email"] == "logintest@example.com"
+    assert data["user"]["is_active"] is True
+    assert "id" in data["user"]
+    assert "created_at" in data["user"]
+    assert "hashed_password" not in data["user"]
 
 
 @pytest.mark.asyncio
@@ -206,6 +212,11 @@ async def test_refresh_token_success(client: AsyncClient, db_session: AsyncSessi
     # New tokens should be different due to different exp timestamp
     assert data["access_token"] != tokens["access_token"]
     assert data["refresh_token"] != tokens["refresh_token"]
+    assert "user" in data
+    assert data["user"]["email"] == "refresh@example.com"
+    assert data["user"]["is_active"] is True
+    assert "id" in data["user"]
+    assert "created_at" in data["user"]
 
 
 @pytest.mark.asyncio
