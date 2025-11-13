@@ -90,12 +90,16 @@ class LLMCleanupService:
             return None
 
         try:
-            stmt = select(PromptTemplate).where(
-                PromptTemplate.entry_type == entry_type,
-                PromptTemplate.is_active == True
+            stmt = (
+                select(PromptTemplate)
+                .where(
+                    PromptTemplate.entry_type == entry_type,
+                    PromptTemplate.is_active == True
+                )
+                .order_by(PromptTemplate.updated_at.desc())
             )
             result = await self.db_session.execute(stmt)
-            template = result.scalar_one_or_none()
+            template = result.scalars().first()
 
             if template:
                 # Validate prompt template
