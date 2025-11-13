@@ -825,6 +825,58 @@ class DatabaseService:
                 detail="Failed to update cleaned entry"
             )
 
+    async def get_latest_cleaned_entry(
+        self,
+        db: AsyncSession,
+        voice_entry_id: UUID,
+        user_id: Optional[UUID] = None
+    ) -> Optional[CleanedEntry]:
+        """
+        Get the latest (most recent) cleaned entry for a voice entry.
+
+        Args:
+            db: Database session
+            voice_entry_id: Voice entry UUID
+            user_id: Optional UUID to filter by user ownership
+
+        Returns:
+            Latest CleanedEntry instance or None if none exist
+        """
+        try:
+            query = select(CleanedEntry).where(
+                CleanedEntry.voice_entry_id == voice_entry_id
+            )
+
+            if user_id is not None:
+                query = query.where(CleanedEntry.user_id == user_id)
+
+            query = query.order_by(CleanedEntry.created_at.desc()).limit(1)
+
+            result = await db.execute(query)
+            cleaned_entry = result.scalar_one_or_none()
+
+            if cleaned_entry:
+                logger.info(
+                    "Latest cleaned entry retrieved",
+                    voice_entry_id=voice_entry_id,
+                    cleaned_entry_id=cleaned_entry.id
+                )
+            else:
+                logger.info(
+                    "No cleaned entry found",
+                    voice_entry_id=voice_entry_id
+                )
+
+            return cleaned_entry
+
+        except SQLAlchemyError as e:
+            logger.error(
+                f"Database error retrieving latest cleaned entry: {str(e)}",
+                voice_entry_id=voice_entry_id,
+                exc_info=True
+            )
+            raise
+
     async def get_cleaned_entries_by_voice_entry(
         self,
         db: AsyncSession,
