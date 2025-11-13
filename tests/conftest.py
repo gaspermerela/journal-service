@@ -27,6 +27,7 @@ from app.models.voice_entry import VoiceEntry
 from app.models.transcription import Transcription
 from app.models.user import User
 from app.models.cleaned_entry import CleanedEntry  # noqa: F401
+from app.models.notion_sync import NotionSync  # noqa: F401
 from app.schemas.auth import UserCreate
 from app.services.database import db_service
 
@@ -53,6 +54,9 @@ def test_db_schema():
             # Create enum types manually before creating tables
             await conn.execute(text(
                 f"CREATE TYPE {TEST_SCHEMA}.cleanupstatus AS ENUM ('pending', 'processing', 'completed', 'failed')"
+            ))
+            await conn.execute(text(
+                f"CREATE TYPE {TEST_SCHEMA}.syncstatus AS ENUM ('pending', 'processing', 'completed', 'failed', 'retrying')"
             ))
 
             await conn.run_sync(Base.metadata.create_all)

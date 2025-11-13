@@ -224,7 +224,7 @@ async def process_notion_sync_background(
             )
 
             # Get voice entry with latest cleaned entry
-            voice_entry = await db_service.get_voice_entry_by_id(db, entry_id)
+            voice_entry = await db_service.get_entry_by_id(db, entry_id, user_id)
             if not voice_entry:
                 raise ValueError(f"Voice entry {entry_id} not found")
 
@@ -333,13 +333,15 @@ async def sync_entry_to_notion(
         )
 
     # Verify entry exists and belongs to user
-    voice_entry = await db_service.get_voice_entry_by_id(db, entry_id)
+    # First check if entry exists at all (without user filter)
+    voice_entry = await db_service.get_entry_by_id(db, entry_id, None)
     if not voice_entry:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Voice entry {entry_id} not found"
         )
 
+    # Then check ownership
     if voice_entry.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
