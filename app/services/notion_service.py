@@ -80,6 +80,7 @@ class NotionService:
             'Dream Journal'
         """
         try:
+            # Step 1: Retrieve database to get data_source_id
             async with self.rate_limiter:
                 database = await self.client.databases.retrieve(database_id=database_id)
 
@@ -89,8 +90,28 @@ class NotionService:
                 title=database.get("title", [{}])[0].get("plain_text", "Unknown")
             )
 
-            # Check required properties
-            properties = database.get("properties", {})
+            # Step 2: Get properties from data source
+            # Note: databases.retrieve() does NOT return properties field
+            # We must use data_sources.retrieve() to get the schema
+            data_sources = database.get("data_sources", [])
+            if not data_sources:
+                raise NotionValidationError(
+                    "Database has no data sources. This database may not be accessible."
+                )
+
+            data_source_id = data_sources[0]["id"]
+            logger.info(
+                "Retrieving data source for properties",
+                data_source_id=data_source_id
+            )
+
+            async with self.rate_limiter:
+                data_source = await self.client.data_sources.retrieve(
+                    data_source_id=data_source_id
+                )
+
+            # Check required properties from data source
+            properties = data_source.get("properties", {})
             required_props = {
                 "Name": "title",
                 "Date": "date",
@@ -125,9 +146,15 @@ class NotionService:
 
             logger.info(
                 "Database validation successful",
-                database_id=database_id
+                database_id=database_id,
+                properties_count=len(properties)
             )
-            return database
+
+            # Return database metadata with properties from data source
+            return {
+                **database,
+                "properties": properties
+            }
 
         except APIResponseError as e:
             logger.error(

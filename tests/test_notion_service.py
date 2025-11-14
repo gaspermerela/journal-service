@@ -46,40 +46,59 @@ def notion_service(mock_notion_client, mock_rate_limiter):
 @pytest.mark.asyncio
 async def test_validate_database_success(notion_service, mock_notion_client):
     """Test successful database validation."""
-    # Mock database response with all required properties
+    # Mock database response (no properties field)
     mock_database = {
         "id": "test_db_id",
         "title": [{"plain_text": "Dream Journal"}],
+        "data_sources": [{"id": "data_source_123"}]
+    }
+    mock_notion_client.databases.retrieve = AsyncMock(return_value=mock_database)
+
+    # Mock data source response with properties
+    mock_data_source = {
+        "id": "data_source_123",
         "properties": {
             "Name": {"type": "title"},
             "Date": {"type": "date"},
             "Wake Time": {"type": "rich_text"}
         }
     }
-    mock_notion_client.databases.retrieve = AsyncMock(return_value=mock_database)
+    mock_notion_client.data_sources.retrieve = AsyncMock(return_value=mock_data_source)
 
     # Validate database
     result = await notion_service.validate_database("test_db_id")
 
-    # Verify
-    assert result == mock_database
+    # Verify both API calls were made
     mock_notion_client.databases.retrieve.assert_called_once_with(database_id="test_db_id")
+    mock_notion_client.data_sources.retrieve.assert_called_once_with(data_source_id="data_source_123")
+
+    # Verify result combines database with properties from data source
+    assert result["id"] == "test_db_id"
+    assert result["title"] == [{"plain_text": "Dream Journal"}]
+    assert result["properties"] == mock_data_source["properties"]
 
 
 @pytest.mark.asyncio
 async def test_validate_database_missing_property(notion_service, mock_notion_client):
     """Test database validation fails when required property is missing."""
-    # Mock database missing "Wake Time" property
+    # Mock database response
     mock_database = {
         "id": "test_db_id",
         "title": [{"plain_text": "Dream Journal"}],
+        "data_sources": [{"id": "data_source_123"}]
+    }
+    mock_notion_client.databases.retrieve = AsyncMock(return_value=mock_database)
+
+    # Mock data source missing "Wake Time" property
+    mock_data_source = {
+        "id": "data_source_123",
         "properties": {
             "Name": {"type": "title"},
             "Date": {"type": "date"}
             # Missing: Wake Time
         }
     }
-    mock_notion_client.databases.retrieve = AsyncMock(return_value=mock_database)
+    mock_notion_client.data_sources.retrieve = AsyncMock(return_value=mock_data_source)
 
     # Should raise validation error
     with pytest.raises(NotionValidationError, match="missing properties: Wake Time"):
@@ -89,20 +108,43 @@ async def test_validate_database_missing_property(notion_service, mock_notion_cl
 @pytest.mark.asyncio
 async def test_validate_database_wrong_property_type(notion_service, mock_notion_client):
     """Test database validation fails when property has wrong type."""
-    # Mock database with wrong type for "Date" (should be date, not rich_text)
+    # Mock database response
     mock_database = {
         "id": "test_db_id",
         "title": [{"plain_text": "Dream Journal"}],
+        "data_sources": [{"id": "data_source_123"}]
+    }
+    mock_notion_client.databases.retrieve = AsyncMock(return_value=mock_database)
+
+    # Mock data source with wrong type for "Date" (should be date, not rich_text)
+    mock_data_source = {
+        "id": "data_source_123",
         "properties": {
             "Name": {"type": "title"},
             "Date": {"type": "rich_text"},  # Wrong type
             "Wake Time": {"type": "rich_text"}
         }
     }
-    mock_notion_client.databases.retrieve = AsyncMock(return_value=mock_database)
+    mock_notion_client.data_sources.retrieve = AsyncMock(return_value=mock_data_source)
 
     # Should raise validation error
     with pytest.raises(NotionValidationError, match="wrong property types.*Date.*expected date"):
+        await notion_service.validate_database("test_db_id")
+
+
+@pytest.mark.asyncio
+async def test_validate_database_no_data_sources(notion_service, mock_notion_client):
+    """Test database validation fails when database has no data sources."""
+    # Mock database with no data sources
+    mock_database = {
+        "id": "test_db_id",
+        "title": [{"plain_text": "Dream Journal"}],
+        "data_sources": []  # Empty data sources
+    }
+    mock_notion_client.databases.retrieve = AsyncMock(return_value=mock_database)
+
+    # Should raise validation error
+    with pytest.raises(NotionValidationError, match="Database has no data sources"):
         await notion_service.validate_database("test_db_id")
 
 

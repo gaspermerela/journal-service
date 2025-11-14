@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     # Can be overridden with dedicated ENCRYPTION_KEY for better security
     ENCRYPTION_KEY: Optional[str] = None  # Optional - falls back to JWT_SECRET_KEY
 
+    # Test Configuration (Optional - only used in E2E tests)
+    NOTION_TEST_API_KEY: Optional[str] = None
+    NOTION_TEST_DATABASE_ID: Optional[str] = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
