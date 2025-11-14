@@ -23,13 +23,14 @@ from typing import Tuple
 
 from tests.e2e_utils import wait_for_transcription, wait_for_cleanup, poll_until_condition
 from tests.conftest import cleanup_service_available
+from app.config import settings
 
 
 def notion_test_available() -> bool:
     """Check if Notion test credentials are configured."""
     return (
-        os.getenv("NOTION_TEST_API_KEY") is not None and
-        os.getenv("NOTION_TEST_DATABASE_ID") is not None
+        settings.NOTION_TEST_API_KEY is not None and
+        settings.NOTION_TEST_DATABASE_ID is not None
     )
 
 
@@ -103,8 +104,8 @@ async def test_e2e_real_full_workflow_with_notion_sync(
     """
     client, email = authenticated_e2e_client
 
-    notion_api_key = os.getenv("NOTION_TEST_API_KEY")
-    notion_database_id = os.getenv("NOTION_TEST_DATABASE_ID")
+    notion_api_key = settings.NOTION_TEST_API_KEY
+    notion_database_id = settings.NOTION_TEST_DATABASE_ID
 
     print(f"\n{'='*60}")
     print("REAL E2E TEST: Full Workflow with Notion Sync")
@@ -235,8 +236,8 @@ async def test_e2e_real_auto_sync_workflow(
     """
     client, email = authenticated_e2e_client
 
-    notion_api_key = os.getenv("NOTION_TEST_API_KEY")
-    notion_database_id = os.getenv("NOTION_TEST_DATABASE_ID")
+    notion_api_key = settings.NOTION_TEST_API_KEY
+    notion_database_id = settings.NOTION_TEST_DATABASE_ID
 
     print(f"\n{'='*60}")
     print("REAL E2E TEST: Auto-Sync Workflow")
@@ -303,7 +304,7 @@ async def test_e2e_real_auto_sync_workflow(
     assert len(entry_syncs) >= 1, "Auto-sync should have created a sync record"
 
     sync_record = entry_syncs[0]
-    print(f"✓ Auto-sync triggered: {sync_record['sync_id']}")
+    print(f"✓ Auto-sync triggered: {sync_record['id']}")
 
     # Wait for auto-sync to complete
     if sync_record["status"] in ["pending", "processing"]:
