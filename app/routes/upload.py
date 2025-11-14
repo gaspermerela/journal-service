@@ -23,6 +23,65 @@ logger = get_logger("upload")
 router = APIRouter()
 
 
+async def transcription_then_cleanup_task(
+    transcription_id: uuid.UUID,
+    entry_id: uuid.UUID,
+    audio_file_path: str,
+    language: str,
+    transcription_service: TranscriptionService,
+    cleaned_entry_id: uuid.UUID,
+    entry_type: str,
+    user_id: uuid.UUID
+):
+    """
+    Background task that runs transcription, then triggers cleanup when done.
+
+    This function is executed as a background task and handles the complete
+    workflow of transcribing audio and then cleaning up the transcription.
+    """
+    # Import here to avoid circular imports
+    from app.routes.transcription import process_transcription_task
+    from app.routes.cleanup import process_cleanup_background
+
+    # Run transcription
+    await process_transcription_task(
+        transcription_id=transcription_id,
+        entry_id=entry_id,
+        audio_file_path=audio_file_path,
+        language=language,
+        transcription_service=transcription_service
+    )
+
+    # Check if transcription succeeded
+    from app.database import get_session
+    async with get_session() as db:
+        transcription_result = await db_service.get_transcription_by_id(
+            db=db,
+            transcription_id=transcription_id
+        )
+
+        if transcription_result and transcription_result.status == "completed" and transcription_result.transcribed_text:
+            # Trigger cleanup
+            logger.info(f"Transcription completed, starting cleanup for {cleaned_entry_id}")
+            await process_cleanup_background(
+                cleaned_entry_id=cleaned_entry_id,
+                transcription_text=transcription_result.transcribed_text,
+                entry_type=entry_type,
+                user_id=user_id,
+                voice_entry_id=entry_id
+            )
+        else:
+            # Transcription failed, mark cleanup as failed too
+            logger.warning(f"Transcription failed, skipping cleanup for {cleaned_entry_id}")
+            await db_service.update_cleaned_entry_processing(
+                db=db,
+                cleaned_entry_id=cleaned_entry_id,
+                cleanup_status=CleanupStatus.FAILED,
+                error_message="Transcription failed or produced no text"
+            )
+            await db.commit()
+
+
 def get_transcription_service(request: Request) -> TranscriptionService:
     """
     Dependency to get transcription service from app state.
@@ -446,60 +505,6 @@ async def upload_transcribe_and_cleanup(
         )
 
         # Step 6: Add background task for transcription + cleanup
-        # Import background task functions
-        from app.routes.transcription import process_transcription_task
-        from app.routes.cleanup import process_cleanup_background
-
-        # Create a wrapper task that runs transcription, then cleanup
-        async def transcription_then_cleanup_task(
-            transcription_id: uuid.UUID,
-            entry_id: uuid.UUID,
-            audio_file_path: str,
-            language: str,
-            transcription_service: TranscriptionService,
-            cleaned_entry_id: uuid.UUID,
-            _entry_type: str,
-            user_id: uuid.UUID
-        ):
-            """Run transcription, then trigger cleanup when done."""
-            # Run transcription
-            await process_transcription_task(
-                transcription_id=transcription_id,
-                entry_id=entry_id,
-                audio_file_path=audio_file_path,
-                language=language,
-                transcription_service=transcription_service
-            )
-
-            # Check if transcription succeeded
-            from app.database import get_session
-            async with get_session() as db:
-                transcription_result = await db_service.get_transcription_by_id(
-                    db=db,
-                    transcription_id=transcription_id
-                )
-
-                if transcription_result and transcription_result.status == "completed" and transcription_result.transcribed_text:
-                    # Trigger cleanup
-                    logger.info(f"Transcription completed, starting cleanup for {cleaned_entry_id}")
-                    await process_cleanup_background(
-                        cleaned_entry_id=cleaned_entry_id,
-                        transcription_text=transcription_result.transcribed_text,
-                        entry_type=_entry_type,
-                        user_id=user_id,
-                        voice_entry_id=entry_id
-                    )
-                else:
-                    # Transcription failed, mark cleanup as failed too
-                    logger.warning(f"Transcription failed, skipping cleanup for {cleaned_entry_id}")
-                    await db_service.update_cleaned_entry_processing(
-                        db=db,
-                        cleaned_entry_id=cleaned_entry_id,
-                        cleanup_status=CleanupStatus.FAILED,
-                        error_message="Transcription failed or produced no text"
-                    )
-                    await db.commit()
-
         background_tasks.add_task(
             transcription_then_cleanup_task,
             transcription_id=transcription.id,
