@@ -202,7 +202,7 @@ async def test_e2e_real_full_workflow_with_notion_sync(
 
     # Find our sync in the list
     our_sync = next(
-        (s for s in syncs_data["syncs"] if s["sync_id"] == sync_id),
+        (s for s in syncs_data["syncs"] if s["id"] == sync_id),
         None
     )
     assert our_sync is not None
@@ -311,7 +311,7 @@ async def test_e2e_real_auto_sync_workflow(
         print("  Waiting for auto-sync to complete...")
         sync_record = await wait_for_notion_sync(
             client=client,
-            sync_id=sync_record["sync_id"]
+            sync_id=sync_record["id"]
         )
 
     assert sync_record["status"] == "completed"
