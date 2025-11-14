@@ -458,7 +458,8 @@ async def upload_transcribe_and_cleanup(
             language: str,
             transcription_service: TranscriptionService,
             cleaned_entry_id: uuid.UUID,
-            entry_type: str
+            _entry_type: str,
+            user_id: uuid.UUID
         ):
             """Run transcription, then trigger cleanup when done."""
             # Run transcription
@@ -484,7 +485,9 @@ async def upload_transcribe_and_cleanup(
                     await process_cleanup_background(
                         cleaned_entry_id=cleaned_entry_id,
                         transcription_text=transcription_result.transcribed_text,
-                        entry_type=entry_type
+                        entry_type=_entry_type,
+                        user_id=user_id,
+                        voice_entry_id=entry_id
                     )
                 else:
                     # Transcription failed, mark cleanup as failed too
@@ -505,7 +508,8 @@ async def upload_transcribe_and_cleanup(
             language=language,
             transcription_service=transcription_service,
             cleaned_entry_id=cleaned_entry.id,
-            entry_type=entry_type
+            entry_type=entry_type,
+            user_id=current_user.id
         )
 
         logger.info(
