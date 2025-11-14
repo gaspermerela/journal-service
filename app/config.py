@@ -71,6 +71,13 @@ class Settings(BaseSettings):
     NOTION_TEST_API_KEY: Optional[str] = None
     NOTION_TEST_DATABASE_ID: Optional[str] = None
 
+    # Logging Configuration (Optional - per-module log levels)
+    APP_LOG_LEVEL: Optional[str] = None
+    SQLALCHEMY_LOG_LEVEL: Optional[str] = None
+    UVICORN_LOG_LEVEL: Optional[str] = None
+    HTTPX_LOG_LEVEL: Optional[str] = None
+    ASYNCPG_LOG_LEVEL: Optional[str] = None
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

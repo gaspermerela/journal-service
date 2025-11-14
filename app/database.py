@@ -16,11 +16,13 @@ from app.utils.logger import get_logger
 logger = get_logger("database")
 
 # Create async engine
+# Note: echo parameter is intentionally set to False
+# Use SQLALCHEMY_LOG_LEVEL environment variable to control SQL logging
 engine = create_async_engine(
     settings.database_url,
     pool_size=settings.DB_POOL_SIZE,
     max_overflow=settings.DB_MAX_OVERFLOW,
-    echo=settings.DEBUG,
+    echo=False,  # Control via SQLALCHEMY_LOG_LEVEL instead
     future=True
 )
 
