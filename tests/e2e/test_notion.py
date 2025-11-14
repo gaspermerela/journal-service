@@ -21,7 +21,7 @@ from pathlib import Path
 from httpx import AsyncClient
 from typing import Tuple
 
-from tests.e2e_utils import wait_for_transcription, wait_for_cleanup, poll_until_condition
+from tests.e2e.e2e_utils import wait_for_transcription, wait_for_cleanup, poll_until_condition
 from tests.conftest import cleanup_service_available
 from app.config import settings
 
