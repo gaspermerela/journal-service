@@ -123,10 +123,36 @@ pytest tests/e2e -m e2e_real                 # E2E tests (real services)
 pytest --cov=app --cov-report=term-missing   # With coverage
 ```
 
+## Known Issues & Future Improvements
+
+**Note:** This service currently works well for personal use. The issues below should be fixed before production.
+
+For detailed explanations and code examples, see **[docs/known-issues.md](docs/known-issues.md)**.
+
+### 🔴 Critical
+
+1. **No Automatic Retry for Failed Processing** ⚠️ - Temporary Ollama downtime causes permanent failures
+2. **File Uploads Load Entire File Into Memory** - Redundant check loads full file into RAM (nginx already limits size)
+3. **File Type Validation Relies on Client** - Can be bypassed by malicious users
+
+### 🟡 High Priority (Before Scale)
+
+4. **Missing Some Database Indexes** - Queries slow down with 10,000+ entries
+5. **Missing Database Constraint for Primary Transcription** - No schema-level enforcement
+6. **No Pagination on Transcription Lists** - Could return huge responses
+
+### 🟢 Medium Priority
+
+7. **No Graceful Shutdown** - Background tasks killed mid-processing
+8. **Notion Sync Has Retry Infrastructure But No Execution** - Tracks retries but doesn't execute them
+
+---
+
 ## Documentation
 
 - [Architecture](docs/architecture.md) - Design decisions and trade-offs
 - [API Reference](docs/api-reference.md) - Complete endpoint documentation with examples
+- [Known Issues](docs/known-issues.md) - Detailed technical analysis of current limitations
 - [Docker Deployment](DOCKER.md) - Production deployment guide
 
 ## Contributing
