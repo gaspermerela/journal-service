@@ -42,19 +42,26 @@ def setup_logging() -> logging.Logger:
     """
     Configure and return application logger.
 
+    Supports per-module log level configuration via environment variables:
+    - APP_LOG_LEVEL: Application logs (default: INFO)
+    - SQLALCHEMY_LOG_LEVEL: SQLAlchemy logs (default: WARNING)
+    - UVICORN_LOG_LEVEL: Uvicorn logs (default: INFO)
+    - HTTPX_LOG_LEVEL: HTTPX logs (default: WARNING)
+
     Returns:
         Configured logger instance
     """
     # Get root logger
     logger = logging.getLogger("app")
-    logger.setLevel(getattr(logging, settings.LOG_LEVEL.upper()))
+    app_log_level = (settings.APP_LOG_LEVEL or settings.LOG_LEVEL).upper()
+    logger.setLevel(getattr(logging, app_log_level))
 
     # Remove existing handlers to avoid duplicates
     logger.handlers.clear()
 
     # Console handler with structured formatter
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(getattr(logging, settings.LOG_LEVEL.upper()))
+    console_handler.setLevel(getattr(logging, app_log_level))
     console_handler.setFormatter(StructuredFormatter())
 
     logger.addHandler(console_handler)
@@ -62,7 +69,53 @@ def setup_logging() -> logging.Logger:
     # Don't propagate to root logger
     logger.propagate = False
 
+    # Configure third-party library log levels
+    log_config = _configure_third_party_loggers()
+
+    # Print startup log configuration
+    print("=" * 60)
+    print("LOG CONFIGURATION")
+    print("=" * 60)
+    print(f"APP_LOG_LEVEL:        {app_log_level}")
+    for lib_name, level in log_config.items():
+        print(f"{lib_name:20} {level}")
+    print("=" * 60)
+
     return logger
+
+
+def _configure_third_party_loggers() -> Dict[str, str]:
+    """
+    Configure log levels for third-party libraries.
+
+    Returns:
+        Dictionary mapping logger names to configured levels
+    """
+    config = {}
+
+    # SQLAlchemy (database queries, connection pool)
+    sqlalchemy_level = (settings.SQLALCHEMY_LOG_LEVEL or "WARNING").upper()
+    logging.getLogger("sqlalchemy.engine").setLevel(getattr(logging, sqlalchemy_level))
+    logging.getLogger("sqlalchemy.pool").setLevel(getattr(logging, sqlalchemy_level))
+    config["SQLALCHEMY_LOG_LEVEL:"] = sqlalchemy_level
+
+    # Uvicorn
+    uvicorn_level = (settings.UVICORN_LOG_LEVEL or "INFO").upper()
+    logging.getLogger("uvicorn").setLevel(getattr(logging, uvicorn_level))
+    logging.getLogger("uvicorn.access").setLevel(getattr(logging, uvicorn_level))
+    config["UVICORN_LOG_LEVEL:"] = uvicorn_level
+
+    # HTTPX (HTTP client used by Notion SDK)
+    httpx_level = (settings.HTTPX_LOG_LEVEL or "WARNING").upper()
+    logging.getLogger("httpx").setLevel(getattr(logging, httpx_level))
+    config["HTTPX_LOG_LEVEL:"] = httpx_level
+
+    # AsyncPG (PostgreSQL driver)
+    asyncpg_level = (settings.ASYNCPG_LOG_LEVEL or "WARNING").upper()
+    logging.getLogger("asyncpg").setLevel(getattr(logging, asyncpg_level))
+    config["ASYNCPG_LOG_LEVEL:"] = asyncpg_level
+
+    return config
 
 
 class StructuredLogger:

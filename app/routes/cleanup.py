@@ -1,7 +1,6 @@
 """
 API routes for LLM cleanup operations.
 """
-import logging
 from uuid import UUID
 from typing import Annotated
 
@@ -20,9 +19,10 @@ from app.schemas.cleanup import (
 from app.services.database import db_service
 from app.services.llm_cleanup import LLMCleanupService
 from app.config import settings
+from app.utils.logger import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger("routes.cleanup")
 router = APIRouter()
 
 

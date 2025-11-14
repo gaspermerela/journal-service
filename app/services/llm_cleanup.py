@@ -2,7 +2,6 @@
 LLM Cleanup Service for processing transcriptions using Ollama.
 """
 import json
-import logging
 from typing import Dict, Any, Optional, Tuple
 from datetime import datetime
 
@@ -12,9 +11,10 @@ from sqlalchemy import select
 
 from app.config import settings
 from app.models.prompt_template import PromptTemplate
+from app.utils.logger import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger("services.llm_cleanup")
 
 
 # Prompt templates for different entry types
