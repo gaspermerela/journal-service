@@ -29,9 +29,13 @@ class TestPromptFallbackMechanisms:
             version=1
         )
 
-        # Mock database query
+        # Mock database query chain: execute() -> scalars() -> first()
+        mock_scalars = MagicMock()
+        mock_scalars.first.return_value = mock_template
+
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_template
+        mock_result.scalars.return_value = mock_scalars
+
         mock_session.execute.return_value = mock_result
 
         # Create service with mocked session
@@ -50,9 +54,13 @@ class TestPromptFallbackMechanisms:
         """Test when no active prompt exists in database."""
         mock_session = AsyncMock(spec=AsyncSession)
 
-        # Mock no results
+        # Mock no results: execute() -> scalars() -> first() returns None
+        mock_scalars = MagicMock()
+        mock_scalars.first.return_value = None
+
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.scalars.return_value = mock_scalars
+
         mock_session.execute.return_value = mock_result
 
         service = LLMCleanupService(db_session=mock_session)
@@ -77,8 +85,13 @@ class TestPromptFallbackMechanisms:
             version=1
         )
 
+        # Mock database query chain: execute() -> scalars() -> first()
+        mock_scalars = MagicMock()
+        mock_scalars.first.return_value = mock_template
+
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_template
+        mock_result.scalars.return_value = mock_scalars
+
         mock_session.execute.return_value = mock_result
 
         service = LLMCleanupService(db_session=mock_session)
@@ -144,8 +157,13 @@ class TestPromptFallbackMechanisms:
             version=2
         )
 
+        # Mock database query chain: execute() -> scalars() -> first()
+        mock_scalars = MagicMock()
+        mock_scalars.first.return_value = mock_template
+
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_template
+        mock_result.scalars.return_value = mock_scalars
+
         mock_session.execute.return_value = mock_result
 
         service = LLMCleanupService(db_session=mock_session)
@@ -160,9 +178,13 @@ class TestPromptFallbackMechanisms:
         """Test fallback to hardcoded prompt when DB lookup fails."""
         mock_session = AsyncMock(spec=AsyncSession)
 
-        # Mock no results
+        # Mock no results: execute() -> scalars() -> first() returns None
+        mock_scalars = MagicMock()
+        mock_scalars.first.return_value = None
+
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.scalars.return_value = mock_scalars
+
         mock_session.execute.return_value = mock_result
 
         service = LLMCleanupService(db_session=mock_session)
