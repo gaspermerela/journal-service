@@ -113,8 +113,10 @@ FastAPI + PostgreSQL + async SQLAlchemy | [Full details](docs/architecture.md)
 **Run tests:**
 ```bash
 pytest -v                                    # All tests
-pytest --cov=app --cov-report=term-missing  # With coverage
-pytest -m e2e_real                           # E2E tests (requires complete Docker setup)
+pytest tests/unit                            # Unit tests only
+pytest tests/integration                     # Integration tests (test DB)
+pytest tests/e2e -m e2e_real                 # E2E tests (real services)
+pytest --cov=app --cov-report=term-missing   # With coverage
 ```
 
 ## Documentation
