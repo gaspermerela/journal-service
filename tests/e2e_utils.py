@@ -4,13 +4,14 @@ Utility functions for end-to-end tests.
 Provides reusable helpers for polling, waiting, and common e2e test operations.
 """
 import asyncio
-import os
 from typing import Callable, Any, Optional, Awaitable
 from httpx import AsyncClient
 
-# Configurable timeouts via environment variables
-DEFAULT_TRANSCRIPTION_TIMEOUT = int(os.getenv("E2E_TRANSCRIPTION_TIMEOUT", "120"))
-DEFAULT_CLEANUP_TIMEOUT = int(os.getenv("E2E_CLEANUP_TIMEOUT", "120"))
+# Import timeout configuration from conftest
+from tests.conftest import E2E_TRANSCRIPTION_TIMEOUT, E2E_CLEANUP_TIMEOUT
+
+DEFAULT_TRANSCRIPTION_TIMEOUT = E2E_TRANSCRIPTION_TIMEOUT
+DEFAULT_CLEANUP_TIMEOUT = E2E_CLEANUP_TIMEOUT
 
 
 async def poll_until_condition(

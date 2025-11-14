@@ -36,6 +36,12 @@ from app.services.database import db_service
 TEST_DATABASE_URL = "postgresql+asyncpg://journal_user:password@localhost:5432/postgres"
 TEST_SCHEMA = "journal_test"
 
+# E2E test timeout configuration (in seconds)
+# Override via environment variables: E2E_TRANSCRIPTION_TIMEOUT, E2E_CLEANUP_TIMEOUT, E2E_NOTION_SYNC_TIMEOUT
+E2E_TRANSCRIPTION_TIMEOUT = int(os.getenv("E2E_TRANSCRIPTION_TIMEOUT", "180"))  # 3 minutes
+E2E_CLEANUP_TIMEOUT = int(os.getenv("E2E_CLEANUP_TIMEOUT", "180"))  # 3 minutes
+E2E_NOTION_SYNC_TIMEOUT = int(os.getenv("E2E_NOTION_SYNC_TIMEOUT", "60"))  # 1 minute
+
 
 @pytest.fixture(scope="module")
 def test_db_schema():
