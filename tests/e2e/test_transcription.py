@@ -18,7 +18,7 @@ from pathlib import Path
 from httpx import AsyncClient
 from typing import Tuple
 
-from tests.e2e_utils import wait_for_transcription
+from tests.e2e.e2e_utils import wait_for_transcription
 from tests.conftest import transcription_service_available
 
 # Real audio file to use for all tests

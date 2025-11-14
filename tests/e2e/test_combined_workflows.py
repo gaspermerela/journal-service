@@ -15,7 +15,7 @@ from pathlib import Path
 from httpx import AsyncClient
 from typing import Tuple
 
-from tests.e2e_utils import wait_for_transcription, wait_for_cleanup
+from tests.e2e.e2e_utils import wait_for_transcription, wait_for_cleanup
 from tests.conftest import transcription_service_available, cleanup_service_available
 
 REAL_AUDIO_FILE = Path("tests/fixtures/crocodile.mp3")
