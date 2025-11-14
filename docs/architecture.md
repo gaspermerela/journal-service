@@ -78,6 +78,10 @@ File structure:
 
 ## Testing
 
-- **Unit tests:** Business logic (validators, storage, database)
-- **Integration tests:** Full request cycle with test DB
-- **E2E tests:** Real HTTP requests to running service
+Tests organized by type in subdirectories:
+
+- **`tests/unit/`** - Business logic (no DB/external deps)
+- **`tests/integration/`** - API routes + test database
+- **`tests/e2e/`** - Full workflows with real services
+
+Run subsets: `pytest tests/unit` (fast), `pytest tests/integration`, `pytest tests/e2e`
