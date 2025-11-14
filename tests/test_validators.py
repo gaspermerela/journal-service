@@ -172,3 +172,68 @@ async def test_validate_audio_file_no_extension():
 
     assert exc_info.value.status_code == 400
     assert "Invalid file type" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_validate_audio_file_webm():
+    """Test validation succeeds with WebM file."""
+    file = UploadFile(
+        file=io.BytesIO(b"webm audio data"),
+        filename="test_audio.webm",
+        headers={"content-type": "audio/webm"}
+    )
+
+    # Should not raise exception
+    await validate_audio_file(file)
+
+
+@pytest.mark.asyncio
+async def test_validate_audio_file_wav():
+    """Test validation succeeds with WAV file."""
+    file = UploadFile(
+        file=io.BytesIO(b"wav audio data"),
+        filename="test_audio.wav",
+        headers={"content-type": "audio/wav"}
+    )
+
+    # Should not raise exception
+    await validate_audio_file(file)
+
+
+@pytest.mark.asyncio
+async def test_validate_audio_file_ogg():
+    """Test validation succeeds with OGG file."""
+    file = UploadFile(
+        file=io.BytesIO(b"ogg audio data"),
+        filename="test_audio.ogg",
+        headers={"content-type": "audio/ogg"}
+    )
+
+    # Should not raise exception
+    await validate_audio_file(file)
+
+
+@pytest.mark.asyncio
+async def test_validate_audio_file_aac():
+    """Test validation succeeds with AAC file."""
+    file = UploadFile(
+        file=io.BytesIO(b"aac audio data"),
+        filename="test_audio.aac",
+        headers={"content-type": "audio/aac"}
+    )
+
+    # Should not raise exception
+    await validate_audio_file(file)
+
+
+@pytest.mark.asyncio
+async def test_validate_audio_file_flac():
+    """Test validation succeeds with FLAC file."""
+    file = UploadFile(
+        file=io.BytesIO(b"flac audio data"),
+        filename="test_audio.flac",
+        headers={"content-type": "audio/flac"}
+    )
+
+    # Should not raise exception
+    await validate_audio_file(file)
