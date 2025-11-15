@@ -4,7 +4,7 @@ SQLAlchemy model for voice entries table.
 import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
-from sqlalchemy import String, Text, DateTime, Index, ForeignKey
+from sqlalchemy import String, Text, DateTime, Float, Index, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
@@ -26,6 +26,7 @@ class VoiceEntry(Base):
         saved_filename: UUID-based filename on disk
         file_path: Absolute path to saved file
         entry_type: Type of voice entry (dream, journal, meeting, note, etc.)
+        duration_seconds: Audio duration in seconds
         uploaded_at: Upload timestamp (UTC)
         created_at: Record creation time
         updated_at: Last update time
@@ -73,6 +74,13 @@ class VoiceEntry(Base):
         default="dream",
         server_default="dream",
         index=True
+    )
+
+    duration_seconds: Mapped[float] = mapped_column(
+        Float,
+        nullable=False,
+        default=0.0,
+        server_default="0.0"
     )
 
     # Timestamps

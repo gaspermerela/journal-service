@@ -12,10 +12,11 @@ High-level design decisions and trade-offs.
 3. Validate file type + size
 4. Generate UUID + timestamp filename
 5. Save audio file to disk
-6. Create database record
+6. Calculate audio duration (pydub)
+7. Create database record (with duration_seconds)
    - If DB fails: delete audio file
-7. Start background transcription (Whisper)
-8. Return entry metadata + transcription_id
+8. Start background transcription (Whisper)
+9. Return entry metadata + transcription_id
 ```
 
 **Cleanup mechanism:** If database write fails, saved file is deleted automatically. No orphaned files.
@@ -72,6 +73,8 @@ File structure:
 - **PostgreSQL**
 - **SQLAlchemy:** Async ORM
 - **Whisper:** Local speech-to-text
+- **Ollama (llama3.2:3b):** LLM for text cleanup
+- **pydub:** Audio duration calculation
 - **JWT:** Token-based auth
 - **Docker:** Consistent deployment
 - **Pytest:** Testing
