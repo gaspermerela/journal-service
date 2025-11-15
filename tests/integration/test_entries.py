@@ -106,7 +106,6 @@ async def test_get_entry_timestamp_format(authenticated_client: AsyncClient, sam
 async def test_get_multiple_entries(authenticated_client: AsyncClient, db_session, test_user):
     """Test retrieving multiple different entries."""
     from app.models.voice_entry import VoiceEntry
-    from datetime import datetime, timezone
     import uuid
 
     # Create multiple entries
@@ -179,7 +178,6 @@ async def test_list_entries_empty(authenticated_client: AsyncClient):
 async def test_list_entries_basic(authenticated_client: AsyncClient, db_session, test_user):
     """Test listing entries with basic data."""
     from app.models.voice_entry import VoiceEntry
-    from datetime import datetime, timezone
 
     # Create 3 entries
     entries = []
