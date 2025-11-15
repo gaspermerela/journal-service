@@ -111,6 +111,33 @@ async def process_transcription_task(
 
             logger.info(f"Transcription result saved to database", transcription_id=str(transcription_id))
 
+            # Auto-promote to primary if entry has no primary transcription yet
+            primary_transcription = await db_service.get_primary_transcription(
+                db=db,
+                entry_id=entry_id
+            )
+
+            if primary_transcription is None:
+                logger.info(
+                    f"No primary transcription exists, auto-promoting this transcription",
+                    transcription_id=str(transcription_id),
+                    entry_id=str(entry_id)
+                )
+                await db_service.set_primary_transcription(
+                    db=db,
+                    transcription_id=transcription_id,
+                    entry_id=entry_id
+                )
+                await db.commit()
+                logger.info(f"Transcription auto-promoted to primary", transcription_id=str(transcription_id))
+            else:
+                logger.info(
+                    f"Primary transcription already exists, skipping auto-promotion",
+                    transcription_id=str(transcription_id),
+                    entry_id=str(entry_id),
+                    existing_primary_id=str(primary_transcription.id)
+                )
+
         except Exception as e:
             logger.error(
                 f"Transcription failed",
