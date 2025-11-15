@@ -125,8 +125,7 @@ async def process_transcription_task(
                 )
                 await db_service.set_primary_transcription(
                     db=db,
-                    transcription_id=transcription_id,
-                    entry_id=entry_id
+                    transcription_id=transcription_id
                 )
                 await db.commit()
                 logger.info(f"Transcription auto-promoted to primary", transcription_id=str(transcription_id))
