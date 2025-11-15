@@ -105,9 +105,17 @@ async def list_entries(
             # Sort by created_at descending and take first
             sorted_cleaned = sorted(entry.cleaned_entries, key=lambda c: c.created_at, reverse=True)
             latest = sorted_cleaned[0]
+
+            # Create text preview (first 200 chars)
+            text_preview = None
+            if latest.cleaned_text:
+                text_preview = latest.cleaned_text[:200]
+
             latest_cleaned = CleanedEntrySummary(
                 id=latest.id,
                 status=latest.status.value,  # Convert enum to string
+                cleaned_text_preview=text_preview,
+                analysis=latest.analysis,
                 error_message=latest.error_message,
                 created_at=latest.created_at
             )

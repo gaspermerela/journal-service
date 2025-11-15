@@ -223,6 +223,13 @@ Response:
       "latest_cleaned_entry": {
         "id": "770e8400-e29b-41d4-a716-446655440002",
         "status": "COMPLETED",
+        "cleaned_text_preview": "I dreamt I was flying over a vast ocean, the water sparkling beneath me in shades of turquoise and deep blue. There was a sense of freedom and weightlessness, as if I had no worries. In the dis...",
+        "analysis": {
+          "themes": ["flying", "freedom", "ocean"],
+          "emotions": ["joy", "peace", "wonder"],
+          "characters": [],
+          "locations": ["ocean", "sky"]
+        },
         "error_message": null,
         "created_at": "2025-11-15T03:15:20Z"
       }
@@ -254,9 +261,12 @@ curl "http://localhost:8000/api/v1/entries?limit=20&offset=20" \
 **Response Details:**
 - Entries are ordered by `uploaded_at` DESC (newest first)
 - Includes `duration_seconds` for each entry (audio length in seconds)
-- Shows transcription and cleanup status, but **excludes text content** (use GET `/api/v1/entries/{id}` for full text)
+- Shows transcription status (no text content)
+- Shows cleanup status with text preview and analysis:
+  - `cleaned_text_preview`: First 200 characters of cleaned text
+  - `analysis`: Structured analysis (themes, emotions, characters, locations)
 - `primary_transcription`: Status of the main transcription (if available)
-- `latest_cleaned_entry`: Status of the most recent LLM cleanup (if available)
+- `latest_cleaned_entry`: Most recent LLM cleanup with preview and analysis (if available)
 
 **Status Values:**
 - Transcription: `"pending"`, `"processing"`, `"completed"`, `"failed"`
