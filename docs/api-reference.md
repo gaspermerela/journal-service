@@ -34,6 +34,7 @@ Access tokens expire after `ACCESS_TOKEN_EXPIRE_DAYS` days (7 by default). Refre
 |----------|--------|---------------|-------------|
 | `/api/v1/upload-transcribe-cleanup` | POST | Yes | **RECOMMENDED**: Complete workflow - upload, transcribe, and cleanup |
 | `/api/v1/upload-and-transcribe` | POST | Yes | Upload audio and start transcription |
+| `/api/v1/entries` | GET | Yes | **List all entries** (paginated, with status) |
 | `/api/v1/entries/{id}` | GET | Yes | Get entry metadata with transcription |
 | `/api/v1/entries/{id}/cleaned` | GET | Yes | List all cleaned entries for a voice entry |
 
@@ -191,6 +192,75 @@ curl "http://localhost:8000/api/v1/entries/{entry_id}" \
 ```
 
 Returns entry metadata including transcription status and text (when completed).
+
+### List Entries
+
+**Get paginated list of all entries:**
+```bash
+curl "http://localhost:8000/api/v1/entries?limit=20&offset=0" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+Response:
+```json
+{
+  "entries": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "original_filename": "dream_2025-11-15.m4a",
+      "saved_filename": "550e8400-e29b_1731542400.m4a",
+      "file_path": "/data/audio/2025-11-15/550e8400-e29b_1731542400.m4a",
+      "entry_type": "dream",
+      "duration_seconds": 125.5,
+      "uploaded_at": "2025-11-15T03:15:00Z",
+      "primary_transcription": {
+        "id": "660e8400-e29b-41d4-a716-446655440001",
+        "status": "completed",
+        "language_code": "en",
+        "error_message": null,
+        "created_at": "2025-11-15T03:15:05Z"
+      },
+      "latest_cleaned_entry": {
+        "id": "770e8400-e29b-41d4-a716-446655440002",
+        "status": "COMPLETED",
+        "error_message": null,
+        "created_at": "2025-11-15T03:15:20Z"
+      }
+    }
+  ],
+  "total": 42,
+  "limit": 20,
+  "offset": 0
+}
+```
+
+**Query Parameters:**
+- `limit` (optional): Number of entries to return (1-100, default: 20)
+- `offset` (optional): Number of entries to skip for pagination (default: 0)
+- `entry_type` (optional): Filter by type (`dream`, `journal`, `meeting`, `note`)
+
+**Filter by entry type:**
+```bash
+curl "http://localhost:8000/api/v1/entries?entry_type=dream&limit=10" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+**Pagination example (page 2):**
+```bash
+curl "http://localhost:8000/api/v1/entries?limit=20&offset=20" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+```
+
+**Response Details:**
+- Entries are ordered by `uploaded_at` DESC (newest first)
+- Includes `duration_seconds` for each entry (audio length in seconds)
+- Shows transcription and cleanup status, but **excludes text content** (use GET `/api/v1/entries/{id}` for full text)
+- `primary_transcription`: Status of the main transcription (if available)
+- `latest_cleaned_entry`: Status of the most recent LLM cleanup (if available)
+
+**Status Values:**
+- Transcription: `"pending"`, `"processing"`, `"completed"`, `"failed"`
+- Cleanup: `"PENDING"`, `"PROCESSING"`, `"COMPLETED"`, `"FAILED"`
 
 ### System
 

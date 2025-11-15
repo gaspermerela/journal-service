@@ -5,7 +5,8 @@ from uuid import UUID
 from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, func
+from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 
 from app.models.user import User
@@ -50,6 +51,7 @@ class DatabaseService:
                 saved_filename=entry_data.saved_filename,
                 file_path=entry_data.file_path,
                 entry_type=entry_data.entry_type,
+                duration_seconds=entry_data.duration_seconds,
                 uploaded_at=entry_data.uploaded_at,
                 user_id=entry_data.user_id
             )
@@ -165,6 +167,127 @@ class DatabaseService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to delete entry from database"
+            )
+
+    async def get_entries_by_user(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        limit: int = 20,
+        offset: int = 0,
+        entry_type: Optional[str] = None
+    ) -> list[VoiceEntry]:
+        """
+        Get paginated list of voice entries for a user.
+
+        Uses eager loading (selectinload) to avoid N+1 queries when fetching
+        related transcriptions and cleaned_entries.
+
+        Args:
+            db: Database session
+            user_id: UUID of the user
+            limit: Maximum number of entries to return (default: 20, max: 100)
+            offset: Number of entries to skip (default: 0)
+            entry_type: Optional filter by entry type (dream, journal, etc.)
+
+        Returns:
+            List of VoiceEntry instances with eager-loaded relationships
+        """
+        try:
+            # Build query with eager loading
+            query = (
+                select(VoiceEntry)
+                .where(VoiceEntry.user_id == user_id)
+                .options(
+                    selectinload(VoiceEntry.transcriptions),
+                    selectinload(VoiceEntry.cleaned_entries)
+                )
+                .order_by(VoiceEntry.uploaded_at.desc())
+            )
+
+            # Add optional entry_type filter
+            if entry_type:
+                query = query.where(VoiceEntry.entry_type == entry_type)
+
+            # Add pagination
+            query = query.limit(limit).offset(offset)
+
+            result = await db.execute(query)
+            entries = list(result.scalars().all())
+
+            logger.info(
+                f"Retrieved voice entries for user",
+                user_id=str(user_id),
+                count=len(entries),
+                limit=limit,
+                offset=offset,
+                entry_type=entry_type
+            )
+
+            return entries
+
+        except Exception as e:
+            logger.error(
+                f"Failed to retrieve entries for user",
+                user_id=str(user_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve entries"
+            )
+
+    async def count_entries_by_user(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        entry_type: Optional[str] = None
+    ) -> int:
+        """
+        Count total number of voice entries for a user.
+
+        Args:
+            db: Database session
+            user_id: UUID of the user
+            entry_type: Optional filter by entry type (dream, journal, etc.)
+
+        Returns:
+            Total count of entries
+        """
+        try:
+            query = (
+                select(func.count())
+                .select_from(VoiceEntry)
+                .where(VoiceEntry.user_id == user_id)
+            )
+
+            # Add optional entry_type filter
+            if entry_type:
+                query = query.where(VoiceEntry.entry_type == entry_type)
+
+            result = await db.execute(query)
+            count = result.scalar() or 0
+
+            logger.info(
+                f"Counted voice entries for user",
+                user_id=str(user_id),
+                count=count,
+                entry_type=entry_type
+            )
+
+            return count
+
+        except Exception as e:
+            logger.error(
+                f"Failed to count entries for user",
+                user_id=str(user_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to count entries"
             )
 
     # ===== Transcription Operations =====

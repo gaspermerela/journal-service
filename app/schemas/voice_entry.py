@@ -21,6 +21,7 @@ class VoiceEntryCreate(BaseModel):
     saved_filename: str
     file_path: str
     entry_type: str = "dream"
+    duration_seconds: float = 0.0
     uploaded_at: datetime
     user_id: Optional[UUID] = None
 
@@ -68,3 +69,56 @@ class ErrorResponse(BaseModel):
     """Schema for error responses."""
     detail: str
     error_code: str | None = None
+
+
+class TranscriptionSummary(BaseModel):
+    """Lightweight transcription info for list views (no text content)."""
+    id: UUID
+    status: str
+    language_code: str
+    error_message: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CleanedEntrySummary(BaseModel):
+    """Lightweight cleaned entry info for list views (no cleaned_text)."""
+    id: UUID
+    status: str
+    error_message: Optional[str] = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class VoiceEntrySummary(BaseModel):
+    """
+    Lightweight voice entry schema for list views.
+
+    Excludes text content (transcribed_text, cleaned_text) to keep payload small.
+    User clicks entry to see full detail via GET /entries/{id}.
+    """
+    id: UUID
+    original_filename: str
+    saved_filename: str
+    file_path: str
+    entry_type: str
+    duration_seconds: float
+    uploaded_at: datetime
+
+    # Primary transcription metadata (no text)
+    primary_transcription: Optional[TranscriptionSummary] = None
+
+    # Latest cleaned entry metadata (no text)
+    latest_cleaned_entry: Optional[CleanedEntrySummary] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class VoiceEntryListResponse(BaseModel):
+    """Paginated list response for voice entries."""
+    entries: list[VoiceEntrySummary]
+    total: int
+    limit: int
+    offset: int

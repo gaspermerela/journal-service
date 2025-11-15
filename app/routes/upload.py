@@ -18,6 +18,7 @@ from app.services.transcription import TranscriptionService
 from app.middleware.jwt import get_current_user
 from app.utils.validators import validate_audio_file
 from app.utils.logger import get_logger
+from app.utils.audio import get_audio_duration
 
 logger = get_logger("upload")
 router = APIRouter()
@@ -162,12 +163,16 @@ async def upload_audio(
         saved_filename, file_path = await storage_service.save_file(file, file_id)
         saved_file_path = file_path  # Store for potential rollback
 
+        # Step 2.5: Calculate audio duration
+        duration_seconds = get_audio_duration(file_path)
+
         # Step 3: Create database entry
         entry_data = VoiceEntryCreate(
             original_filename=file.filename,
             saved_filename=saved_filename,
             file_path=file_path,
             entry_type=entry_type,
+            duration_seconds=duration_seconds,
             uploaded_at=datetime.now(timezone.utc),
             user_id=current_user.id
         )
@@ -283,12 +288,16 @@ async def upload_and_transcribe(
         saved_filename, file_path = await storage_service.save_file(file, file_id)
         saved_file_path = file_path  # Store for potential rollback
 
+        # Step 2.5: Calculate audio duration
+        duration_seconds = get_audio_duration(file_path)
+
         # Step 3: Create database entry
         entry_data = VoiceEntryCreate(
             original_filename=file.filename,
             saved_filename=saved_filename,
             file_path=file_path,
             entry_type=entry_type,
+            duration_seconds=duration_seconds,
             uploaded_at=datetime.now(timezone.utc),
             user_id=current_user.id
         )
@@ -448,12 +457,16 @@ async def upload_transcribe_and_cleanup(
         saved_filename, file_path = await storage_service.save_file(file, file_id)
         saved_file_path = file_path  # Store for potential rollback
 
+        # Step 2.5: Calculate audio duration
+        duration_seconds = get_audio_duration(file_path)
+
         # Step 3: Create database entry
         entry_data = VoiceEntryCreate(
             original_filename=file.filename,
             saved_filename=saved_filename,
             file_path=file_path,
             entry_type=entry_type,
+            duration_seconds=duration_seconds,
             uploaded_at=datetime.now(timezone.utc),
             user_id=current_user.id
         )
