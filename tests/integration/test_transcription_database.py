@@ -2,13 +2,12 @@
 Integration tests for transcription database operations.
 Tests DatabaseService transcription CRUD methods.
 """
-import pytest
 from uuid import uuid4
-from datetime import datetime, timezone
 
-from app.services.database import db_service
+import pytest
+
 from app.schemas.transcription import TranscriptionCreate
-from app.models.transcription import Transcription
+from app.services.database import db_service
 
 
 @pytest.mark.asyncio
@@ -302,3 +301,39 @@ async def test_transcription_cascade_delete(db_session, sample_voice_entry):
     # Try to retrieve transcription - should not exist
     result = await db_service.get_transcription_by_id(db_session, trans_id)
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_unique_primary_constraint(db_session, sample_voice_entry):
+    """Test that database constraint prevents multiple primary transcriptions."""
+    from fastapi import HTTPException
+
+    # Store entry ID before any operations that might detach the object
+    entry_id = sample_voice_entry.id
+
+    # Create first primary transcription
+    trans1_data = TranscriptionCreate(
+        entry_id=entry_id,
+        status="completed",
+        model_used="whisper-base",
+        language_code="en",
+        is_primary=True
+    )
+    trans1 = await db_service.create_transcription(db_session, trans1_data)
+
+    # Try to create second primary transcription - should fail
+    trans2_data = TranscriptionCreate(
+        entry_id=entry_id,
+        status="completed",
+        model_used="whisper-large",
+        language_code="en",
+        is_primary=True
+    )
+
+    # The constraint violation is caught during create_transcription and wrapped in HTTPException
+    with pytest.raises(HTTPException) as exc_info:
+        await db_service.create_transcription(db_session, trans2_data)
+
+    # Verify we got the expected error
+    assert exc_info.value.status_code == 500
+    assert "Failed to create transcription record" in str(exc_info.value.detail)
