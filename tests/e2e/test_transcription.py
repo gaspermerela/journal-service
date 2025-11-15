@@ -324,3 +324,142 @@ async def test_e2e_transcription_error_handling(
     assert "not found" in transcribe_response.json()["detail"].lower()
 
     print(f"✓ Error handling verified - invalid entry IDs are rejected")
+
+
+@pytest.mark.e2e_real
+@pytest.mark.skipif(
+    not transcription_service_available(),
+    reason="Transcription service not available (Whisper model or dependencies missing)"
+)
+@pytest.mark.asyncio
+async def test_e2e_auto_promote_first_transcription(
+    authenticated_e2e_client: Tuple[AsyncClient, str]
+):
+    """
+    Test that first completed transcription is auto-promoted to primary.
+    Uses real Whisper transcription.
+    """
+    client, email = authenticated_e2e_client
+
+    # Check if real audio file exists
+    if not REAL_AUDIO_FILE.exists():
+        pytest.skip(f"Real audio file not found: {REAL_AUDIO_FILE}")
+
+    # Step 1: Upload audio file
+    with open(REAL_AUDIO_FILE, 'rb') as f:
+        files = {"file": ("test_audio.mp3", f, "audio/mpeg")}
+        upload_response = await client.post("/api/v1/upload", files=files)
+
+    assert upload_response.status_code == 201
+    entry_id = upload_response.json()["id"]
+    print(f"\nUploaded entry: {entry_id}")
+
+    # Step 2: Trigger transcription
+    transcribe_response = await client.post(
+        f"/api/v1/entries/{entry_id}/transcribe",
+        json={"language": "en"}
+    )
+    assert transcribe_response.status_code == 202
+    transcription_id = transcribe_response.json()["transcription_id"]
+    print(f"Started transcription: {transcription_id}")
+
+    # Step 3: Wait for transcription to complete
+    transcription = await wait_for_transcription(
+        client=client,
+        transcription_id=transcription_id,
+        max_wait=90,
+        poll_interval=2
+    )
+
+    # Step 4: Verify transcription was auto-promoted to primary
+    assert transcription["status"] == "completed"
+    assert transcription["is_primary"] is True, "First transcription should be auto-promoted to primary"
+    print(f"✓ First transcription auto-promoted to primary")
+
+    # Step 5: Verify via entry endpoint
+    entry_response = await client.get(f"/api/v1/entries/{entry_id}")
+    assert entry_response.status_code == 200
+    entry_data = entry_response.json()
+    assert entry_data["primary_transcription"] is not None
+    assert entry_data["primary_transcription"]["id"] == str(transcription_id)
+
+    print(f"✓ Auto-promotion verified - first transcription is primary")
+
+
+@pytest.mark.e2e_real
+@pytest.mark.skipif(
+    not transcription_service_available(),
+    reason="Transcription service not available (Whisper model or dependencies missing)"
+)
+@pytest.mark.asyncio
+async def test_e2e_second_transcription_not_auto_promoted(
+    authenticated_e2e_client: Tuple[AsyncClient, str]
+):
+    """
+    Test that second transcription is NOT auto-promoted if primary already exists.
+    Uses real Whisper transcription.
+    """
+    client, email = authenticated_e2e_client
+
+    # Check if real audio file exists
+    if not REAL_AUDIO_FILE.exists():
+        pytest.skip(f"Real audio file not found: {REAL_AUDIO_FILE}")
+
+    # Step 1: Upload audio file
+    with open(REAL_AUDIO_FILE, 'rb') as f:
+        files = {"file": ("test_audio.mp3", f, "audio/mpeg")}
+        upload_response = await client.post("/api/v1/upload", files=files)
+
+    assert upload_response.status_code == 201
+    entry_id = upload_response.json()["id"]
+    print(f"\nUploaded entry: {entry_id}")
+
+    # Step 2: Trigger first transcription
+    first_response = await client.post(
+        f"/api/v1/entries/{entry_id}/transcribe",
+        json={"language": "en"}
+    )
+    assert first_response.status_code == 202
+    trans1_id = first_response.json()["transcription_id"]
+    print(f"Started first transcription: {trans1_id}")
+
+    # Step 3: Wait for first transcription to complete and become primary
+    transcription1 = await wait_for_transcription(
+        client=client,
+        transcription_id=trans1_id,
+        max_wait=90,
+        poll_interval=2
+    )
+    assert transcription1["is_primary"] is True
+    print(f"✓ First transcription completed and is primary")
+
+    # Step 4: Trigger second transcription
+    second_response = await client.post(
+        f"/api/v1/entries/{entry_id}/transcribe",
+        json={"language": "en"}
+    )
+    assert second_response.status_code == 202
+    trans2_id = second_response.json()["transcription_id"]
+    print(f"Started second transcription: {trans2_id}")
+
+    # Step 5: Wait for second transcription to complete
+    transcription2 = await wait_for_transcription(
+        client=client,
+        transcription_id=trans2_id,
+        max_wait=90,
+        poll_interval=2
+    )
+
+    # Step 6: Verify second transcription was NOT auto-promoted
+    assert transcription2["status"] == "completed"
+    assert transcription2["is_primary"] is False, "Second transcription should NOT be auto-promoted to primary"
+    print(f"✓ Second transcription completed but NOT promoted to primary")
+
+    # Step 7: Verify first transcription is still primary
+    entry_response = await client.get(f"/api/v1/entries/{entry_id}")
+    assert entry_response.status_code == 200
+    entry_data = entry_response.json()
+    assert entry_data["primary_transcription"] is not None
+    assert entry_data["primary_transcription"]["id"] == str(trans1_id), "First transcription should still be primary"
+
+    print(f"✓ Auto-promotion logic verified - only first transcription is primary")

@@ -265,7 +265,7 @@ curl "http://localhost:8000/api/v1/entries?limit=20&offset=20" \
 - Shows cleanup status with text preview and analysis:
   - `cleaned_text_preview`: First 200 characters of cleaned text
   - `analysis`: Structured analysis (themes, emotions, characters, locations)
-- `primary_transcription`: Status of the main transcription (if available)
+- `primary_transcription`: Status of the main transcription (automatically set when first transcription completes)
 - `latest_cleaned_entry`: Most recent LLM cleanup with preview and analysis (if available)
 
 **Status Values:**
