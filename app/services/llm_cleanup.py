@@ -239,7 +239,7 @@ class LLMCleanupService:
             data = response.json()
             response_text = data.get("response", "")
 
-            logger.debug(f"Raw LLM response: {response_text[:200]}...")
+            logger.debug(f"Raw LLM response: {response_text}...")
 
             # Parse the JSON response
             result = self._parse_llm_response(response_text)
