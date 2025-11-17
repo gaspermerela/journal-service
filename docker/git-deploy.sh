@@ -118,17 +118,13 @@ fi
 
 # Build and deploy
 echo ""
-echo "Building image..."
-BUILD_FLAGS=""
+echo "Building and starting service..."
+BUILD_FLAGS="--build"
 if [ "$NO_CACHE" = true ]; then
     echo "Building without cache..."
-    BUILD_FLAGS="--no-cache"
+    BUILD_FLAGS="--build --no-cache"
 fi
-docker build $BUILD_FLAGS -t journal-service:latest -t journal-service:$COMMIT .
-
-echo ""
-echo "Running migrations and starting service..."
-docker compose up -d --wait
+docker compose up -d $BUILD_FLAGS --wait
 
 # Verify health
 echo ""
