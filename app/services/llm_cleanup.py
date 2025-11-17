@@ -244,6 +244,9 @@ class LLMCleanupService:
             # Parse the JSON response
             result = self._parse_llm_response(response_text)
 
+            # Include raw response for debugging and storage
+            result["llm_raw_response"] = response_text
+
             return result
 
     def _parse_llm_response(self, response_text: str) -> Dict[str, Any]:

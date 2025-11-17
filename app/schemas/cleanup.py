@@ -46,6 +46,7 @@ class CleanedEntryDetail(BaseModel):
     user_id: UUID = Field(description="User ID")
     cleaned_text: Optional[str] = Field(None, description="LLM-cleaned text")
     analysis: Optional[Dict[str, Any]] = Field(None, description="Structured analysis")
+    llm_raw_response: Optional[str] = Field(None, description="Raw LLM response before parsing")
     status: CleanupStatus = Field(description="Cleanup processing status")
     model_name: str = Field(description="LLM model used")
     error_message: Optional[str] = Field(None, description="Error details if failed")

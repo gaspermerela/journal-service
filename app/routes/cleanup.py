@@ -75,7 +75,8 @@ async def process_cleanup_background(
                 cleanup_status=CleanupStatus.COMPLETED,
                 cleaned_text=result["cleaned_text"],
                 analysis=result["analysis"],
-                prompt_template_id=result.get("prompt_template_id")
+                prompt_template_id=result.get("prompt_template_id"),
+                llm_raw_response=result.get("llm_raw_response")
             )
             await db.commit()
 

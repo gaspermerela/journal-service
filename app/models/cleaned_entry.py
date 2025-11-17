@@ -63,6 +63,7 @@ class CleanedEntry(Base):
     # Cleanup results
     cleaned_text = Column(Text, nullable=True)
     analysis = Column(JSON, nullable=True)  # Structured data: themes, emotions, etc.
+    llm_raw_response = Column(Text, nullable=True)  # Raw response from LLM before parsing
 
     # Processing metadata
     prompt_template_id = Column(
