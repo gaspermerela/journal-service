@@ -877,7 +877,8 @@ class DatabaseService:
         cleaned_text: Optional[str] = None,
         analysis: Optional[dict] = None,
         error_message: Optional[str] = None,
-        prompt_template_id: Optional[int] = None
+        prompt_template_id: Optional[int] = None,
+        llm_raw_response: Optional[str] = None
     ) -> CleanedEntry:
         """
         Update cleaned entry with processing results.
@@ -890,6 +891,7 @@ class DatabaseService:
             analysis: Analysis data dict
             error_message: Error message if failed
             prompt_template_id: ID of prompt template used (optional)
+            llm_raw_response: Raw LLM response before parsing (optional)
 
         Returns:
             Updated CleanedEntry instance
@@ -916,6 +918,8 @@ class DatabaseService:
                 cleaned_entry.error_message = error_message
             if prompt_template_id is not None:
                 cleaned_entry.prompt_template_id = prompt_template_id
+            if llm_raw_response is not None:
+                cleaned_entry.llm_raw_response = llm_raw_response
 
             # Update timestamps based on status (use timezone-naive datetime)
             if cleanup_status == CleanupStatus.PROCESSING and not cleaned_entry.processing_started_at:
