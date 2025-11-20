@@ -176,14 +176,30 @@ class WhisperLocalService(TranscriptionService):
         Returns:
             Dict with transcription result
         """
-        # Configure transcription options
+        # Configure transcription options based on device
+        # FP16 enabled for GPU (faster), disabled for CPU (required)
+        use_fp16 = self.device == "cuda"
+
+        # For large-v3 model, use higher beam_size for better accuracy
+        # (especially important for Slavic languages per audio_preprocessing_guide.md)
+        is_large_model = "large" in self.model_name.lower()
+        beam_size = 5 if is_large_model else 1
+
         transcribe_options = {
-            "fp16": False,  # Use fp32 for CPU (required for CPU inference)
+            "fp16": use_fp16,
             "language": None if language == "auto" else language,
             "task": "transcribe",  # vs "translate"
-            "beam_size": 1,  # Faster, slightly less accurate
-            "best_of": 1,  # Faster decoding
+            "beam_size": beam_size,  # Higher for large models = better accuracy
+            "best_of": 1 if not is_large_model else 2,  # Better for large models
         }
+
+        logger.info(
+            "Transcription options configured",
+            fp16=use_fp16,
+            beam_size=beam_size,
+            model=self.model_name,
+            device=self.device
+        )
 
         # Perform transcription
         result = self.model.transcribe(audio_path, **transcribe_options)

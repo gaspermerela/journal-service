@@ -26,9 +26,19 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 100
 
     # Whisper Transcription Configuration
-    WHISPER_MODEL: str = "base"  # Options: tiny, base, small, medium, large
+    WHISPER_MODEL: str = "large-v3"  # Options: tiny, base, small, medium, large, large-v3
     WHISPER_DEVICE: str = "cpu"  # Options: cpu, cuda (for GPU)
     TORCH_NUM_THREADS: int = 10  # Number of CPU threads for PyTorch
+
+    # Audio Preprocessing Configuration
+    ENABLE_AUDIO_PREPROCESSING: bool = True  # Enable ffmpeg preprocessing pipeline
+    PREPROCESSING_SAMPLE_RATE: int = 16000  # Target sample rate (16kHz recommended for Whisper)
+    PREPROCESSING_HIGHPASS_FREQ: int = 60  # High-pass filter frequency in Hz
+    PREPROCESSING_LOUDNORM_I: int = -16  # Integrated loudness target (LUFS)
+    PREPROCESSING_LOUDNORM_TP: float = -1.5  # True peak target (dBTP)
+    PREPROCESSING_LOUDNORM_LRA: int = 11  # Loudness range target (LU)
+    PREPROCESSING_SILENCE_THRESHOLD: str = "-80dB"  # Silence detection threshold
+    PREPROCESSING_SILENCE_DURATION: float = 0.5  # Minimum silence duration in seconds
 
     # LLM Cleanup Configuration
     OLLAMA_BASE_URL: str = "http://localhost:11434"
