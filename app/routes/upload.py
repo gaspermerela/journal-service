@@ -3,6 +3,7 @@ Upload endpoint for audio file uploads.
 """
 import uuid
 from datetime import datetime, timezone
+from typing import Tuple, Optional
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,13 +16,51 @@ from app.models.cleaned_entry import CleanupStatus
 from app.services.storage import storage_service
 from app.services.database import db_service
 from app.services.transcription import TranscriptionService
+from app.services.audio_preprocessing import preprocessing_service
 from app.middleware.jwt import get_current_user
 from app.utils.validators import validate_audio_file
 from app.utils.logger import get_logger
 from app.utils.audio import get_audio_duration
+from app.config import settings
 
 logger = get_logger("upload")
 router = APIRouter()
+
+
+async def preprocess_audio_always(file_path: str) -> str:
+    """
+    Preprocess audio file using ffmpeg pipeline.
+
+    Always applies preprocessing to ensure consistent audio quality.
+
+    Args:
+        file_path: Path to the audio file
+
+    Returns:
+        Path to the preprocessed file (or original if preprocessing disabled/failed)
+    """
+    if not settings.ENABLE_AUDIO_PREPROCESSING:
+        logger.info("Audio preprocessing disabled", file_path=file_path)
+        return file_path
+
+    # Always preprocess for consistent quality
+    success, processed_path, error_msg = await preprocessing_service.preprocess_audio(file_path)
+
+    if not success:
+        logger.error(
+            "Audio preprocessing failed, using original file",
+            file_path=file_path,
+            error=error_msg
+        )
+        return file_path
+
+    logger.info(
+        "Audio preprocessing completed",
+        original_path=file_path,
+        processed_path=processed_path,
+    )
+
+    return processed_path
 
 
 async def transcription_then_cleanup_task(
@@ -135,8 +174,9 @@ async def upload_audio(
     1. Validate file (type, size, extension)
     2. Generate UUID for entry
     3. Save file to disk
-    4. Create database entry with specified entry_type
-    5. Return entry metadata
+    4. Preprocess audio (if lossy format and enabled)
+    5. Create database entry with specified entry_type
+    6. Return entry metadata
 
     If any step fails:
     - Database transaction is rolled back automatically
@@ -163,14 +203,21 @@ async def upload_audio(
         saved_filename, file_path = await storage_service.save_file(file, file_id)
         saved_file_path = file_path  # Store for potential rollback
 
-        # Step 2.5: Calculate audio duration
-        duration_seconds = get_audio_duration(file_path)
+        # Step 2.5: Preprocess audio (always, for consistency)
+        final_file_path = await preprocess_audio_always(file_path)
+
+        # Update saved_file_path if preprocessing changed the file
+        if final_file_path != file_path:
+            saved_file_path = final_file_path
+
+        # Step 2.6: Calculate audio duration (using preprocessed file)
+        duration_seconds = get_audio_duration(final_file_path)
 
         # Step 3: Create database entry
         entry_data = VoiceEntryCreate(
             original_filename=file.filename,
             saved_filename=saved_filename,
-            file_path=file_path,
+            file_path=final_file_path,
             entry_type=entry_type,
             duration_seconds=duration_seconds,
             uploaded_at=datetime.now(timezone.utc),
@@ -288,14 +335,21 @@ async def upload_and_transcribe(
         saved_filename, file_path = await storage_service.save_file(file, file_id)
         saved_file_path = file_path  # Store for potential rollback
 
-        # Step 2.5: Calculate audio duration
-        duration_seconds = get_audio_duration(file_path)
+        # Step 2.5: Preprocess audio (always, for consistency)
+        final_file_path = await preprocess_audio_always(file_path)
+
+        # Update saved_file_path if preprocessing changed the file
+        if final_file_path != file_path:
+            saved_file_path = final_file_path
+
+        # Step 2.6: Calculate audio duration (using preprocessed file)
+        duration_seconds = get_audio_duration(final_file_path)
 
         # Step 3: Create database entry
         entry_data = VoiceEntryCreate(
             original_filename=file.filename,
             saved_filename=saved_filename,
-            file_path=file_path,
+            file_path=final_file_path,
             entry_type=entry_type,
             duration_seconds=duration_seconds,
             uploaded_at=datetime.now(timezone.utc),
@@ -457,14 +511,21 @@ async def upload_transcribe_and_cleanup(
         saved_filename, file_path = await storage_service.save_file(file, file_id)
         saved_file_path = file_path  # Store for potential rollback
 
-        # Step 2.5: Calculate audio duration
-        duration_seconds = get_audio_duration(file_path)
+        # Step 2.5: Preprocess audio (always, for consistency)
+        final_file_path = await preprocess_audio_always(file_path)
+
+        # Update saved_file_path if preprocessing changed the file
+        if final_file_path != file_path:
+            saved_file_path = final_file_path
+
+        # Step 2.6: Calculate audio duration (using preprocessed file)
+        duration_seconds = get_audio_duration(final_file_path)
 
         # Step 3: Create database entry
         entry_data = VoiceEntryCreate(
             original_filename=file.filename,
             saved_filename=saved_filename,
-            file_path=file_path,
+            file_path=final_file_path,
             entry_type=entry_type,
             duration_seconds=duration_seconds,
             uploaded_at=datetime.now(timezone.utc),
