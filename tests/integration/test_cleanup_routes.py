@@ -422,3 +422,147 @@ class TestCleanupProcessing:
         # Status should be either pending, processing, or completed
         status = status_response.json()["status"]
         assert status in ["pending", "processing", "completed"]
+
+
+class TestSetPrimaryCleanup:
+    """Tests for setting cleanup as primary."""
+
+    @pytest.mark.asyncio
+    async def test_set_primary_cleanup_success(
+        self,
+        authenticated_client: AsyncClient,
+        sample_voice_entry: VoiceEntry,
+        completed_transcription: Transcription,
+        test_user: User,
+        db_session: AsyncSession
+    ):
+        """Test setting a cleanup as primary."""
+        from app.models.cleaned_entry import CleanedEntry, CleanupStatus
+        import uuid
+
+        # Create two completed cleanups
+        cleanup1 = CleanedEntry(
+            id=uuid.uuid4(),
+            voice_entry_id=sample_voice_entry.id,
+            transcription_id=completed_transcription.id,
+            user_id=test_user.id,
+            cleaned_text="First cleanup",
+            model_name="llama3.2:3b",
+            is_primary=True
+        )
+        cleanup1.status = CleanupStatus.COMPLETED
+
+        cleanup2 = CleanedEntry(
+            id=uuid.uuid4(),
+            voice_entry_id=sample_voice_entry.id,
+            transcription_id=completed_transcription.id,
+            user_id=test_user.id,
+            cleaned_text="Second cleanup",
+            model_name="llama3.2:3b",
+            is_primary=False
+        )
+        cleanup2.status = CleanupStatus.COMPLETED
+
+        db_session.add_all([cleanup1, cleanup2])
+        await db_session.commit()
+
+        # Set cleanup2 as primary
+        response = await authenticated_client.put(
+            f"/api/v1/cleaned-entries/{cleanup2.id}/set-primary"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == str(cleanup2.id)
+        assert data["is_primary"] is True
+
+        # Verify cleanup1 is no longer primary
+        await db_session.refresh(cleanup1)
+        assert cleanup1.is_primary is False
+
+    @pytest.mark.asyncio
+    async def test_set_primary_cleanup_not_completed(
+        self,
+        authenticated_client: AsyncClient,
+        sample_voice_entry: VoiceEntry,
+        completed_transcription: Transcription,
+        test_user: User,
+        db_session: AsyncSession
+    ):
+        """Test cannot set pending cleanup as primary."""
+        from app.models.cleaned_entry import CleanedEntry, CleanupStatus
+        import uuid
+
+        # Create pending cleanup
+        cleanup = CleanedEntry(
+            id=uuid.uuid4(),
+            voice_entry_id=sample_voice_entry.id,
+            transcription_id=completed_transcription.id,
+            user_id=test_user.id,
+            cleaned_text=None,
+            model_name="llama3.2:3b",
+            is_primary=False
+        )
+        cleanup.status = CleanupStatus.PENDING
+
+        db_session.add(cleanup)
+        await db_session.commit()
+
+        # Try to set pending cleanup as primary
+        response = await authenticated_client.put(
+            f"/api/v1/cleaned-entries/{cleanup.id}/set-primary"
+        )
+
+        assert response.status_code == 400
+        assert "must be completed" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_set_primary_cleanup_not_found(
+        self,
+        authenticated_client: AsyncClient
+    ):
+        """Test 404 for invalid cleanup ID."""
+        import uuid
+
+        fake_id = uuid.uuid4()
+        response = await authenticated_client.put(
+            f"/api/v1/cleaned-entries/{fake_id}/set-primary"
+        )
+
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_get_cleanup_includes_is_primary(
+        self,
+        authenticated_client: AsyncClient,
+        sample_voice_entry: VoiceEntry,
+        completed_transcription: Transcription,
+        test_user: User,
+        db_session: AsyncSession
+    ):
+        """Test that cleanup response includes is_primary field."""
+        from app.models.cleaned_entry import CleanedEntry, CleanupStatus
+        import uuid
+
+        cleanup = CleanedEntry(
+            id=uuid.uuid4(),
+            voice_entry_id=sample_voice_entry.id,
+            transcription_id=completed_transcription.id,
+            user_id=test_user.id,
+            cleaned_text="Test cleanup",
+            model_name="llama3.2:3b",
+            is_primary=True
+        )
+        cleanup.status = CleanupStatus.COMPLETED
+
+        db_session.add(cleanup)
+        await db_session.commit()
+
+        response = await authenticated_client.get(
+            f"/api/v1/cleaned-entries/{cleanup.id}"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "is_primary" in data
+        assert data["is_primary"] is True

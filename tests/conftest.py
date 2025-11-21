@@ -17,8 +17,9 @@ from sqlalchemy.pool import NullPool
 
 from unittest.mock import Mock, AsyncMock
 
-# Set JWT_SECRET_KEY before importing Settings to avoid validation error
+# Set required environment variables before importing Settings to avoid validation error
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-testing-only-not-for-production")
+os.environ.setdefault("DATABASE_PASSWORD", "password")  # Matches TEST_DATABASE_URL
 
 from app.config import Settings
 from app.database import Base, get_db
