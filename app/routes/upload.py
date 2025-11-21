@@ -385,7 +385,7 @@ async def upload_and_transcribe(
             entry_id=entry.id,
             status="pending",
             model_used=model_name,
-            language_code=language,
+            language_code=effective_language,
             is_primary=False
         )
 
@@ -573,7 +573,7 @@ async def upload_transcribe_and_cleanup(
             entry_id=entry.id,
             status="pending",
             model_used=model_name,
-            language_code=language,
+            language_code=effective_language,
             is_primary=False
         )
 
