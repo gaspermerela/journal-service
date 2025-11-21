@@ -1,8 +1,7 @@
 """
 Audio utilities for calculating audio file metadata.
 """
-from mutagen.mp3 import MP3
-from mutagen.mp4 import MP4
+from mutagen import File as MutagenFile
 from app.utils.logger import get_logger
 
 logger = get_logger("audio_utils")
@@ -12,22 +11,29 @@ def get_audio_duration(file_path: str) -> float:
     """
     Calculate audio duration in seconds using mutagen.
 
+    Supports all common audio formats: MP3, M4A, WAV, OGG, AAC, FLAC, WebM, etc.
+
     Args:
-        file_path: Path to audio file (MP3, M4A, etc.)
+        file_path: Path to audio file
 
     Returns:
         Duration in seconds (float)
         Returns 0.0 if calculation fails
     """
     try:
-        # Determine file type and use appropriate mutagen class
-        if file_path.lower().endswith('.mp3'):
-            audio = MP3(file_path)
-        elif file_path.lower().endswith(('.m4a', '.mp4')):
-            audio = MP4(file_path)
-        else:
+        # Use mutagen's File class which auto-detects format
+        audio = MutagenFile(file_path)
+
+        if audio is None:
             logger.warning(
-                f"Unsupported audio format, defaulting to 0.0",
+                f"Mutagen could not detect audio format",
+                file_path=file_path
+            )
+            return 0.0
+
+        if audio.info is None or not hasattr(audio.info, 'length'):
+            logger.warning(
+                f"Audio file has no duration info",
                 file_path=file_path
             )
             return 0.0
