@@ -11,7 +11,6 @@ class VoiceEntryBase(BaseModel):
     """Base schema with common fields."""
     original_filename: str
     saved_filename: str
-    file_path: str
     entry_type: str = "dream"
 
 
@@ -58,7 +57,6 @@ class VoiceEntryUploadAndTranscribeResponse(BaseModel):
     transcription_id: UUID
     original_filename: str
     saved_filename: str
-    file_path: str
     duration_seconds: float
     entry_type: str
     uploaded_at: datetime
@@ -112,7 +110,6 @@ class VoiceEntrySummary(BaseModel):
     id: UUID
     original_filename: str
     saved_filename: str
-    file_path: str
     entry_type: str
     duration_seconds: float
     uploaded_at: datetime

@@ -1,9 +1,12 @@
 """
 Entries endpoint for retrieving voice entry metadata.
 """
+import os
+import re
 from uuid import UUID
 from typing import Optional, Annotated
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -125,7 +128,6 @@ async def list_entries(
                 id=entry.id,
                 original_filename=entry.original_filename,
                 saved_filename=entry.saved_filename,
-                file_path=entry.file_path,
                 entry_type=entry.entry_type,
                 duration_seconds=entry.duration_seconds,
                 uploaded_at=entry.uploaded_at,
@@ -210,9 +212,121 @@ async def get_entry(
         id=entry.id,
         original_filename=entry.original_filename,
         saved_filename=entry.saved_filename,
-        file_path=entry.file_path,
         duration_seconds=entry.duration_seconds,
         entry_type=entry.entry_type,
         uploaded_at=entry.uploaded_at,
         primary_transcription=primary_transcription_data
+    )
+
+
+def _sanitize_filename(filename: str) -> str:
+    """
+    Remove any characters that could break Content-Disposition header.
+    Keeps only alphanumeric, dots, hyphens, underscores, and spaces.
+    """
+    return re.sub(r'[^\w\s.-]', '', filename)
+
+
+@router.get(
+    "/entries/{entry_id}/audio",
+    status_code=status.HTTP_200_OK,
+    summary="Download entry audio file",
+    description="Download the audio file for a specific voice entry. Returns preprocessed WAV format.",
+    responses={
+        200: {"description": "Audio file", "content": {"audio/wav": {}}},
+        404: {"description": "Entry not found or audio file unavailable"},
+        401: {"description": "Not authenticated"}
+    }
+)
+async def get_entry_audio(
+    entry_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Download audio file for a voice entry.
+
+    Security:
+    - Requires JWT authentication
+    - Users can only download their own audio files
+    - Returns 404 for both non-existent entries and unauthorized access
+      (to avoid leaking information about which entry IDs exist)
+
+    Technical details:
+    - All audio files are preprocessed to 16kHz mono WAV format
+    - Supports range requests for seeking in audio players
+    - Files are cached for 1 hour with 'immutable' directive
+
+    Args:
+        entry_id: UUID of the entry
+        db: Database session
+        current_user: Authenticated user from JWT token
+
+    Returns:
+        FileResponse with audio file
+
+    Raises:
+        HTTPException: 404 if entry not found, user doesn't own it, or file missing
+    """
+    logger.info(
+        "Audio download requested",
+        entry_id=str(entry_id),
+        user_id=str(current_user.id)
+    )
+
+    # Retrieve entry from database (filtered by user_id)
+    entry = await db_service.get_entry_by_id(db, entry_id, current_user.id)
+
+    if not entry:
+        # Return 404 for both "not found" and "unauthorized" to avoid
+        # leaking information about which entry IDs exist
+        logger.warning(
+            "Entry not found or unauthorized",
+            entry_id=str(entry_id),
+            user_id=str(current_user.id)
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio file not found"
+        )
+
+    # Check if file exists on disk
+    if not os.path.exists(entry.file_path):
+        logger.error(
+            "Audio file missing on disk (data integrity issue)",
+            entry_id=str(entry_id),
+            file_path=entry.file_path,
+            user_id=str(current_user.id)
+        )
+        # Return 404 to client, but log as critical server issue
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Audio file not available"
+        )
+
+    # Sanitize filename for Content-Disposition header
+    safe_filename = _sanitize_filename(entry.original_filename)
+
+    # Change extension to .wav since all files are preprocessed to WAV format
+    filename_base = safe_filename.rsplit('.', 1)[0] if '.' in safe_filename else safe_filename
+    download_filename = f"{filename_base}.wav"
+
+    logger.info(
+        "Serving audio file",
+        entry_id=str(entry_id),
+        file_path=entry.file_path,
+        user_id=str(current_user.id)
+    )
+
+    # Return audio file with proper headers
+    # All files are preprocessed to 16kHz mono WAV format
+    return FileResponse(
+        path=entry.file_path,
+        media_type="audio/wav",
+        filename=download_filename,
+        headers={
+            "Accept-Ranges": "bytes",  # Enable seeking in audio players
+            "Cache-Control": "private, max-age=3600, immutable",  # Cache for 1 hour
+            "Content-Disposition": f'inline; filename="{download_filename}"'  # Play in browser
+        }
     )

@@ -216,7 +216,6 @@ Response:
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "original_filename": "dream_2025-11-15.m4a",
       "saved_filename": "550e8400-e29b_1731542400.m4a",
-      "file_path": "/data/audio/2025-11-15/550e8400-e29b_1731542400.m4a",
       "entry_type": "dream",
       "duration_seconds": 125.5,
       "uploaded_at": "2025-11-15T03:15:00Z",
@@ -278,6 +277,39 @@ curl "http://localhost:8000/api/v1/entries?limit=20&offset=20" \
 **Status Values:**
 - Transcription: `"pending"`, `"processing"`, `"completed"`, `"failed"`
 - Cleanup: `"PENDING"`, `"PROCESSING"`, `"COMPLETED"`, `"FAILED"`
+
+### Download Audio File
+
+**Download audio file for an entry:**
+```bash
+curl -X GET "http://localhost:8000/api/v1/entries/{entry_id}/audio" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  --output dream.wav
+```
+
+**Security:**
+- Requires JWT authentication
+- Users can only download their own audio files
+- Returns 404 for both non-existent entries and unauthorized access (prevents leaking entry IDs)
+
+**Technical Details:**
+- All audio files are served as preprocessed 16kHz mono WAV format
+- Supports range requests for seeking in audio players (`Accept-Ranges: bytes`)
+- Files are cached for 1 hour with `immutable` directive
+- Content-Disposition header set to `inline` for browser playback
+
+**Response:**
+- Status: `200 OK`
+- Content-Type: `audio/wav`
+- Headers:
+  - `Accept-Ranges: bytes` - Enables seeking in audio players
+  - `Cache-Control: private, max-age=3600, immutable` - Caching for 1 hour
+  - `Content-Disposition: inline; filename="dream.wav"` - Play in browser
+
+**Error Responses:**
+- `403 Forbidden` - Missing or invalid authentication token
+- `404 Not Found` - Entry doesn't exist, user doesn't own it, or file unavailable
+- `422 Unprocessable Entity` - Invalid UUID format
 
 ### User Preferences
 
