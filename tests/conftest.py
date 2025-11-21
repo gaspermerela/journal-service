@@ -322,6 +322,7 @@ async def sample_voice_entry(db_session: AsyncSession, test_storage_path: Path, 
         original_filename="test_dream.mp3",
         saved_filename=saved_filename,
         file_path=str(file_path),
+        duration_seconds=60.0,  # Default test duration
         user_id=test_user.id,  # Associate with test user
     )
 

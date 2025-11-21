@@ -56,7 +56,7 @@ async def test_get_entry_response_format(authenticated_client: AsyncClient, samp
     data = response.json()
 
     # Check all required fields are present
-    required_fields = ["id", "original_filename", "saved_filename", "file_path", "uploaded_at"]
+    required_fields = ["id", "original_filename", "saved_filename", "file_path", "duration_seconds", "uploaded_at"]
     for field in required_fields:
         assert field in data, f"Missing required field: {field}"
 
@@ -65,6 +65,7 @@ async def test_get_entry_response_format(authenticated_client: AsyncClient, samp
     assert isinstance(data["original_filename"], str)
     assert isinstance(data["saved_filename"], str)
     assert isinstance(data["file_path"], str)
+    assert isinstance(data["duration_seconds"], (int, float))
     assert isinstance(data["uploaded_at"], str)
 
 
@@ -365,8 +366,32 @@ async def test_list_entries_offset_validation(authenticated_client: AsyncClient)
 
 
 @pytest.mark.asyncio
+async def test_get_entry_duration_included(authenticated_client: AsyncClient, db_session, test_user):
+    """Test that duration_seconds is included in single entry response."""
+    from app.models.voice_entry import VoiceEntry
+
+    entry = VoiceEntry(
+        id=uuid.uuid4(),
+        original_filename="test.mp3",
+        saved_filename="saved.mp3",
+        file_path="/data/audio/test.mp3",
+        entry_type="dream",
+        duration_seconds=123.45,
+        user_id=test_user.id
+    )
+    db_session.add(entry)
+    await db_session.commit()
+
+    response = await authenticated_client.get(f"/api/v1/entries/{entry.id}")
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["duration_seconds"] == 123.45
+
+
+@pytest.mark.asyncio
 async def test_list_entries_duration_included(authenticated_client: AsyncClient, db_session, test_user):
-    """Test that duration_seconds is included in response."""
+    """Test that duration_seconds is included in list response."""
     from app.models.voice_entry import VoiceEntry
 
     entry = VoiceEntry(

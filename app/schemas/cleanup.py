@@ -72,6 +72,7 @@ class UploadTranscribeCleanupResponse(BaseModel):
     original_filename: str = Field(description="Original uploaded filename")
     saved_filename: str = Field(description="Saved filename on disk")
     file_path: str = Field(description="Full path to saved file")
+    duration_seconds: float = Field(description="Audio duration in seconds")
     entry_type: str = Field(description="Type of entry")
     uploaded_at: datetime = Field(description="Upload timestamp")
 

@@ -242,6 +242,7 @@ async def upload_audio(
             original_filename=entry.original_filename,
             saved_filename=entry.saved_filename,
             file_path=entry.file_path,
+            duration_seconds=entry.duration_seconds,
             entry_type=entry.entry_type,
             uploaded_at=entry.uploaded_at,
             message="File uploaded successfully"
@@ -423,6 +424,7 @@ async def upload_and_transcribe(
             original_filename=entry.original_filename,
             saved_filename=entry.saved_filename,
             file_path=entry.file_path,
+            duration_seconds=entry.duration_seconds,
             entry_type=entry.entry_type,
             uploaded_at=entry.uploaded_at,
             transcription_status="processing",
@@ -627,6 +629,7 @@ async def upload_transcribe_and_cleanup(
             original_filename=entry.original_filename,
             saved_filename=entry.saved_filename,
             file_path=entry.file_path,
+            duration_seconds=entry.duration_seconds,
             entry_type=entry.entry_type,
             uploaded_at=entry.uploaded_at,
             transcription_id=transcription.id,
