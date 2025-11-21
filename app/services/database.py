@@ -15,6 +15,7 @@ from app.models.transcription import Transcription
 from app.models.cleaned_entry import CleanedEntry, CleanupStatus
 from app.models.prompt_template import PromptTemplate
 from app.models.notion_sync import NotionSync, SyncStatus
+from app.models.user_preference import UserPreference
 from app.schemas.auth import UserCreate
 from app.schemas.voice_entry import VoiceEntryCreate
 from app.schemas.transcription import TranscriptionCreate
@@ -756,6 +757,116 @@ class DatabaseService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to retrieve user"
+            )
+
+    # ==========================================
+    # User Preferences Operations
+    # ==========================================
+
+    async def get_user_preferences(
+        self,
+        db: AsyncSession,
+        user_id: UUID
+    ) -> Optional[UserPreference]:
+        """
+        Get user preferences by user ID.
+        If preferences don't exist, creates default preferences.
+
+        Args:
+            db: Database session
+            user_id: User's UUID
+
+        Returns:
+            UserPreference instance
+
+        Raises:
+            HTTPException: If database operation fails
+        """
+        try:
+            result = await db.execute(
+                select(UserPreference).where(UserPreference.user_id == user_id)
+            )
+            preferences = result.scalar_one_or_none()
+
+            # Create default preferences if they don't exist
+            if not preferences:
+                logger.info(f"Creating default preferences for user", user_id=str(user_id))
+                preferences = UserPreference(
+                    user_id=user_id,
+                    preferred_transcription_language="auto"
+                )
+                db.add(preferences)
+                await db.flush()
+                await db.refresh(preferences)
+
+            return preferences
+
+        except Exception as e:
+            logger.error(
+                f"Failed to get user preferences",
+                user_id=str(user_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve user preferences"
+            )
+
+    async def update_user_preferences(
+        self,
+        db: AsyncSession,
+        user_id: UUID,
+        preferred_transcription_language: Optional[str] = None
+    ) -> UserPreference:
+        """
+        Update user preferences.
+
+        Args:
+            db: Database session
+            user_id: User's UUID
+            preferred_transcription_language: Language code for transcription
+
+        Returns:
+            Updated UserPreference instance
+
+        Raises:
+            HTTPException: If database operation fails
+        """
+        try:
+            # Get or create preferences
+            preferences = await self.get_user_preferences(db, user_id)
+
+            # Update fields if provided
+            if preferred_transcription_language is not None:
+                preferences.preferred_transcription_language = preferred_transcription_language
+
+            # Update timestamp
+            preferences.updated_at = datetime.now(timezone.utc)
+
+            await db.flush()
+            await db.refresh(preferences)
+
+            logger.info(
+                f"User preferences updated",
+                user_id=str(user_id),
+                language=preferred_transcription_language
+            )
+
+            return preferences
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Failed to update user preferences",
+                user_id=str(user_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update user preferences"
             )
 
     # ==========================================

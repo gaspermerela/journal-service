@@ -292,7 +292,7 @@ async def upload_and_transcribe(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="Audio file to upload (MP3 or M4A)"),
     entry_type: str = Form("dream", description="Type of voice entry (dream, journal, meeting, note, etc.)"),
-    language: str = Form("en", description="Language code for transcription (e.g., 'en', 'es', 'sl') or 'auto' for detection"),
+    language: Optional[str] = Form(None, description="Language code for transcription (e.g., 'en', 'es', 'sl') or 'auto' for detection. If not provided, uses user preference."),
     db: AsyncSession = Depends(get_db),
     transcription_service: TranscriptionService = Depends(get_transcription_service),
     current_user: User = Depends(get_current_user)
@@ -316,6 +316,18 @@ async def upload_and_transcribe(
     file_id = uuid.uuid4()
     saved_file_path = None
 
+    # Determine effective language: request → user preference → auto
+    if language is None:
+        user_preferences = await db_service.get_user_preferences(db, current_user.id)
+        effective_language = user_preferences.preferred_transcription_language
+        logger.info(
+            f"Using user preference for language",
+            user_id=str(current_user.id),
+            language=effective_language
+        )
+    else:
+        effective_language = language
+
     # Log upload request
     client_ip = request.client.host if request.client else "unknown"
     logger.info(
@@ -324,7 +336,7 @@ async def upload_and_transcribe(
         filename=file.filename,
         content_type=file.content_type,
         entry_type=entry_type,
-        language=language
+        language=effective_language
     )
 
     try:
@@ -395,7 +407,7 @@ async def upload_and_transcribe(
             transcription_id=transcription.id,
             entry_id=entry.id,
             audio_file_path=entry.file_path,
-            language=language,
+            language=effective_language,
             transcription_service=transcription_service
         )
 
@@ -414,7 +426,7 @@ async def upload_and_transcribe(
             entry_type=entry.entry_type,
             uploaded_at=entry.uploaded_at,
             transcription_status="processing",
-            transcription_language=language,
+            transcription_language=effective_language,
             message="File uploaded and transcription started"
         )
 
@@ -463,7 +475,7 @@ async def upload_transcribe_and_cleanup(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(..., description="Audio file to upload (MP3 or M4A)"),
     entry_type: str = Form("dream", description="Type of voice entry (dream, journal, meeting, note, etc.)"),
-    language: str = Form("auto", description="Language code for transcription (e.g., 'en', 'es', 'sl') or 'auto' for detection"),
+    language: Optional[str] = Form(None, description="Language code for transcription (e.g., 'en', 'es', 'sl') or 'auto' for detection. If not provided, uses user preference."),
     db: AsyncSession = Depends(get_db),
     transcription_service: TranscriptionService = Depends(get_transcription_service),
     current_user: User = Depends(get_current_user)
@@ -492,6 +504,18 @@ async def upload_transcribe_and_cleanup(
     file_id = uuid.uuid4()
     saved_file_path = None
 
+    # Determine effective language: request → user preference → auto
+    if language is None:
+        user_preferences = await db_service.get_user_preferences(db, current_user.id)
+        effective_language = user_preferences.preferred_transcription_language
+        logger.info(
+            f"Using user preference for language",
+            user_id=str(current_user.id),
+            language=effective_language
+        )
+    else:
+        effective_language = language
+
     # Log upload request
     client_ip = request.client.host if request.client else "unknown"
     logger.info(
@@ -500,7 +524,7 @@ async def upload_transcribe_and_cleanup(
         filename=file.filename,
         content_type=file.content_type,
         entry_type=entry_type,
-        language=language
+        language=effective_language
     )
 
     try:
@@ -584,7 +608,7 @@ async def upload_transcribe_and_cleanup(
             transcription_id=transcription.id,
             entry_id=entry.id,
             audio_file_path=entry.file_path,
-            language=language,
+            language=effective_language,
             transcription_service=transcription_service,
             cleaned_entry_id=cleaned_entry.id,
             entry_type=entry_type,
@@ -607,7 +631,7 @@ async def upload_transcribe_and_cleanup(
             uploaded_at=entry.uploaded_at,
             transcription_id=transcription.id,
             transcription_status="processing",
-            transcription_language=language,
+            transcription_language=effective_language,
             cleanup_id=cleaned_entry.id,
             cleanup_status=cleaned_entry.status,
             cleanup_model=cleaned_entry.model_name,
