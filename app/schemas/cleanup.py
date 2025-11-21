@@ -50,6 +50,7 @@ class CleanedEntryDetail(BaseModel):
     status: CleanupStatus = Field(description="Cleanup processing status")
     model_name: str = Field(description="LLM model used")
     error_message: Optional[str] = Field(None, description="Error details if failed")
+    is_primary: bool = Field(description="Whether this is the primary cleanup to display")
     processing_time_seconds: Optional[float] = Field(None, description="Processing duration")
     created_at: datetime = Field(description="When cleanup was created")
     processing_started_at: Optional[datetime] = Field(None, description="Processing start time")

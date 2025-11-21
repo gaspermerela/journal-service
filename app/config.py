@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     WHISPER_MODEL: str = "large-v3"  # Options: tiny, base, small, medium, large, large-v3
     WHISPER_DEVICE: str = "cpu"  # Options: cpu, cuda (for GPU)
     TORCH_NUM_THREADS: int = 10  # Number of CPU threads for PyTorch
+    WHISPER_DEFAULT_BEAM_SIZE: int = 5  # Default beam size for transcription (1-10, higher = more accurate but slower)
 
     # Audio Preprocessing Configuration
     ENABLE_AUDIO_PREPROCESSING: bool = True  # Enable ffmpeg preprocessing pipeline

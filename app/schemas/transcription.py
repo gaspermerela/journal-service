@@ -4,7 +4,7 @@ Pydantic schemas for transcription request/response validation.
 from datetime import datetime
 from uuid import UUID
 from typing import Optional
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 
 class TranscriptionBase(BaseModel):
@@ -13,6 +13,7 @@ class TranscriptionBase(BaseModel):
     model_used: str
     language_code: str
     is_primary: bool = False
+    beam_size: Optional[int] = None
 
 
 class TranscriptionTriggerRequest(BaseModel):
@@ -21,6 +22,17 @@ class TranscriptionTriggerRequest(BaseModel):
         default="en",
         description="Language code (e.g., 'en', 'es', 'sl') or 'auto' for detection"
     )
+    beam_size: Optional[int] = Field(
+        default=None,
+        description="Beam size for transcription (1-10, higher = more accurate but slower)"
+    )
+
+    @field_validator('beam_size')
+    @classmethod
+    def validate_beam_size(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and (v < 1 or v > 10):
+            raise ValueError('beam_size must be between 1 and 10')
+        return v
 
 
 class TranscriptionCreate(BaseModel):
@@ -67,6 +79,7 @@ class TranscriptionStatusResponse(BaseModel):
     transcribed_text: Optional[str] = None
     model_used: str
     language_code: str
+    beam_size: Optional[int] = None
     transcription_started_at: Optional[datetime] = None
     transcription_completed_at: Optional[datetime] = None
     error_message: Optional[str] = None

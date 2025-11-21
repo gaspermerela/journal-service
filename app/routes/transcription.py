@@ -3,6 +3,7 @@ API routes for audio transcription operations.
 """
 from uuid import UUID
 from pathlib import Path
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,7 +57,8 @@ async def process_transcription_task(
     entry_id: UUID,
     audio_file_path: str,
     language: str,
-    transcription_service: TranscriptionService
+    transcription_service: TranscriptionService,
+    beam_size: Optional[int] = None
 ):
     """
     Background task to process audio transcription.
@@ -67,6 +69,7 @@ async def process_transcription_task(
         audio_file_path: Path to audio file
         language: Language code for transcription
         transcription_service: Transcription service instance
+        beam_size: Beam size for transcription (1-10, optional)
     """
     from app.database import AsyncSessionLocal
 
@@ -91,21 +94,24 @@ async def process_transcription_task(
             # Perform transcription
             result = await transcription_service.transcribe_audio(
                 audio_path=Path(audio_file_path),
-                language=language
+                language=language,
+                beam_size=beam_size
             )
 
             logger.info(
                 f"Transcription completed successfully",
                 transcription_id=str(transcription_id),
-                text_length=len(result["text"])
+                text_length=len(result["text"]),
+                beam_size=result.get("beam_size")
             )
 
-            # Update with result
+            # Update with result (including beam_size used)
             await db_service.update_transcription_status(
                 db=db,
                 transcription_id=transcription_id,
                 status="completed",
-                transcribed_text=result["text"]
+                transcribed_text=result["text"],
+                beam_size=result.get("beam_size")
             )
             await db.commit()
 
@@ -203,7 +209,8 @@ async def trigger_transcription(
         f"Transcription trigger requested",
         entry_id=str(entry_id),
         model=model_name,
-        language=request_data.language
+        language=request_data.language,
+        beam_size=request_data.beam_size
     )
 
     # Verify entry exists and belongs to current user
@@ -240,7 +247,8 @@ async def trigger_transcription(
         entry_id=entry_id,
         audio_file_path=entry.file_path,
         language=request_data.language,
-        transcription_service=transcription_service
+        transcription_service=transcription_service,
+        beam_size=request_data.beam_size
     )
 
     logger.info(f"Background transcription task queued", transcription_id=str(transcription.id))

@@ -82,6 +82,40 @@ async def process_cleanup_background(
 
             logger.info(f"LLM cleanup completed for entry {cleaned_entry_id}")
 
+            # Auto-promote to primary if this transcription has no primary cleanup yet
+            try:
+                primary_cleanup = await db_service.get_primary_cleanup_for_transcription(
+                    db=db,
+                    transcription_id=transcription_id
+                )
+
+                if primary_cleanup is None:
+                    logger.info(
+                        f"No primary cleanup exists, auto-promoting this cleanup",
+                        cleanup_id=str(cleaned_entry_id),
+                        transcription_id=str(transcription_id)
+                    )
+                    await db_service.set_primary_cleanup(
+                        db=db,
+                        cleanup_id=cleaned_entry_id
+                    )
+                    await db.commit()
+                    logger.info(f"Cleanup auto-promoted to primary", cleanup_id=str(cleaned_entry_id))
+                else:
+                    logger.info(
+                        f"Primary cleanup already exists, skipping auto-promotion",
+                        cleanup_id=str(cleaned_entry_id),
+                        transcription_id=str(transcription_id),
+                        existing_primary_id=str(primary_cleanup.id)
+                    )
+            except Exception as promotion_error:
+                # Don't fail cleanup if auto-promotion fails
+                logger.error(
+                    f"Failed to auto-promote cleanup to primary: {str(promotion_error)}",
+                    cleanup_id=str(cleaned_entry_id),
+                    exc_info=True
+                )
+
             # Auto-sync to Notion if enabled
             try:
                 user = await db_service.get_user_by_id(db, user_id)
@@ -286,6 +320,7 @@ async def get_cleaned_entry(
         status=cleaned_entry.status,
         model_name=cleaned_entry.model_name,
         error_message=cleaned_entry.error_message,
+        is_primary=cleaned_entry.is_primary,
         processing_time_seconds=cleaned_entry.processing_time_seconds,
         created_at=cleaned_entry.created_at,
         processing_started_at=cleaned_entry.processing_started_at,
@@ -343,6 +378,7 @@ async def get_cleaned_entries_by_entry(
             status=ce.status,
             model_name=ce.model_name,
             error_message=ce.error_message,
+            is_primary=ce.is_primary,
             processing_time_seconds=ce.processing_time_seconds,
             created_at=ce.created_at,
             processing_started_at=ce.processing_started_at,
@@ -350,3 +386,99 @@ async def get_cleaned_entries_by_entry(
         )
         for ce in cleaned_entries
     ]
+
+
+@router.put(
+    "/cleaned-entries/{cleanup_id}/set-primary",
+    response_model=CleanedEntryDetail,
+    summary="Set cleanup as primary",
+    description="Mark a cleanup as the primary one to display. Automatically unsets any existing primary cleanup for the same transcription."
+)
+async def set_primary_cleanup(
+    cleanup_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Set a cleanup as primary for its transcription.
+
+    This allows users to choose which cleanup version (e.g., which prompt/model)
+    should be displayed as the main entry in the UI.
+
+    Args:
+        cleanup_id: UUID of the cleanup to set as primary
+        current_user: Current authenticated user
+        db: Database session
+
+    Returns:
+        Updated cleanup with is_primary=True
+
+    Raises:
+        HTTPException: If cleanup not found, not owned by user, or not completed
+    """
+    # Get cleanup by ID and verify ownership
+    cleanup = await db_service.get_cleaned_entry_by_id(
+        db=db,
+        cleaned_entry_id=cleanup_id,
+        user_id=current_user.id
+    )
+
+    if not cleanup:
+        logger.warning(
+            f"Cleanup not found or not owned by user",
+            cleanup_id=str(cleanup_id),
+            user_id=str(current_user.id)
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cleanup not found"
+        )
+
+    # Verify cleanup is completed
+    if cleanup.status != CleanupStatus.COMPLETED:
+        logger.warning(
+            f"Cannot set non-completed cleanup as primary",
+            cleanup_id=str(cleanup_id),
+            status=cleanup.status
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot set primary cleanup with status '{cleanup.status}'. Cleanup must be completed."
+        )
+
+    # Set as primary
+    updated_cleanup = await db_service.set_primary_cleanup(
+        db=db,
+        cleanup_id=cleanup_id
+    )
+    await db.commit()
+
+    if not updated_cleanup:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to set primary cleanup"
+        )
+
+    logger.info(
+        f"Cleanup set as primary",
+        cleanup_id=str(cleanup_id),
+        transcription_id=str(updated_cleanup.transcription_id),
+        user_id=str(current_user.id)
+    )
+
+    return CleanedEntryDetail(
+        id=updated_cleanup.id,
+        voice_entry_id=updated_cleanup.voice_entry_id,
+        transcription_id=updated_cleanup.transcription_id,
+        user_id=updated_cleanup.user_id,
+        cleaned_text=updated_cleanup.cleaned_text,
+        analysis=updated_cleanup.analysis,
+        status=updated_cleanup.status,
+        model_name=updated_cleanup.model_name,
+        error_message=updated_cleanup.error_message,
+        is_primary=updated_cleanup.is_primary,
+        processing_time_seconds=updated_cleanup.processing_time_seconds,
+        created_at=updated_cleanup.created_at,
+        processing_started_at=updated_cleanup.processing_started_at,
+        processing_completed_at=updated_cleanup.processing_completed_at
+    )
