@@ -29,6 +29,7 @@ class VoiceEntryCreate(BaseModel):
 class VoiceEntryResponse(VoiceEntryBase):
     """Schema for voice entry API responses."""
     id: UUID
+    duration_seconds: float
     uploaded_at: datetime
     entry_type: str
     primary_transcription: Optional[Any] = Field(
@@ -58,6 +59,7 @@ class VoiceEntryUploadAndTranscribeResponse(BaseModel):
     original_filename: str
     saved_filename: str
     file_path: str
+    duration_seconds: float
     entry_type: str
     uploaded_at: datetime
     transcription_status: str

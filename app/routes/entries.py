@@ -211,6 +211,7 @@ async def get_entry(
         original_filename=entry.original_filename,
         saved_filename=entry.saved_filename,
         file_path=entry.file_path,
+        duration_seconds=entry.duration_seconds,
         entry_type=entry.entry_type,
         uploaded_at=entry.uploaded_at,
         primary_transcription=primary_transcription_data

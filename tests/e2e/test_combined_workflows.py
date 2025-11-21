@@ -61,8 +61,12 @@ async def test_e2e_upload_and_transcribe(
     assert response.status_code == 202
     result = response.json()
 
+    # Verify required fields
     assert "entry_id" in result
     assert "transcription_id" in result
+    assert "duration_seconds" in result
+    assert isinstance(result["duration_seconds"], (int, float))
+    assert result["duration_seconds"] > 0
 
     entry_id = result["entry_id"]
     transcription_id = result["transcription_id"]
@@ -134,9 +138,13 @@ async def test_e2e_upload_transcribe_and_cleanup(
     assert response.status_code == 202
     result = response.json()
 
+    # Verify required fields
     assert "entry_id" in result
     assert "transcription_id" in result
     assert "cleanup_id" in result
+    assert "duration_seconds" in result
+    assert isinstance(result["duration_seconds"], (int, float))
+    assert result["duration_seconds"] > 0
 
     entry_id = result["entry_id"]
     transcription_id = result["transcription_id"]

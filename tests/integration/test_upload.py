@@ -185,7 +185,7 @@ async def test_upload_response_format(authenticated_client: AsyncClient, sample_
     data = response.json()
 
     # Check all required fields are present
-    required_fields = ["id", "original_filename", "saved_filename", "file_path", "uploaded_at", "message"]
+    required_fields = ["id", "original_filename", "saved_filename", "file_path", "duration_seconds", "uploaded_at", "message"]
     for field in required_fields:
         assert field in data, f"Missing required field: {field}"
 
@@ -194,6 +194,7 @@ async def test_upload_response_format(authenticated_client: AsyncClient, sample_
     assert isinstance(data["original_filename"], str)
     assert isinstance(data["saved_filename"], str)
     assert isinstance(data["file_path"], str)
+    assert isinstance(data["duration_seconds"], (int, float))
     assert isinstance(data["uploaded_at"], str)
     assert isinstance(data["message"], str)
 
