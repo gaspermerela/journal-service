@@ -166,7 +166,7 @@ async def test_transcription_options_configured_correctly(mock_whisper_model, tm
     assert call_kwargs["fp16"] is False  # Required for CPU
     assert call_kwargs["language"] == "en"
     assert call_kwargs["task"] == "transcribe"
-    assert call_kwargs["beam_size"] == 1  # Fast mode
+    assert call_kwargs["beam_size"] == 5  # Config default (WHISPER_DEFAULT_BEAM_SIZE)
     assert call_kwargs["best_of"] == 1
 
 
@@ -192,3 +192,55 @@ async def test_transcribe_async_execution(mock_whisper_model, tmp_path):
 
     assert result["text"] is not None
     assert other == "completed"
+
+
+@pytest.mark.asyncio
+async def test_transcribe_with_custom_beam_size(mock_whisper_model, tmp_path):
+    """Test transcription with custom beam_size parameter."""
+    audio_file = tmp_path / "test_audio.mp3"
+    audio_file.write_bytes(b"fake audio data")
+
+    service = WhisperLocalService(model=mock_whisper_model, model_name="base", device="cpu")
+    result = await service.transcribe_audio(audio_file, language="en", beam_size=5)
+
+    # Verify beam_size was passed to Whisper
+    call_kwargs = mock_whisper_model.transcribe.call_args[1]
+    assert call_kwargs["beam_size"] == 5
+
+    # Verify beam_size is in result
+    assert result["beam_size"] == 5
+
+
+@pytest.mark.asyncio
+async def test_transcribe_with_default_beam_size(mock_whisper_model, tmp_path):
+    """Test transcription uses config default when beam_size not provided."""
+    audio_file = tmp_path / "test_audio.mp3"
+    audio_file.write_bytes(b"fake audio data")
+
+    service = WhisperLocalService(model=mock_whisper_model, model_name="large-v3", device="cpu")
+
+    # Don't provide beam_size - should use config default
+    result = await service.transcribe_audio(audio_file, language="en")
+
+    # Verify default beam_size was used
+    call_kwargs = mock_whisper_model.transcribe.call_args[1]
+    assert call_kwargs["beam_size"] == 5  # Config default
+
+    # Verify beam_size is in result
+    assert result["beam_size"] == 5
+
+
+@pytest.mark.asyncio
+async def test_transcribe_beam_size_overrides_model_default(mock_whisper_model, tmp_path):
+    """Test that explicit beam_size overrides model-based default."""
+    audio_file = tmp_path / "test_audio.mp3"
+    audio_file.write_bytes(b"fake audio data")
+
+    # Use large model (normally uses beam_size=5) but explicitly set to 1
+    service = WhisperLocalService(model=mock_whisper_model, model_name="large-v3", device="cpu")
+    result = await service.transcribe_audio(audio_file, language="en", beam_size=1)
+
+    # Verify explicit beam_size=1 was used
+    call_kwargs = mock_whisper_model.transcribe.call_args[1]
+    assert call_kwargs["beam_size"] == 1
+    assert result["beam_size"] == 1
