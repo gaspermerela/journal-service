@@ -21,7 +21,6 @@ async def test_get_entry_by_id_success(authenticated_client: AsyncClient, sample
     assert data["id"] == str(sample_voice_entry.id)
     assert data["original_filename"] == sample_voice_entry.original_filename
     assert data["saved_filename"] == sample_voice_entry.saved_filename
-    assert data["file_path"] == sample_voice_entry.file_path
     assert "uploaded_at" in data
 
 
@@ -56,7 +55,7 @@ async def test_get_entry_response_format(authenticated_client: AsyncClient, samp
     data = response.json()
 
     # Check all required fields are present
-    required_fields = ["id", "original_filename", "saved_filename", "file_path", "duration_seconds", "uploaded_at"]
+    required_fields = ["id", "original_filename", "saved_filename", "duration_seconds", "uploaded_at"]
     for field in required_fields:
         assert field in data, f"Missing required field: {field}"
 
@@ -64,7 +63,6 @@ async def test_get_entry_response_format(authenticated_client: AsyncClient, samp
     assert isinstance(data["id"], str)
     assert isinstance(data["original_filename"], str)
     assert isinstance(data["saved_filename"], str)
-    assert isinstance(data["file_path"], str)
     assert isinstance(data["duration_seconds"], (int, float))
     assert isinstance(data["uploaded_at"], str)
 
@@ -156,7 +154,6 @@ async def test_get_entry_after_upload(authenticated_client: AsyncClient, sample_
     assert get_data["id"] == upload_data["id"]
     assert get_data["original_filename"] == upload_data["original_filename"]
     assert get_data["saved_filename"] == upload_data["saved_filename"]
-    assert get_data["file_path"] == upload_data["file_path"]
 
 
 # ===== List Entries Tests =====
@@ -213,7 +210,6 @@ async def test_list_entries_basic(authenticated_client: AsyncClient, db_session,
     assert "id" in entry
     assert "original_filename" in entry
     assert "saved_filename" in entry
-    assert "file_path" in entry
     assert "entry_type" in entry
     assert "duration_seconds" in entry
     assert "uploaded_at" in entry
