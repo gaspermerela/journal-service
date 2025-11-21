@@ -59,6 +59,13 @@ For granular control, use separate endpoints:
 | `/api/v1/entries/{id}/transcribe` | POST | Yes | Trigger transcription for uploaded entry |
 | `/api/v1/entries/{id}/transcriptions` | GET | Yes | List all transcriptions for an entry |
 
+### User Preferences ⚙️
+
+| Endpoint | Method | Auth Required | Description |
+|----------|--------|---------------|-------------|
+| `/api/v1/user/preferences` | GET | Yes | Get current user's preferences |
+| `/api/v1/user/preferences` | PUT | Yes | Update user preferences (e.g., preferred transcription language) |
+
 ### System 💚
 
 | Endpoint | Method | Auth Required | Description |
@@ -271,6 +278,63 @@ curl "http://localhost:8000/api/v1/entries?limit=20&offset=20" \
 **Status Values:**
 - Transcription: `"pending"`, `"processing"`, `"completed"`, `"failed"`
 - Cleanup: `"PENDING"`, `"PROCESSING"`, `"COMPLETED"`, `"FAILED"`
+
+### User Preferences
+
+**Get user preferences:**
+```bash
+curl -X GET "http://localhost:8000/api/v1/user/preferences" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+
+Response:
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "user_id": "660e8400-e29b-41d4-a716-446655440001",
+  "preferred_transcription_language": "auto",
+  "created_at": "2025-11-21T12:00:00Z",
+  "updated_at": "2025-11-21T12:00:00Z"
+}
+```
+
+**Update preferred transcription language:**
+```bash
+curl -X PUT "http://localhost:8000/api/v1/user/preferences" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "preferred_transcription_language": "sl"
+  }'
+```
+
+Response:
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "user_id": "660e8400-e29b-41d4-a716-446655440001",
+  "preferred_transcription_language": "sl",
+  "created_at": "2025-11-21T12:00:00Z",
+  "updated_at": "2025-11-21T13:30:00Z"
+}
+```
+
+**Supported Language Codes:**
+- `"auto"` - Automatic language detection (default)
+- `"en"` - English
+- `"es"` - Spanish
+- `"sl"` - Slovenian
+- `"de"` - German
+- `"fr"` - French
+- ...and 94 more languages supported by Whisper
+
+**Language Fallback Behavior:**
+When uploading audio files, the system determines the transcription language using this fallback chain:
+1. **Request parameter** - If `language` is provided in the upload request
+2. **User preference** - If user has saved a preferred language
+3. **Auto-detection** - Falls back to `"auto"` if neither is set
+
+This allows users to set a default language once and omit the `language` parameter in subsequent uploads.
 
 ### System
 

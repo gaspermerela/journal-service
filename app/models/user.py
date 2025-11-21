@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from app.models.voice_entry import VoiceEntry
     from app.models.cleaned_entry import CleanedEntry
     from app.models.notion_sync import NotionSync
+    from app.models.user_preference import UserPreference
 
 
 class User(Base):
@@ -117,6 +118,14 @@ class User(Base):
         "NotionSync",
         back_populates="user",
         cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+
+    preferences: Mapped[Optional["UserPreference"]] = relationship(
+        "UserPreference",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
         lazy="selectin"
     )
 
