@@ -102,25 +102,29 @@ async def list_entries(
                 )
                 break
 
-        # Get latest cleaned entry (most recent by created_at)
+        # Get primary cleaned entry (or fallback to latest if no primary)
         latest_cleaned = None
         if entry.cleaned_entries:
-            # Sort by created_at descending and take first
-            sorted_cleaned = sorted(entry.cleaned_entries, key=lambda c: c.created_at, reverse=True)
-            latest = sorted_cleaned[0]
+            # Try to find primary cleanup first
+            primary_cleanup = next((c for c in entry.cleaned_entries if c.is_primary), None)
+
+            # Fallback to latest by created_at if no primary exists
+            if not primary_cleanup:
+                sorted_cleaned = sorted(entry.cleaned_entries, key=lambda c: c.created_at, reverse=True)
+                primary_cleanup = sorted_cleaned[0]
 
             # Create text preview (first 200 chars)
             text_preview = None
-            if latest.cleaned_text:
-                text_preview = latest.cleaned_text[:200]
+            if primary_cleanup.cleaned_text:
+                text_preview = primary_cleanup.cleaned_text[:200]
 
             latest_cleaned = CleanedEntrySummary(
-                id=latest.id,
-                status=latest.status.value,  # Convert enum to string
+                id=primary_cleanup.id,
+                status=primary_cleanup.status.value,  # Convert enum to string
                 cleaned_text_preview=text_preview,
-                analysis=latest.analysis,
-                error_message=latest.error_message,
-                created_at=latest.created_at
+                analysis=primary_cleanup.analysis,
+                error_message=primary_cleanup.error_message,
+                created_at=primary_cleanup.created_at
             )
 
         entry_summaries.append(

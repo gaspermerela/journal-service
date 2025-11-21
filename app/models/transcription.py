@@ -3,7 +3,7 @@ SQLAlchemy model for transcriptions table.
 """
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, DateTime, Boolean, ForeignKey, Index
+from sqlalchemy import String, Text, DateTime, Boolean, Integer, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
@@ -72,6 +72,12 @@ class Transcription(Base):
     language_code: Mapped[str] = mapped_column(
         String(10),
         nullable=False
+    )
+
+    # Transcription configuration
+    beam_size: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True
     )
 
     # Timing

@@ -6,7 +6,7 @@ import asyncio
 import torch
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from app.utils.logger import get_logger
 
 logger = get_logger("transcription")
@@ -22,7 +22,8 @@ class TranscriptionService(ABC):
     async def transcribe_audio(
         self,
         audio_path: Path,
-        language: str = "en"
+        language: str = "en",
+        beam_size: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Transcribe audio file to text.
@@ -30,12 +31,14 @@ class TranscriptionService(ABC):
         Args:
             audio_path: Path to audio file
             language: Language code (e.g., 'en', 'es') or 'auto' for detection
+            beam_size: Beam size for transcription (1-10). If None, uses default.
 
         Returns:
             Dict containing:
                 - text: Transcribed text
                 - language: Detected/used language
                 - segments: Optional list of timed segments
+                - beam_size: Beam size used for transcription
 
         Raises:
             FileNotFoundError: If audio file doesn't exist
@@ -108,7 +111,8 @@ class WhisperLocalService(TranscriptionService):
     async def transcribe_audio(
         self,
         audio_path: Path,
-        language: str = "en"
+        language: str = "en",
+        beam_size: Optional[int] = None
     ) -> Dict[str, Any]:
         """
         Transcribe audio file using local Whisper model.
@@ -116,9 +120,10 @@ class WhisperLocalService(TranscriptionService):
         Args:
             audio_path: Path to audio file
             language: Language code or 'auto' for automatic detection
+            beam_size: Beam size for transcription (1-10). If None, uses default based on model size.
 
         Returns:
-            Dict with transcription result
+            Dict with transcription result (includes beam_size used)
 
         Raises:
             FileNotFoundError: If audio file doesn't exist
@@ -148,7 +153,8 @@ class WhisperLocalService(TranscriptionService):
                 result = await asyncio.to_thread(
                     self._transcribe_sync,
                     str(audio_path),
-                    language
+                    language,
+                    beam_size
                 )
 
             logger.info(
@@ -165,31 +171,39 @@ class WhisperLocalService(TranscriptionService):
             )
             raise RuntimeError(f"Transcription failed: {str(e)}") from e
 
-    def _transcribe_sync(self, audio_path: str, language: str) -> Dict[str, Any]:
+    def _transcribe_sync(self, audio_path: str, language: str, beam_size: Optional[int] = None) -> Dict[str, Any]:
         """
         Synchronous transcription (runs in thread pool).
 
         Args:
             audio_path: Path to audio file as string
             language: Language code or 'auto'
+            beam_size: Beam size for transcription (1-10). If None, uses config default.
 
         Returns:
-            Dict with transcription result
+            Dict with transcription result (includes beam_size used)
         """
+        # Import config here to get default beam size
+        from app.config import settings
+
         # Configure transcription options based on device
         # FP16 enabled for GPU (faster), disabled for CPU (required)
         use_fp16 = self.device == "cuda"
 
-        # For large-v3 model, use higher beam_size for better accuracy
-        # (especially important for Slavic languages per audio_preprocessing_guide.md)
+        # Use provided beam_size or fall back to config default
+        # Previous logic used model-based defaults (5 for large, 1 for others)
+        # Now we respect user's choice or use config default
+        if beam_size is None:
+            beam_size = settings.WHISPER_DEFAULT_BEAM_SIZE
+
+        # For large models, still use best_of=2 for better quality
         is_large_model = "large" in self.model_name.lower()
-        beam_size = 5 if is_large_model else 1
 
         transcribe_options = {
             "fp16": use_fp16,
             "language": None if language == "auto" else language,
             "task": "transcribe",  # vs "translate"
-            "beam_size": beam_size,  # Higher for large models = better accuracy
+            "beam_size": beam_size,
             "best_of": 1 if not is_large_model else 2,  # Better for large models
         }
 
@@ -208,6 +222,7 @@ class WhisperLocalService(TranscriptionService):
             "text": result["text"].strip(),
             "language": result.get("language", language),
             "segments": result.get("segments", []),
+            "beam_size": beam_size,  # Include beam_size in result
         }
 
     def get_supported_languages(self) -> list[str]:

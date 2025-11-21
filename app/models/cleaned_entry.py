@@ -15,6 +15,7 @@ from sqlalchemy import (
     ForeignKey,
     JSON,
     Integer,
+    Boolean,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -92,6 +93,9 @@ class CleanedEntry(Base):
         index=True
     )
     error_message = Column(Text, nullable=True)
+
+    # Primary cleanup flag
+    is_primary = Column(Boolean, nullable=False, default=True, index=True)
 
     # Timestamps
     processing_started_at = Column(DateTime, nullable=True)

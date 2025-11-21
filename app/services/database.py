@@ -485,7 +485,8 @@ class DatabaseService:
         transcription_id: UUID,
         status: str,
         transcribed_text: Optional[str] = None,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        beam_size: Optional[int] = None
     ) -> Optional[Transcription]:
         """
         Update transcription status and related fields.
@@ -496,6 +497,7 @@ class DatabaseService:
             status: New status value
             transcribed_text: Optional transcribed text
             error_message: Optional error message
+            beam_size: Optional beam size used for transcription
 
         Returns:
             Updated Transcription instance
@@ -520,6 +522,8 @@ class DatabaseService:
                 transcription.transcription_completed_at = datetime.now(timezone.utc)
                 if transcribed_text:
                     transcription.transcribed_text = transcribed_text
+                if beam_size is not None:
+                    transcription.beam_size = beam_size
 
             if status == "failed":
                 transcription.transcription_completed_at = datetime.now(timezone.utc)
@@ -612,6 +616,129 @@ class DatabaseService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to set primary transcription"
+            )
+
+    # ===== Cleaned Entry / Cleanup Methods =====
+
+    async def get_primary_cleanup_for_transcription(
+        self,
+        db: AsyncSession,
+        transcription_id: UUID
+    ) -> Optional[CleanedEntry]:
+        """
+        Get the primary cleanup for a transcription.
+
+        Args:
+            db: Database session
+            transcription_id: UUID of the transcription
+
+        Returns:
+            CleanedEntry instance if found, None otherwise
+
+        Raises:
+            HTTPException: If database operation fails
+        """
+        try:
+            result = await db.execute(
+                select(CleanedEntry)
+                .where(
+                    CleanedEntry.transcription_id == transcription_id,
+                    CleanedEntry.is_primary == True
+                )
+            )
+            cleanup = result.scalars().first()
+
+            if cleanup:
+                logger.debug(
+                    f"Primary cleanup found",
+                    cleanup_id=str(cleanup.id),
+                    transcription_id=str(transcription_id)
+                )
+            else:
+                logger.debug(
+                    f"No primary cleanup found for transcription",
+                    transcription_id=str(transcription_id)
+                )
+
+            return cleanup
+
+        except Exception as e:
+            logger.error(
+                f"Failed to retrieve primary cleanup",
+                transcription_id=str(transcription_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve primary cleanup"
+            )
+
+    async def set_primary_cleanup(
+        self,
+        db: AsyncSession,
+        cleanup_id: UUID
+    ) -> Optional[CleanedEntry]:
+        """
+        Set a cleanup as primary for its transcription.
+        Unsets any existing primary cleanup for the same transcription.
+
+        Args:
+            db: Database session
+            cleanup_id: UUID of the cleanup to set as primary
+
+        Returns:
+            Updated CleanedEntry instance
+
+        Raises:
+            HTTPException: If database operation fails
+        """
+        try:
+            # Get cleanup by ID
+            result = await db.execute(
+                select(CleanedEntry).where(CleanedEntry.id == cleanup_id)
+            )
+            cleanup = result.scalars().first()
+
+            if not cleanup:
+                logger.warning(f"Cleanup not found", cleanup_id=str(cleanup_id))
+                return None
+
+            # Unset any existing primary cleanup for this transcription
+            await db.execute(
+                update(CleanedEntry)
+                .where(
+                    CleanedEntry.transcription_id == cleanup.transcription_id,
+                    CleanedEntry.is_primary == True
+                )
+                .values(is_primary=False)
+            )
+
+            # Set this cleanup as primary
+            cleanup.is_primary = True
+            await db.flush()
+            await db.refresh(cleanup)
+
+            logger.info(
+                f"Cleanup set as primary",
+                cleanup_id=str(cleanup_id),
+                transcription_id=str(cleanup.transcription_id)
+            )
+
+            return cleanup
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Failed to set primary cleanup",
+                cleanup_id=str(cleanup_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to set primary cleanup"
             )
 
     # ===== User Management Methods =====
