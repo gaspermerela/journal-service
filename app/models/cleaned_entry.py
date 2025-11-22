@@ -94,8 +94,8 @@ class CleanedEntry(Base):
     )
     error_message = Column(Text, nullable=True)
 
-    # Primary cleanup flag
-    is_primary = Column(Boolean, nullable=False, default=True, index=True)
+    # Primary cleanup flag (one per voice_entry enforced by DB constraint)
+    is_primary = Column(Boolean, nullable=False, default=False, index=True)
 
     # Timestamps
     processing_started_at = Column(DateTime, nullable=True)
