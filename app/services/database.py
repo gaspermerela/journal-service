@@ -437,20 +437,19 @@ class DatabaseService:
                 )
                 return False
 
-            # Check if this is the last primary transcription
-            if transcription.is_primary:
-                other_transcriptions = await db.execute(
-                    select(Transcription)
-                    .where(
-                        Transcription.entry_id == transcription.entry_id,
-                        Transcription.id != transcription_id
-                    )
+            # Check if this is the only transcription for the entry
+            other_transcriptions = await db.execute(
+                select(Transcription)
+                .where(
+                    Transcription.entry_id == transcription.entry_id,
+                    Transcription.id != transcription_id
                 )
-                if not other_transcriptions.scalars().first():
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail="Cannot delete the only transcription for this entry"
-                    )
+            )
+            if not other_transcriptions.scalars().first():
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Cannot delete the only transcription for this entry"
+                )
 
             await db.delete(transcription)
             await db.flush()
