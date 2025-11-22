@@ -16,6 +16,7 @@ from app.schemas.cleanup import (
     CleanupResponse,
     CleanedEntryDetail
 )
+from app.schemas.voice_entry import DeleteResponse
 from app.services.database import db_service
 from app.services.llm_cleanup import LLMCleanupService
 from app.config import settings
@@ -481,4 +482,79 @@ async def set_primary_cleanup(
         created_at=updated_cleanup.created_at,
         processing_started_at=updated_cleanup.processing_started_at,
         processing_completed_at=updated_cleanup.processing_completed_at
+    )
+
+
+@router.delete(
+    "/cleaned-entries/{cleaned_entry_id}",
+    response_model=DeleteResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Delete cleaned entry",
+    description="Permanently delete a cleaned entry. No restrictions - any cleanup can be deleted.",
+    responses={
+        200: {"description": "Cleaned entry deleted successfully"},
+        404: {"description": "Cleaned entry not found or not authorized"},
+        500: {"description": "Server error"}
+    }
+)
+async def delete_cleaned_entry(
+    cleaned_entry_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db)
+) -> DeleteResponse:
+    """
+    Permanently delete a cleaned entry with user ownership verification.
+
+    Deletes:
+    - Cleaned entry database record
+    - NotionSync records referencing this cleanup (set to NULL via foreign key)
+
+    Security:
+    - Requires JWT authentication
+    - Users can only delete their own cleaned entries
+    - Returns 404 for both non-existent and unauthorized access
+
+    Args:
+        cleaned_entry_id: UUID of the cleaned entry to delete
+        current_user: Authenticated user from JWT token
+        db: Database session
+
+    Returns:
+        DeleteResponse with success message and deleted entry ID
+
+    Raises:
+        HTTPException: 404 if entry not found or user doesn't own it
+    """
+    logger.info(
+        "Cleaned entry deletion requested",
+        cleaned_entry_id=str(cleaned_entry_id),
+        user_id=str(current_user.id)
+    )
+
+    # Delete from database (validates ownership)
+    deleted = await db_service.delete_cleaned_entry(db, cleaned_entry_id, current_user.id)
+
+    if not deleted:
+        logger.warning(
+            "Cleaned entry not found or unauthorized for deletion",
+            cleaned_entry_id=str(cleaned_entry_id),
+            user_id=str(current_user.id)
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cleaned entry not found"
+        )
+
+    # Commit database transaction
+    await db.commit()
+
+    logger.info(
+        "Cleaned entry deleted successfully",
+        cleaned_entry_id=str(cleaned_entry_id),
+        user_id=str(current_user.id)
+    )
+
+    return DeleteResponse(
+        message="Cleaned entry deleted successfully",
+        deleted_id=cleaned_entry_id
     )

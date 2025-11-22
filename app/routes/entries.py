@@ -16,10 +16,12 @@ from app.schemas.voice_entry import (
     VoiceEntryListResponse,
     VoiceEntrySummary,
     TranscriptionSummary,
-    CleanedEntrySummary
+    CleanedEntrySummary,
+    DeleteResponse
 )
 from app.schemas.transcription import TranscriptionResponse
 from app.services.database import db_service
+from app.services.storage import storage_service
 from app.middleware.jwt import get_current_user
 from app.utils.logger import get_logger
 
@@ -333,4 +335,95 @@ async def get_entry_audio(
             "Cache-Control": "private, max-age=3600, immutable",  # Cache for 1 hour
             "Content-Disposition": f'inline; filename="{download_filename}"'  # Play in browser
         }
+    )
+
+
+@router.delete(
+    "/entries/{entry_id}",
+    response_model=DeleteResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Delete voice entry",
+    description="Permanently delete a voice entry and all associated data (transcriptions, cleaned entries, notion syncs, audio file)",
+    responses={
+        200: {"description": "Entry deleted successfully"},
+        404: {"description": "Entry not found or not authorized"},
+        500: {"description": "Server error"}
+    }
+)
+async def delete_entry(
+    entry_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> DeleteResponse:
+    """
+    Permanently delete a voice entry with user ownership verification.
+
+    Deletes:
+    - Voice entry database record
+    - All transcriptions (cascaded)
+    - All cleaned entries (cascaded)
+    - All notion sync records (cascaded)
+    - Audio file from storage (best effort)
+
+    Security:
+    - Requires JWT authentication
+    - Users can only delete their own entries
+    - Returns 404 for both non-existent entries and unauthorized access
+
+    Args:
+        entry_id: UUID of the entry to delete
+        db: Database session
+        current_user: Authenticated user from JWT token
+
+    Returns:
+        DeleteResponse with success message and deleted entry ID
+
+    Raises:
+        HTTPException: 404 if entry not found or user doesn't own it
+    """
+    logger.info(
+        "Entry deletion requested",
+        entry_id=str(entry_id),
+        user_id=str(current_user.id)
+    )
+
+    # Delete from database (returns file_path if found, None if not found)
+    file_path = await db_service.delete_entry(db, entry_id, current_user.id)
+
+    if file_path is None:
+        logger.warning(
+            "Entry not found or unauthorized for deletion",
+            entry_id=str(entry_id),
+            user_id=str(current_user.id)
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Entry not found"
+        )
+
+    # Commit database transaction
+    await db.commit()
+
+    # Attempt to delete audio file (best effort)
+    if file_path:
+        file_deleted = await storage_service.delete_file(file_path)
+        if not file_deleted:
+            logger.critical(
+                "Failed to delete audio file after DB deletion (orphaned file)",
+                entry_id=str(entry_id),
+                file_path=file_path,
+                user_id=str(current_user.id)
+            )
+            # Continue - DB deletion succeeded, file cleanup can be done manually
+
+    logger.info(
+        "Entry deleted successfully",
+        entry_id=str(entry_id),
+        user_id=str(current_user.id),
+        file_deleted=file_path is not None
+    )
+
+    return DeleteResponse(
+        message="Entry deleted successfully",
+        deleted_id=entry_id
     )

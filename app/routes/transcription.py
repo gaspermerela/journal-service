@@ -20,6 +20,7 @@ from app.schemas.transcription import (
     TranscriptionStatusResponse,
     TranscriptionCreate,
 )
+from app.schemas.voice_entry import DeleteResponse
 from app.utils.logger import get_logger
 
 logger = get_logger("transcription_routes")
@@ -420,3 +421,83 @@ async def set_primary_transcription(
     logger.info(f"Transcription set as primary", transcription_id=str(transcription_id))
 
     return TranscriptionResponse.model_validate(updated_transcription)
+
+
+@router.delete(
+    "/transcriptions/{transcription_id}",
+    response_model=DeleteResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Delete transcription",
+    description="Permanently delete a transcription and all associated cleaned entries. Prevents deletion of the only transcription for an entry.",
+    responses={
+        200: {"description": "Transcription deleted successfully"},
+        404: {"description": "Transcription not found or not authorized"},
+        409: {"description": "Cannot delete the only transcription for an entry"},
+        500: {"description": "Server error"}
+    }
+)
+async def delete_transcription(
+    transcription_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> DeleteResponse:
+    """
+    Permanently delete a transcription with user ownership verification.
+
+    Deletes:
+    - Transcription database record
+    - All cleaned entries (cascaded)
+
+    Validation:
+    - Prevents deletion if this is the only transcription for the entry
+    - Requires user to own the parent voice entry
+
+    Security:
+    - Requires JWT authentication
+    - Users can only delete transcriptions for their own entries
+    - Returns 404 for both non-existent and unauthorized access
+
+    Args:
+        transcription_id: UUID of the transcription to delete
+        db: Database session
+        current_user: Authenticated user from JWT token
+
+    Returns:
+        DeleteResponse with success message and deleted transcription ID
+
+    Raises:
+        HTTPException: 404 if not found/unauthorized, 409 if validation fails
+    """
+    logger.info(
+        "Transcription deletion requested",
+        transcription_id=str(transcription_id),
+        user_id=str(current_user.id)
+    )
+
+    # Delete from database (validates ownership and business rules)
+    deleted = await db_service.delete_transcription(db, transcription_id, current_user.id)
+
+    if not deleted:
+        logger.warning(
+            "Transcription not found or unauthorized for deletion",
+            transcription_id=str(transcription_id),
+            user_id=str(current_user.id)
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transcription not found"
+        )
+
+    # Commit database transaction
+    await db.commit()
+
+    logger.info(
+        "Transcription deleted successfully",
+        transcription_id=str(transcription_id),
+        user_id=str(current_user.id)
+    )
+
+    return DeleteResponse(
+        message="Transcription deleted successfully",
+        deleted_id=transcription_id
+    )

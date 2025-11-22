@@ -129,3 +129,9 @@ class VoiceEntryListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class DeleteResponse(BaseModel):
+    """Schema for delete operation response."""
+    message: str
+    deleted_id: UUID
