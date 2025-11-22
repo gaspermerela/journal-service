@@ -27,11 +27,13 @@ def mock_db_session():
 def sample_user():
     """Create a sample user for testing."""
     from datetime import datetime, timezone
+    from app.models.user import UserRole
     user = User(
         id=uuid.uuid4(),
         email="test@example.com",
         hashed_password="$2b$12$hashedpassword",
         is_active=True,
+        role=UserRole.USER,
         created_at=datetime.now(timezone.utc)
     )
     return user

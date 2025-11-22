@@ -94,7 +94,7 @@ class User(Base):
 
     # Role
     role: Mapped[UserRole] = mapped_column(
-        SQLAEnum(UserRole, name="userrole", schema="journal"),
+        SQLAEnum(UserRole, name="userrole", schema="journal", values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,
         default=UserRole.USER,
         server_default="user"
