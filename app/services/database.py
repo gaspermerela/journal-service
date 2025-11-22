@@ -712,17 +712,17 @@ class DatabaseService:
 
     # ===== Cleaned Entry / Cleanup Methods =====
 
-    async def get_primary_cleanup_for_transcription(
+    async def get_primary_cleanup_for_voice_entry(
         self,
         db: AsyncSession,
-        transcription_id: UUID
+        voice_entry_id: UUID
     ) -> Optional[CleanedEntry]:
         """
-        Get the primary cleanup for a transcription.
+        Get the primary cleanup for a voice entry.
 
         Args:
             db: Database session
-            transcription_id: UUID of the transcription
+            voice_entry_id: UUID of the voice entry
 
         Returns:
             CleanedEntry instance if found, None otherwise
@@ -734,7 +734,7 @@ class DatabaseService:
             result = await db.execute(
                 select(CleanedEntry)
                 .where(
-                    CleanedEntry.transcription_id == transcription_id,
+                    CleanedEntry.voice_entry_id == voice_entry_id,
                     CleanedEntry.is_primary == True
                 )
             )
@@ -744,12 +744,12 @@ class DatabaseService:
                 logger.debug(
                     f"Primary cleanup found",
                     cleanup_id=str(cleanup.id),
-                    transcription_id=str(transcription_id)
+                    voice_entry_id=str(voice_entry_id)
                 )
             else:
                 logger.debug(
-                    f"No primary cleanup found for transcription",
-                    transcription_id=str(transcription_id)
+                    f"No primary cleanup found for voice entry",
+                    voice_entry_id=str(voice_entry_id)
                 )
 
             return cleanup
@@ -757,7 +757,7 @@ class DatabaseService:
         except Exception as e:
             logger.error(
                 f"Failed to retrieve primary cleanup",
-                transcription_id=str(transcription_id),
+                voice_entry_id=str(voice_entry_id),
                 error=str(e),
                 exc_info=True
             )
@@ -772,8 +772,8 @@ class DatabaseService:
         cleanup_id: UUID
     ) -> Optional[CleanedEntry]:
         """
-        Set a cleanup as primary for its transcription.
-        Unsets any existing primary cleanup for the same transcription.
+        Set a cleanup as primary for its voice entry.
+        Unsets any existing primary cleanup for the same voice entry.
 
         Args:
             db: Database session
@@ -796,11 +796,11 @@ class DatabaseService:
                 logger.warning(f"Cleanup not found", cleanup_id=str(cleanup_id))
                 return None
 
-            # Unset any existing primary cleanup for this transcription
+            # Unset any existing primary cleanup for this voice entry
             await db.execute(
                 update(CleanedEntry)
                 .where(
-                    CleanedEntry.transcription_id == cleanup.transcription_id,
+                    CleanedEntry.voice_entry_id == cleanup.voice_entry_id,
                     CleanedEntry.is_primary == True
                 )
                 .values(is_primary=False)
@@ -814,7 +814,7 @@ class DatabaseService:
             logger.info(
                 f"Cleanup set as primary",
                 cleanup_id=str(cleanup_id),
-                transcription_id=str(cleanup.transcription_id)
+                voice_entry_id=str(cleanup.voice_entry_id)
             )
 
             return cleanup

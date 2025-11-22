@@ -362,7 +362,7 @@ class TestGetCleanedEntriesByVoiceEntry:
         test_user: User
     ):
         """Test retrieving multiple cleanup attempts for same entry."""
-        # Create multiple cleaned entries
+        # Create multiple cleaned entries (only last one is primary due to constraint)
         for i in range(3):
             cleaned_entry = CleanedEntry(
                 id=uuid.uuid4(),
@@ -370,7 +370,8 @@ class TestGetCleanedEntriesByVoiceEntry:
                 transcription_id=completed_transcription.id,
                 user_id=test_user.id,
                 cleaned_text=f"Version {i+1}",
-                model_name="llama3.2:3b"
+                model_name="llama3.2:3b",
+                is_primary=(i == 2)  # Only the last one is primary (one primary per voice_entry)
             )
             cleaned_entry.status = "completed"
             db_session.add(cleaned_entry)
