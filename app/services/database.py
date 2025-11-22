@@ -129,32 +129,41 @@ class DatabaseService:
     async def delete_entry(
         self,
         db: AsyncSession,
-        entry_id: UUID
-    ) -> bool:
+        entry_id: UUID,
+        user_id: UUID
+    ) -> Optional[str]:
         """
-        Delete a voice entry by ID.
+        Delete a voice entry by ID with user ownership verification.
+        Cascades to all child records (transcriptions, cleaned_entries, notion_syncs).
 
         Args:
             db: Database session
             entry_id: UUID of the entry to delete
+            user_id: UUID of the user (for ownership verification)
 
         Returns:
-            True if deletion successful, False if entry not found
+            File path to delete if entry found and deleted, None if not found
 
         Raises:
             HTTPException: If database operation fails
         """
         try:
-            entry = await self.get_entry_by_id(db, entry_id)
+            entry = await self.get_entry_by_id(db, entry_id, user_id)
 
             if not entry:
-                return False
+                return None
 
+            file_path = entry.file_path
             await db.delete(entry)
             await db.flush()
 
-            logger.info(f"Entry deleted from database", entry_id=str(entry_id))
-            return True
+            logger.info(
+                f"Entry deleted from database",
+                entry_id=str(entry_id),
+                user_id=str(user_id),
+                file_path=file_path
+            )
+            return file_path
 
         except HTTPException:
             raise
@@ -382,6 +391,90 @@ class DatabaseService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to retrieve transcription from database"
+            )
+
+    async def delete_transcription(
+        self,
+        db: AsyncSession,
+        transcription_id: UUID,
+        user_id: UUID
+    ) -> bool:
+        """
+        Delete a transcription by ID with user ownership verification.
+        Validates that user owns the parent voice entry.
+        Prevents deletion if this is the only/last primary transcription.
+
+        Args:
+            db: Database session
+            transcription_id: UUID of the transcription to delete
+            user_id: UUID of the user (for ownership verification)
+
+        Returns:
+            True if deleted, False if not found
+
+        Raises:
+            HTTPException: If validation fails or database operation fails
+        """
+        try:
+            # Get transcription with entry relationship
+            result = await db.execute(
+                select(Transcription)
+                .options(selectinload(Transcription.entry))
+                .where(Transcription.id == transcription_id)
+            )
+            transcription = result.scalar_one_or_none()
+
+            if not transcription:
+                return False
+
+            # Verify user owns the parent voice entry
+            if transcription.entry.user_id != user_id:
+                logger.warning(
+                    f"User attempted to delete transcription they don't own",
+                    user_id=str(user_id),
+                    transcription_id=str(transcription_id),
+                    entry_owner=str(transcription.entry.user_id)
+                )
+                return False
+
+            # Check if this is the last primary transcription
+            if transcription.is_primary:
+                other_transcriptions = await db.execute(
+                    select(Transcription)
+                    .where(
+                        Transcription.entry_id == transcription.entry_id,
+                        Transcription.id != transcription_id
+                    )
+                )
+                if not other_transcriptions.scalars().first():
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="Cannot delete the only transcription for this entry"
+                    )
+
+            await db.delete(transcription)
+            await db.flush()
+
+            logger.info(
+                f"Transcription deleted",
+                transcription_id=str(transcription_id),
+                user_id=str(user_id),
+                entry_id=str(transcription.entry_id)
+            )
+            return True
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Failed to delete transcription",
+                transcription_id=str(transcription_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to delete transcription from database"
             )
 
     async def get_transcriptions_for_entry(
@@ -1105,6 +1198,57 @@ class DatabaseService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to retrieve cleaned entry"
+            )
+
+    async def delete_cleaned_entry(
+        self,
+        db: AsyncSession,
+        cleaned_entry_id: UUID,
+        user_id: UUID
+    ) -> bool:
+        """
+        Delete a cleaned entry by ID with user ownership verification.
+
+        Args:
+            db: Database session
+            cleaned_entry_id: UUID of the cleaned entry to delete
+            user_id: UUID of the user (for ownership verification)
+
+        Returns:
+            True if deleted, False if not found or user doesn't own it
+
+        Raises:
+            HTTPException: If database operation fails
+        """
+        try:
+            cleaned_entry = await self.get_cleaned_entry_by_id(db, cleaned_entry_id, user_id)
+
+            if not cleaned_entry:
+                return False
+
+            await db.delete(cleaned_entry)
+            await db.flush()
+
+            logger.info(
+                f"Cleaned entry deleted",
+                cleaned_entry_id=str(cleaned_entry_id),
+                user_id=str(user_id),
+                voice_entry_id=str(cleaned_entry.voice_entry_id)
+            )
+            return True
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Failed to delete cleaned entry",
+                cleaned_entry_id=str(cleaned_entry_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to delete cleaned entry from database"
             )
 
     async def update_cleaned_entry_processing(
