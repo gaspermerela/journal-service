@@ -556,8 +556,9 @@ class TestSyncEntryToNotion:
             f"/api/v1/notion/sync/{other_entry.id}"
         )
 
-        assert response.status_code == 403
-        assert "permission" in response.json()["detail"].lower()
+        # Returns 404 because entry is not found when filtered by user_id
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"].lower()
 
         app.dependency_overrides.clear()
 
@@ -858,3 +859,296 @@ class TestListSyncs:
         response = await client.get("/api/v1/notion/syncs")
 
         assert response.status_code in [401, 403]
+
+
+class TestSyncUpdateFlow:
+    """Tests for sync update functionality (resync to existing page)."""
+
+    @pytest.mark.asyncio
+    async def test_sync_creates_new_page_first_time(
+        self,
+        authenticated_client: AsyncClient,
+        db_session: AsyncSession,
+        user_with_notion_configured: User,
+        sample_voice_entry: VoiceEntry,
+        completed_cleaned_entry: CleanedEntry,
+        mock_notion_service
+    ):
+        """Test first sync creates a new Notion page."""
+        from app.middleware.jwt import get_current_user
+        from app.main import app
+        from app.services.database import db_service
+
+        async def override_get_current_user():
+            return user_with_notion_configured
+
+        app.dependency_overrides[get_current_user] = override_get_current_user
+
+        response = await authenticated_client.post(
+            f"/api/v1/notion/sync/{sample_voice_entry.id}"
+        )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert "create" in data["message"].lower()
+        assert data["notion_page_id"] is None  # No existing page yet
+
+        # Verify create_dream_page would be called (not update_dream_page)
+        # This is tested via the background task in e2e tests
+
+        app.dependency_overrides.clear()
+
+    @pytest.mark.asyncio
+    async def test_sync_updates_existing_page_second_time(
+        self,
+        authenticated_client: AsyncClient,
+        db_session: AsyncSession,
+        user_with_notion_configured: User,
+        sample_voice_entry: VoiceEntry,
+        completed_cleaned_entry: CleanedEntry,
+        mock_notion_service
+    ):
+        """Test second sync updates the existing Notion page."""
+        from app.middleware.jwt import get_current_user
+        from app.main import app
+        from app.services.database import db_service
+
+        async def override_get_current_user():
+            return user_with_notion_configured
+
+        app.dependency_overrides[get_current_user] = override_get_current_user
+
+        # Create an existing completed sync
+        existing_sync = await db_service.create_notion_sync(
+            db=db_session,
+            user_id=user_with_notion_configured.id,
+            entry_id=sample_voice_entry.id,
+            notion_database_id="test_db_123",
+            status=SyncStatus.COMPLETED
+        )
+        existing_sync.notion_page_id = "existing_page_123"
+        await db_session.commit()
+
+        # Trigger second sync
+        response = await authenticated_client.post(
+            f"/api/v1/notion/sync/{sample_voice_entry.id}"
+        )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert "update" in data["message"].lower()
+        assert data["notion_page_id"] == "existing_page_123"  # Returns existing page ID
+
+        app.dependency_overrides.clear()
+
+    @pytest.mark.asyncio
+    async def test_sync_prevents_concurrent_syncs(
+        self,
+        authenticated_client: AsyncClient,
+        db_session: AsyncSession,
+        user_with_notion_configured: User,
+        sample_voice_entry: VoiceEntry,
+        completed_cleaned_entry: CleanedEntry,
+        mock_notion_service
+    ):
+        """Test sync fails if another sync is already in progress."""
+        from app.middleware.jwt import get_current_user
+        from app.main import app
+        from app.services.database import db_service
+
+        async def override_get_current_user():
+            return user_with_notion_configured
+
+        app.dependency_overrides[get_current_user] = override_get_current_user
+
+        # Create an in-progress sync
+        await db_service.create_notion_sync(
+            db=db_session,
+            user_id=user_with_notion_configured.id,
+            entry_id=sample_voice_entry.id,
+            notion_database_id="test_db_123",
+            status=SyncStatus.PROCESSING
+        )
+        await db_session.commit()
+
+        # Try to trigger another sync
+        response = await authenticated_client.post(
+            f"/api/v1/notion/sync/{sample_voice_entry.id}"
+        )
+
+        assert response.status_code == 409  # Conflict
+        assert "already in progress" in response.json()["detail"].lower()
+
+        app.dependency_overrides.clear()
+
+    @pytest.mark.asyncio
+    async def test_sync_allows_retry_after_completion(
+        self,
+        authenticated_client: AsyncClient,
+        db_session: AsyncSession,
+        user_with_notion_configured: User,
+        sample_voice_entry: VoiceEntry,
+        completed_cleaned_entry: CleanedEntry,
+        mock_notion_service
+    ):
+        """Test sync can be triggered again after previous sync completes."""
+        from app.middleware.jwt import get_current_user
+        from app.main import app
+        from app.services.database import db_service
+
+        async def override_get_current_user():
+            return user_with_notion_configured
+
+        app.dependency_overrides[get_current_user] = override_get_current_user
+
+        # Create a completed sync
+        sync1 = await db_service.create_notion_sync(
+            db=db_session,
+            user_id=user_with_notion_configured.id,
+            entry_id=sample_voice_entry.id,
+            notion_database_id="test_db_123",
+            status=SyncStatus.COMPLETED
+        )
+        sync1.notion_page_id = "page_123"
+        await db_session.commit()
+
+        # Trigger second sync - should succeed
+        response = await authenticated_client.post(
+            f"/api/v1/notion/sync/{sample_voice_entry.id}"
+        )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["sync_id"] != str(sync1.id)  # New sync record
+        assert "update" in data["message"].lower()
+
+        app.dependency_overrides.clear()
+
+    @pytest.mark.asyncio
+    async def test_get_latest_completed_sync_returns_most_recent(
+        self,
+        db_session: AsyncSession,
+        user_with_notion_configured: User,
+        sample_voice_entry: VoiceEntry
+    ):
+        """Test get_latest_completed_sync returns the most recent completed sync."""
+        from app.services.database import db_service
+        import asyncio
+
+        # Create multiple completed syncs with small delays
+        sync1 = await db_service.create_notion_sync(
+            db=db_session,
+            user_id=user_with_notion_configured.id,
+            entry_id=sample_voice_entry.id,
+            notion_database_id="test_db_123",
+            status=SyncStatus.COMPLETED
+        )
+        sync1.notion_page_id = "page_old"
+        await db_session.commit()
+        await asyncio.sleep(0.01)  # Ensure different timestamps
+
+        sync2 = await db_service.create_notion_sync(
+            db=db_session,
+            user_id=user_with_notion_configured.id,
+            entry_id=sample_voice_entry.id,
+            notion_database_id="test_db_123",
+            status=SyncStatus.COMPLETED
+        )
+        sync2.notion_page_id = "page_new"
+        await db_session.commit()
+
+        # Get latest - should return sync2
+        latest = await db_service.get_latest_completed_sync(
+            db=db_session,
+            entry_id=sample_voice_entry.id,
+            user_id=user_with_notion_configured.id
+        )
+
+        assert latest is not None
+        assert latest.id == sync2.id
+        assert latest.notion_page_id == "page_new"
+
+    @pytest.mark.asyncio
+    async def test_get_in_progress_sync_detects_pending(
+        self,
+        db_session: AsyncSession,
+        user_with_notion_configured: User,
+        sample_voice_entry: VoiceEntry
+    ):
+        """Test get_in_progress_sync detects PENDING status."""
+        from app.services.database import db_service
+
+        sync = await db_service.create_notion_sync(
+            db=db_session,
+            user_id=user_with_notion_configured.id,
+            entry_id=sample_voice_entry.id,
+            notion_database_id="test_db_123",
+            status=SyncStatus.PENDING
+        )
+        await db_session.commit()
+
+        in_progress = await db_service.get_in_progress_sync(
+            db=db_session,
+            entry_id=sample_voice_entry.id,
+            user_id=user_with_notion_configured.id
+        )
+
+        assert in_progress is not None
+        assert in_progress.id == sync.id
+        assert in_progress.status == SyncStatus.PENDING
+
+    @pytest.mark.asyncio
+    async def test_get_in_progress_sync_detects_processing(
+        self,
+        db_session: AsyncSession,
+        user_with_notion_configured: User,
+        sample_voice_entry: VoiceEntry
+    ):
+        """Test get_in_progress_sync detects PROCESSING status."""
+        from app.services.database import db_service
+
+        sync = await db_service.create_notion_sync(
+            db=db_session,
+            user_id=user_with_notion_configured.id,
+            entry_id=sample_voice_entry.id,
+            notion_database_id="test_db_123",
+            status=SyncStatus.PROCESSING
+        )
+        await db_session.commit()
+
+        in_progress = await db_service.get_in_progress_sync(
+            db=db_session,
+            entry_id=sample_voice_entry.id,
+            user_id=user_with_notion_configured.id
+        )
+
+        assert in_progress is not None
+        assert in_progress.id == sync.id
+        assert in_progress.status == SyncStatus.PROCESSING
+
+    @pytest.mark.asyncio
+    async def test_get_in_progress_sync_ignores_completed(
+        self,
+        db_session: AsyncSession,
+        user_with_notion_configured: User,
+        sample_voice_entry: VoiceEntry
+    ):
+        """Test get_in_progress_sync ignores completed syncs."""
+        from app.services.database import db_service
+
+        sync = await db_service.create_notion_sync(
+            db=db_session,
+            user_id=user_with_notion_configured.id,
+            entry_id=sample_voice_entry.id,
+            notion_database_id="test_db_123",
+            status=SyncStatus.COMPLETED
+        )
+        await db_session.commit()
+
+        in_progress = await db_service.get_in_progress_sync(
+            db=db_session,
+            entry_id=sample_voice_entry.id,
+            user_id=user_with_notion_configured.id
+        )
+
+        assert in_progress is None
