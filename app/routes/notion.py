@@ -8,7 +8,7 @@ Handles:
 """
 
 from uuid import UUID
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -193,10 +193,13 @@ async def process_notion_sync_background(
     user_id: UUID,
     entry_id: UUID,
     database_id: str,
-    encrypted_api_key: str
+    encrypted_api_key: str,
+    existing_page_id: Optional[str] = None
 ):
     """
     Background task to sync dream to Notion.
+
+    Creates a new page if existing_page_id is None, otherwise updates the existing page.
 
     Args:
         sync_id: NotionSync record ID
@@ -204,6 +207,7 @@ async def process_notion_sync_background(
         entry_id: Voice entry ID to sync
         database_id: Notion database ID
         encrypted_api_key: Encrypted Notion API key
+        existing_page_id: Optional existing Notion page ID to update
     """
     from app.database import get_session
 
@@ -220,7 +224,8 @@ async def process_notion_sync_background(
             logger.info(
                 "Starting Notion sync",
                 sync_id=sync_id,
-                entry_id=entry_id
+                entry_id=entry_id,
+                is_update=existing_page_id is not None
             )
 
             # Get voice entry with latest cleaned entry
@@ -240,20 +245,42 @@ async def process_notion_sync_background(
             notion_service = NotionService(api_key=api_key)
 
             try:
-                # Create dream page
-                page = await notion_service.create_dream_page(
-                    database_id=database_id,
-                    dream_content=cleaned_entry.cleaned_text,
-                    uploaded_at=voice_entry.uploaded_at,
-                    dream_name="Dream"  # Phase 5: hardcoded
-                )
+                if existing_page_id:
+                    # Update existing page
+                    page = await notion_service.update_dream_page(
+                        page_id=existing_page_id,
+                        dream_content=cleaned_entry.cleaned_text,
+                        uploaded_at=voice_entry.uploaded_at,
+                        dream_name="Dream"  # Phase 5: hardcoded
+                    )
+                    notion_page_id = existing_page_id
+                    logger.info(
+                        "Notion page updated",
+                        sync_id=sync_id,
+                        page_id=existing_page_id
+                    )
+                else:
+                    # Create new dream page
+                    page = await notion_service.create_dream_page(
+                        database_id=database_id,
+                        dream_content=cleaned_entry.cleaned_text,
+                        uploaded_at=voice_entry.uploaded_at,
+                        dream_name="Dream"  # Phase 5: hardcoded
+                    )
+                    notion_page_id = page["id"]
+                    logger.info(
+                        "Notion page created",
+                        sync_id=sync_id,
+                        page_id=notion_page_id,
+                        page_url=page.get("url")
+                    )
 
                 # Update sync record with success
                 await db_service.update_notion_sync_status(
                     db=db,
                     sync_id=sync_id,
                     status=SyncStatus.COMPLETED,
-                    notion_page_id=page["id"],
+                    notion_page_id=notion_page_id,
                     cleaned_entry_id=cleaned_entry.id
                 )
                 await db.commit()
@@ -261,8 +288,8 @@ async def process_notion_sync_background(
                 logger.info(
                     "Notion sync completed",
                     sync_id=sync_id,
-                    page_id=page["id"],
-                    page_url=page.get("url")
+                    page_id=notion_page_id,
+                    was_update=existing_page_id is not None
                 )
 
             finally:
@@ -307,8 +334,9 @@ async def process_notion_sync_background(
     "/sync/{entry_id}",
     response_model=NotionSyncResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Manually sync entry to Notion",
-    description="Trigger manual sync of a voice entry to Notion. "
+    summary="Sync entry to Notion",
+    description="Sync a voice entry to Notion. "
+                "Automatically creates a new page or updates existing one. "
                 "Requires Notion integration to be configured."
 )
 async def sync_entry_to_notion(
@@ -318,7 +346,12 @@ async def sync_entry_to_notion(
     background_tasks: BackgroundTasks
 ):
     """
-    Manually trigger sync of a voice entry to Notion.
+    Sync a voice entry to Notion.
+
+    Behavior:
+    - If entry has never been synced → creates new Notion page
+    - If entry has existing Notion page → updates that page
+    - Prevents multiple simultaneous syncs for the same entry
 
     Requires:
     - Notion integration configured
@@ -333,28 +366,39 @@ async def sync_entry_to_notion(
         )
 
     # Verify entry exists and belongs to user
-    # First check if entry exists at all (without user filter)
-    voice_entry = await db_service.get_entry_by_id(db, entry_id, None)
+    voice_entry = await db_service.get_entry_by_id(db, entry_id, current_user.id)
     if not voice_entry:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Voice entry {entry_id} not found"
-        )
-
-    # Then check ownership
-    if voice_entry.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to sync this entry"
+            detail=f"Voice entry not found"
         )
 
     # Check if cleaned text exists
-    cleaned_entry = await db_service.get_latest_cleaned_entry(db, entry_id)
+    cleaned_entry = await db_service.get_latest_cleaned_entry(db, entry_id, current_user.id)
     if not cleaned_entry or not cleaned_entry.cleaned_text:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No cleaned text available for this entry. Please run cleanup first."
         )
+
+    # Check for in-progress syncs to prevent race conditions
+    in_progress_sync = await db_service.get_in_progress_sync(
+        db=db,
+        entry_id=entry_id,
+        user_id=current_user.id
+    )
+    if in_progress_sync:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A sync is already in progress for this entry (sync_id: {in_progress_sync.id})"
+        )
+
+    # Check if entry has been synced before
+    existing_sync = await db_service.get_latest_completed_sync(
+        db=db,
+        entry_id=entry_id,
+        user_id=current_user.id
+    )
 
     # Create sync record
     sync_record = await db_service.create_notion_sync(
@@ -366,29 +410,32 @@ async def sync_entry_to_notion(
     )
     await db.commit()
 
-    # Trigger background sync
+    # Trigger background sync with optional existing page ID
     background_tasks.add_task(
         process_notion_sync_background,
         sync_id=sync_record.id,
         user_id=current_user.id,
         entry_id=entry_id,
         database_id=current_user.notion_database_id,
-        encrypted_api_key=current_user.notion_api_key_encrypted
+        encrypted_api_key=current_user.notion_api_key_encrypted,
+        existing_page_id=existing_sync.notion_page_id if existing_sync else None
     )
 
+    action = "update" if existing_sync else "create"
     logger.info(
         "Notion sync triggered",
         sync_id=sync_record.id,
         entry_id=entry_id,
-        user_id=current_user.id
+        user_id=current_user.id,
+        action=action
     )
 
     return NotionSyncResponse(
         sync_id=sync_record.id,
         entry_id=entry_id,
         status=SyncStatus.PENDING.value,
-        message="Sync started in background",
-        notion_page_id=None,
+        message=f"Sync started in background (will {action} page)",
+        notion_page_id=existing_sync.notion_page_id if existing_sync else None,
         notion_page_url=None
     )
 

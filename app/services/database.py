@@ -1436,6 +1436,118 @@ class DatabaseService:
 
     # Notion Sync Methods
 
+    async def get_latest_completed_sync(
+        self,
+        db: AsyncSession,
+        entry_id: UUID,
+        user_id: UUID
+    ) -> Optional[NotionSync]:
+        """
+        Get the most recent successfully completed Notion sync for an entry.
+
+        Args:
+            db: Database session
+            entry_id: Voice entry ID
+            user_id: User ID (for ownership verification)
+
+        Returns:
+            Most recent completed NotionSync instance or None
+
+        Raises:
+            HTTPException: If database operation fails
+        """
+        try:
+            query = (
+                select(NotionSync)
+                .where(
+                    NotionSync.entry_id == entry_id,
+                    NotionSync.user_id == user_id,
+                    NotionSync.status == SyncStatus.COMPLETED
+                )
+                .order_by(NotionSync.created_at.desc())
+                .limit(1)
+            )
+            result = await db.execute(query)
+            sync_record = result.scalar_one_or_none()
+
+            if sync_record:
+                logger.debug(
+                    "Latest completed sync found",
+                    sync_id=str(sync_record.id),
+                    entry_id=str(entry_id),
+                    notion_page_id=sync_record.notion_page_id
+                )
+
+            return sync_record
+
+        except Exception as e:
+            logger.error(
+                "Failed to get latest completed sync",
+                entry_id=str(entry_id),
+                user_id=str(user_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve sync record"
+            )
+
+    async def get_in_progress_sync(
+        self,
+        db: AsyncSession,
+        entry_id: UUID,
+        user_id: UUID
+    ) -> Optional[NotionSync]:
+        """
+        Get any in-progress sync for an entry (PENDING or PROCESSING).
+
+        Args:
+            db: Database session
+            entry_id: Voice entry ID
+            user_id: User ID (for ownership verification)
+
+        Returns:
+            In-progress NotionSync instance or None
+
+        Raises:
+            HTTPException: If database operation fails
+        """
+        try:
+            query = (
+                select(NotionSync)
+                .where(
+                    NotionSync.entry_id == entry_id,
+                    NotionSync.user_id == user_id,
+                    NotionSync.status.in_([SyncStatus.PENDING, SyncStatus.PROCESSING])
+                )
+            )
+            result = await db.execute(query)
+            sync_record = result.scalar_one_or_none()
+
+            if sync_record:
+                logger.debug(
+                    "In-progress sync found",
+                    sync_id=str(sync_record.id),
+                    entry_id=str(entry_id),
+                    status=sync_record.status.value
+                )
+
+            return sync_record
+
+        except Exception as e:
+            logger.error(
+                "Failed to get in-progress sync",
+                entry_id=str(entry_id),
+                user_id=str(user_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to retrieve sync record"
+            )
+
     async def create_notion_sync(
         self,
         db: AsyncSession,
