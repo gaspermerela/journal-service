@@ -280,7 +280,7 @@ async def test_set_primary_transcription_unsets_previous(db_session, sample_voic
 
 
 @pytest.mark.asyncio
-async def test_transcription_cascade_delete(db_session, sample_voice_entry):
+async def test_transcription_cascade_delete(db_session, sample_voice_entry, test_user):
     """Test that deleting an entry cascades to delete transcriptions."""
     # Create transcription for entry
     trans_data = TranscriptionCreate(
@@ -295,7 +295,7 @@ async def test_transcription_cascade_delete(db_session, sample_voice_entry):
     trans_id = trans.id
 
     # Delete the entry
-    await db_service.delete_entry(db_session, sample_voice_entry.id)
+    await db_service.delete_entry(db_session, sample_voice_entry.id, test_user.id)
     await db_session.commit()
 
     # Try to retrieve transcription - should not exist

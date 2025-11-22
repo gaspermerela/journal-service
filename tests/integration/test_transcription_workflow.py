@@ -212,7 +212,7 @@ async def test_transcription_with_auto_language_detection(authenticated_client, 
 
 
 @pytest.mark.asyncio
-async def test_entry_deletion_cascades_to_transcriptions(client, sample_voice_entry, db_session):
+async def test_entry_deletion_cascades_to_transcriptions(client, sample_voice_entry, db_session, test_user):
     """
     Test that deleting an entry also deletes its transcriptions.
     """
@@ -232,7 +232,7 @@ async def test_entry_deletion_cascades_to_transcriptions(client, sample_voice_en
     trans_id = trans.id
 
     # Delete entry
-    await db_service.delete_entry(db_session, sample_voice_entry.id)
+    await db_service.delete_entry(db_session, sample_voice_entry.id, test_user.id)
     await db_session.commit()
 
     # Try to get transcription - should not exist

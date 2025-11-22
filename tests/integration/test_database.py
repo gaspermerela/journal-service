@@ -102,11 +102,11 @@ async def test_get_entry_by_id_not_found(db_session: AsyncSession, db_service: D
 
 
 @pytest.mark.asyncio
-async def test_delete_entry_success(db_session: AsyncSession, db_service: DatabaseService, sample_voice_entry: VoiceEntry):
+async def test_delete_entry_success(db_session: AsyncSession, db_service: DatabaseService, sample_voice_entry: VoiceEntry, test_user):
     """Test successful deletion of entry."""
-    result = await db_service.delete_entry(db_session, sample_voice_entry.id)
+    result = await db_service.delete_entry(db_session, sample_voice_entry.id, test_user.id)
 
-    assert result is True
+    assert result is not None  # Returns file_path, not boolean
 
     # Verify entry is deleted
     deleted_entry = await db_service.get_entry_by_id(db_session, sample_voice_entry.id)
@@ -114,13 +114,13 @@ async def test_delete_entry_success(db_session: AsyncSession, db_service: Databa
 
 
 @pytest.mark.asyncio
-async def test_delete_entry_not_found(db_session: AsyncSession, db_service: DatabaseService):
+async def test_delete_entry_not_found(db_session: AsyncSession, db_service: DatabaseService, test_user):
     """Test deletion of non-existent entry."""
     non_existent_id = uuid.uuid4()
 
-    result = await db_service.delete_entry(db_session, non_existent_id)
+    result = await db_service.delete_entry(db_session, non_existent_id, test_user.id)
 
-    assert result is False
+    assert result is None  # Returns None when entry not found
 
 
 @pytest.mark.asyncio
