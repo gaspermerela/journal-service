@@ -4,6 +4,7 @@ Pydantic schemas for authentication and user management.
 from datetime import datetime
 from uuid import UUID
 from pydantic import BaseModel, EmailStr, Field
+from app.models.user import UserRole
 
 
 class UserCreate(BaseModel):
@@ -29,6 +30,7 @@ class UserResponse(BaseModel):
     id: UUID
     email: EmailStr
     is_active: bool
+    role: UserRole
     created_at: datetime
 
     model_config = {

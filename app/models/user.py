@@ -4,11 +4,18 @@ SQLAlchemy model for users table.
 import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
-from sqlalchemy import String, Boolean, DateTime, Index
+from enum import Enum
+from sqlalchemy import String, Boolean, DateTime, Index, Enum as SQLAEnum
 from typing import Optional
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
+
+
+class UserRole(str, Enum):
+    """User role enumeration."""
+    USER = "user"
+    ADMIN = "admin"
 
 if TYPE_CHECKING:
     from app.models.voice_entry import VoiceEntry
@@ -85,6 +92,14 @@ class User(Base):
         server_default="true"
     )
 
+    # Role
+    role: Mapped[UserRole] = mapped_column(
+        SQLAEnum(UserRole, name="userrole", schema="journal"),
+        nullable=False,
+        default=UserRole.USER,
+        server_default="user"
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -133,6 +148,7 @@ class User(Base):
     __table_args__ = (
         Index("idx_users_email", "email"),
         Index("idx_users_is_active", "is_active"),
+        Index("idx_users_role", "role"),
         {"schema": "journal"}
     )
 

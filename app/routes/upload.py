@@ -71,7 +71,8 @@ async def transcription_then_cleanup_task(
     transcription_service: TranscriptionService,
     cleaned_entry_id: uuid.UUID,
     entry_type: str,
-    user_id: uuid.UUID
+    user_id: uuid.UUID,
+    beam_size: Optional[int] = None
 ):
     """
     Background task that runs transcription, then triggers cleanup when done.
@@ -89,7 +90,8 @@ async def transcription_then_cleanup_task(
         entry_id=entry_id,
         audio_file_path=audio_file_path,
         language=language,
-        transcription_service=transcription_service
+        transcription_service=transcription_service,
+        beam_size=beam_size
     )
 
     # Check if transcription succeeded
@@ -293,6 +295,7 @@ async def upload_and_transcribe(
     file: UploadFile = File(..., description="Audio file to upload (MP3 or M4A)"),
     entry_type: str = Form("dream", description="Type of voice entry (dream, journal, meeting, note, etc.)"),
     language: Optional[str] = Form(None, description="Language code for transcription (e.g., 'en', 'es', 'sl') or 'auto' for detection. If not provided, uses user preference."),
+    beam_size: Optional[int] = Form(None, description="Beam size for transcription (1-10, higher = more accurate but slower). If not provided, uses default from config."),
     db: AsyncSession = Depends(get_db),
     transcription_service: TranscriptionService = Depends(get_transcription_service),
     current_user: User = Depends(get_current_user)
@@ -408,7 +411,8 @@ async def upload_and_transcribe(
             entry_id=entry.id,
             audio_file_path=entry.file_path,
             language=effective_language,
-            transcription_service=transcription_service
+            transcription_service=transcription_service,
+            beam_size=beam_size
         )
 
         logger.info(
@@ -476,6 +480,7 @@ async def upload_transcribe_and_cleanup(
     file: UploadFile = File(..., description="Audio file to upload (MP3 or M4A)"),
     entry_type: str = Form("dream", description="Type of voice entry (dream, journal, meeting, note, etc.)"),
     language: Optional[str] = Form(None, description="Language code for transcription (e.g., 'en', 'es', 'sl') or 'auto' for detection. If not provided, uses user preference."),
+    beam_size: Optional[int] = Form(None, description="Beam size for transcription (1-10, higher = more accurate but slower). If not provided, uses default from config."),
     db: AsyncSession = Depends(get_db),
     transcription_service: TranscriptionService = Depends(get_transcription_service),
     current_user: User = Depends(get_current_user)
@@ -612,7 +617,8 @@ async def upload_transcribe_and_cleanup(
             transcription_service=transcription_service,
             cleaned_entry_id=cleaned_entry.id,
             entry_type=entry_type,
-            user_id=current_user.id
+            user_id=current_user.id,
+            beam_size=beam_size
         )
 
         logger.info(
