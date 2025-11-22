@@ -83,18 +83,24 @@ async def process_cleanup_background(
 
             logger.info(f"LLM cleanup completed for entry {cleaned_entry_id}")
 
+            # Get the cleaned entry to retrieve transcription_id for auto-promotion
+            cleaned_entry = await db_service.get_cleaned_entry_by_id(
+                db=db,
+                cleaned_entry_id=cleaned_entry_id
+            )
+
             # Auto-promote to primary if this transcription has no primary cleanup yet
             try:
                 primary_cleanup = await db_service.get_primary_cleanup_for_transcription(
                     db=db,
-                    transcription_id=transcription_id
+                    transcription_id=cleaned_entry.transcription_id
                 )
 
                 if primary_cleanup is None:
                     logger.info(
                         f"No primary cleanup exists, auto-promoting this cleanup",
                         cleanup_id=str(cleaned_entry_id),
-                        transcription_id=str(transcription_id)
+                        transcription_id=str(cleaned_entry.transcription_id)
                     )
                     await db_service.set_primary_cleanup(
                         db=db,
@@ -106,7 +112,7 @@ async def process_cleanup_background(
                     logger.info(
                         f"Primary cleanup already exists, skipping auto-promotion",
                         cleanup_id=str(cleaned_entry_id),
-                        transcription_id=str(transcription_id),
+                        transcription_id=str(cleaned_entry.transcription_id),
                         existing_primary_id=str(primary_cleanup.id)
                     )
             except Exception as promotion_error:
