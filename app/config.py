@@ -25,7 +25,10 @@ class Settings(BaseSettings):
     AUDIO_STORAGE_PATH: str = "/app/data/audio"
     MAX_FILE_SIZE_MB: int = 100
 
-    # Whisper Transcription Configuration
+    # Transcription Configuration
+    TRANSCRIPTION_PROVIDER: str = "groq"  # Options: whisper (local), groq (API)
+
+    # Whisper (Local) Transcription Configuration
     WHISPER_MODEL: str = "large-v3"  # Options: tiny, base, small, medium, large, large-v3
     WHISPER_DEVICE: str = "cpu"  # Options: cpu, cuda (for GPU)
     TORCH_NUM_THREADS: int = 10  # Number of CPU threads for PyTorch
@@ -42,10 +45,18 @@ class Settings(BaseSettings):
     PREPROCESSING_SILENCE_DURATION: float = 0.5  # Minimum silence duration in seconds
 
     # LLM Cleanup Configuration
+    LLM_PROVIDER: str = "groq"  # Options: ollama (local), groq (API)
+
+    # Ollama (Local) LLM Configuration
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2:3b"
     LLM_TIMEOUT_SECONDS: int = 120
     LLM_MAX_RETRIES: int = 2
+
+    # Groq API Configuration (for both transcription and LLM)
+    GROQ_API_KEY: Optional[str] = None  # Required when using Groq provider
+    GROQ_TRANSCRIPTION_MODEL: str = "whisper-large-v3"  # Groq's Whisper model
+    GROQ_LLM_MODEL: str = "llama-3.3-70b-versatile"  # Groq's chat model
 
     # CORS Configuration
     CORS_ORIGINS: str = "*"

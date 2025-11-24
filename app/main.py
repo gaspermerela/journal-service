@@ -11,6 +11,7 @@ from app.database import check_db_connection
 from app.routes import upload, health, entries, transcription, auth, cleanup, notion, user_preferences
 from app.middleware.logging import RequestLoggingMiddleware
 from app.services.transcription import create_transcription_service
+from app.services.llm_cleanup import create_llm_cleanup_service
 from app.utils.logger import get_logger
 
 logger = get_logger("main")
@@ -40,31 +41,69 @@ async def lifespan(app: FastAPI):
     storage_path.mkdir(parents=True, exist_ok=True)
     logger.info(f"Storage path configured: {settings.AUDIO_STORAGE_PATH}")
 
-    # Load Whisper model for transcription
-    logger.info(f"Loading Whisper model: {settings.WHISPER_MODEL}")
+    # Initialize transcription service based on provider
+    logger.info(f"Initializing transcription service with provider: {settings.TRANSCRIPTION_PROVIDER}")
     try:
-        whisper_model = whisper.load_model(
-            settings.WHISPER_MODEL,
-            device=settings.WHISPER_DEVICE
-        )
-        logger.info(
-            f"Whisper model loaded successfully: "
-            f"model={settings.WHISPER_MODEL}, device={settings.WHISPER_DEVICE}"
-        )
+        if settings.TRANSCRIPTION_PROVIDER.lower() == "whisper":
+            # Load local Whisper model
+            logger.info(f"Loading Whisper model: {settings.WHISPER_MODEL}")
+            whisper_model = whisper.load_model(
+                settings.WHISPER_MODEL,
+                device=settings.WHISPER_DEVICE
+            )
+            logger.info(
+                f"Whisper model loaded successfully: "
+                f"model={settings.WHISPER_MODEL}, device={settings.WHISPER_DEVICE}"
+            )
 
-        # Create transcription service and store in app state
-        app.state.transcription_service = create_transcription_service(
-            model=whisper_model,
-            model_name=settings.WHISPER_MODEL,
-            device=settings.WHISPER_DEVICE,
-            num_threads=settings.TORCH_NUM_THREADS
-        )
-        logger.info("Transcription service initialized")
+            # Create local Whisper transcription service
+            app.state.transcription_service = create_transcription_service(
+                provider="whisper",
+                model=whisper_model,
+                model_name=settings.WHISPER_MODEL,
+                device=settings.WHISPER_DEVICE,
+                num_threads=settings.TORCH_NUM_THREADS
+            )
+            logger.info("Local Whisper transcription service initialized")
+
+        elif settings.TRANSCRIPTION_PROVIDER.lower() == "groq":
+            # Create Groq API transcription service
+            if not settings.GROQ_API_KEY:
+                raise ValueError("GROQ_API_KEY is required when TRANSCRIPTION_PROVIDER is 'groq'")
+
+            app.state.transcription_service = create_transcription_service(
+                provider="groq",
+                model_name=settings.GROQ_TRANSCRIPTION_MODEL,
+                api_key=settings.GROQ_API_KEY
+            )
+            logger.info(
+                f"Groq transcription service initialized: model={settings.GROQ_TRANSCRIPTION_MODEL}"
+            )
+
+        else:
+            raise ValueError(
+                f"Unsupported TRANSCRIPTION_PROVIDER: {settings.TRANSCRIPTION_PROVIDER}. "
+                f"Supported: whisper, groq"
+            )
+
     except Exception as e:
-        logger.error(f"Failed to load Whisper model: {e}", exc_info=True)
+        logger.error(f"Failed to initialize transcription service: {e}", exc_info=True)
         # Don't fail startup, but transcription won't work
         app.state.transcription_service = None
         logger.warning("Application started without transcription capability")
+
+    # Initialize LLM cleanup service
+    logger.info(f"Initializing LLM cleanup service with provider: {settings.LLM_PROVIDER}")
+    try:
+        app.state.llm_cleanup_service = create_llm_cleanup_service(
+            provider=settings.LLM_PROVIDER,
+            db_session=None  # DB session will be injected per-request
+        )
+        logger.info(f"LLM cleanup service initialized: provider={settings.LLM_PROVIDER}")
+    except Exception as e:
+        logger.error(f"Failed to initialize LLM cleanup service: {e}", exc_info=True)
+        app.state.llm_cleanup_service = None
+        logger.warning("Application started without LLM cleanup capability")
 
     yield
 
@@ -72,6 +111,8 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down AI Journal Backend Service")
     app.state.transcription_service = None
     logger.info("Transcription service cleaned up")
+    app.state.llm_cleanup_service = None
+    logger.info("LLM cleanup service cleaned up")
 
 
 # Create FastAPI application
