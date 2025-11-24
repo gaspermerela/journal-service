@@ -258,27 +258,61 @@ class WhisperLocalService(TranscriptionService):
 
 
 def create_transcription_service(
-    model: Any,
-    model_name: str,
+    provider: str = "whisper",
+    model: Optional[Any] = None,
+    model_name: Optional[str] = None,
     device: str = "cpu",
-    num_threads: int = 10
+    num_threads: int = 10,
+    api_key: Optional[str] = None
 ) -> TranscriptionService:
     """
-    Factory function to create transcription service.
-    Makes it easy to swap implementations later.
+    Factory function to create transcription service based on provider.
 
     Args:
-        model: Loaded model instance
-        model_name: Name of the model (e.g., 'small', 'base')
-        device: Device to use ('cpu' or 'cuda')
-        num_threads: Number of CPU threads
+        provider: Provider name ("whisper" for local, "groq" for API)
+        model: Loaded Whisper model instance (only for local whisper)
+        model_name: Name of the model (e.g., 'large-v3')
+        device: Device to use for local whisper ('cpu' or 'cuda')
+        num_threads: Number of CPU threads for local whisper
+        api_key: API key for Groq (required if provider is "groq")
 
     Returns:
         TranscriptionService implementation
+
+    Raises:
+        ValueError: If provider is not supported or required params missing
     """
-    return WhisperLocalService(
-        model=model,
-        model_name=model_name,
-        device=device,
-        num_threads=num_threads
-    )
+    provider = provider.lower()
+
+    if provider == "whisper":
+        if model is None or model_name is None:
+            raise ValueError("model and model_name are required for whisper provider")
+        return WhisperLocalService(
+            model=model,
+            model_name=model_name,
+            device=device,
+            num_threads=num_threads
+        )
+    elif provider == "groq":
+        if api_key is None:
+            raise ValueError("api_key is required for groq provider")
+        if model_name is None:
+            raise ValueError("model_name is required for groq provider")
+
+        # Import here to avoid circular dependency and fail gracefully if groq not installed
+        try:
+            from app.services.transcription_groq import GroqTranscriptionService
+            return GroqTranscriptionService(
+                api_key=api_key,
+                model=model_name
+            )
+        except ImportError as e:
+            raise ValueError(
+                f"Groq provider selected but groq package not installed. "
+                f"Install with: pip install groq"
+            ) from e
+    else:
+        raise ValueError(
+            f"Unsupported transcription provider: {provider}. "
+            f"Supported providers: whisper, groq"
+        )

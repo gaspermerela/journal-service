@@ -4,7 +4,7 @@ API routes for LLM cleanup operations.
 from uuid import UUID
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -18,13 +18,35 @@ from app.schemas.cleanup import (
 )
 from app.schemas.voice_entry import DeleteResponse
 from app.services.database import db_service
-from app.services.llm_cleanup import LLMCleanupService
+from app.services.llm_cleanup_base import LLMCleanupService
 from app.config import settings
 from app.utils.logger import get_logger
 
 
 logger = get_logger("routes.cleanup")
 router = APIRouter()
+
+
+def get_llm_cleanup_service(request: Request) -> LLMCleanupService:
+    """
+    Dependency to get LLM cleanup service from app state.
+
+    Args:
+        request: FastAPI request object
+
+    Returns:
+        LLMCleanupService instance
+
+    Raises:
+        HTTPException: If service not available
+    """
+    service = getattr(request.app.state, "llm_cleanup_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="LLM cleanup service not available"
+        )
+    return service
 
 
 async def process_cleanup_background(
@@ -47,10 +69,14 @@ async def process_cleanup_background(
     from app.database import get_session
     from app.models.notion_sync import SyncStatus as NotionSyncStatus
     from app.routes.notion import process_notion_sync_background
+    from app.services.llm_cleanup import create_llm_cleanup_service
 
     async with get_session() as db:
-        # Create LLM service with database session for prompt lookup
-        llm_service = LLMCleanupService(db_session=db)
+        # Create LLM service using factory with database session for prompt lookup
+        llm_service = create_llm_cleanup_service(
+            provider=settings.LLM_PROVIDER,
+            db_session=db
+        )
 
         try:
             # Update status to processing
@@ -195,6 +221,7 @@ async def trigger_cleanup(
     transcription_id: UUID,
     background_tasks: BackgroundTasks,
     current_user: Annotated[User, Depends(get_current_user)],
+    llm_service: Annotated[LLMCleanupService, Depends(get_llm_cleanup_service)],
     db: AsyncSession = Depends(get_db),
     request: CleanupTriggerRequest = CleanupTriggerRequest()
 ):
@@ -254,7 +281,7 @@ async def trigger_cleanup(
         voice_entry_id=voice_entry.id,
         transcription_id=transcription_id,
         user_id=current_user.id,
-        model_name=settings.OLLAMA_MODEL
+        model_name=llm_service.get_model_name()
     )
 
     await db.commit()

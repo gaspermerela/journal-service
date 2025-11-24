@@ -43,3 +43,6 @@ notion-client==2.7.0
 
 # Encryption
 cryptography==46.0.3
+
+# Groq API (for third-party transcription and LLM)
+groq==0.36.0
