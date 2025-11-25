@@ -16,15 +16,15 @@ from httpx import AsyncClient
 from typing import Tuple
 
 from tests.e2e.e2e_utils import wait_for_transcription, wait_for_cleanup
-from tests.conftest import transcription_service_available, cleanup_service_available
+from tests.conftest import app_is_available
 
 REAL_AUDIO_FILE = Path("tests/fixtures/crocodile.mp3")
 
 
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
-    not transcription_service_available(),
-    reason="Transcription service not available"
+    not app_is_available(),
+    reason="App not running at http://localhost:8000"
 )
 @pytest.mark.asyncio
 async def test_e2e_upload_and_transcribe(
@@ -99,8 +99,8 @@ async def test_e2e_upload_and_transcribe(
 
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
-    not cleanup_service_available(),
-    reason="Cleanup service not available (App or Ollama not running)"
+    not app_is_available(),
+    reason="App not running at http://localhost:8000"
 )
 @pytest.mark.asyncio
 async def test_e2e_upload_transcribe_and_cleanup(
@@ -204,8 +204,8 @@ async def test_e2e_upload_transcribe_and_cleanup(
 
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
-    not transcription_service_available(),
-    reason="Transcription service not available"
+    not app_is_available(),
+    reason="App not running at http://localhost:8000"
 )
 @pytest.mark.asyncio
 async def test_e2e_upload_and_transcribe_error_handling(

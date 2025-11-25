@@ -5,8 +5,12 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.llm_cleanup import LLMCleanupService
+from app.services.llm_cleanup_ollama import OllamaLLMCleanupService
 from app.models.prompt_template import PromptTemplate
+
+
+# Alias for backward compatibility with tests
+LLMCleanupService = OllamaLLMCleanupService
 
 
 class TestPromptFallbackMechanisms:
@@ -39,7 +43,7 @@ class TestPromptFallbackMechanisms:
         mock_session.execute.return_value = mock_result
 
         # Create service with mocked session
-        service = LLMCleanupService(db_session=mock_session)
+        service = OllamaLLMCleanupService(db_session=mock_session)
 
         # Test DB prompt loading
         result = await service._get_prompt_from_db("dream")

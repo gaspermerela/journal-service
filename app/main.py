@@ -88,9 +88,7 @@ async def lifespan(app: FastAPI):
 
     except Exception as e:
         logger.error(f"Failed to initialize transcription service: {e}", exc_info=True)
-        # Don't fail startup, but transcription won't work
-        app.state.transcription_service = None
-        logger.warning("Application started without transcription capability")
+        raise RuntimeError(f"Cannot start application without transcription service: {e}") from e
 
     # Initialize LLM cleanup service
     logger.info(f"Initializing LLM cleanup service with provider: {settings.LLM_PROVIDER}")
@@ -102,8 +100,7 @@ async def lifespan(app: FastAPI):
         logger.info(f"LLM cleanup service initialized: provider={settings.LLM_PROVIDER}")
     except Exception as e:
         logger.error(f"Failed to initialize LLM cleanup service: {e}", exc_info=True)
-        app.state.llm_cleanup_service = None
-        logger.warning("Application started without LLM cleanup capability")
+        raise RuntimeError(f"Cannot start application without LLM cleanup service: {e}") from e
 
     yield
 

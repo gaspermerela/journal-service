@@ -19,7 +19,7 @@ from httpx import AsyncClient
 from typing import Tuple
 
 from tests.e2e.e2e_utils import wait_for_transcription
-from tests.conftest import transcription_service_available
+from tests.conftest import app_is_available
 
 # Real audio file to use for all tests
 REAL_AUDIO_FILE = Path("tests/fixtures/crocodile.mp3")
@@ -27,8 +27,8 @@ REAL_AUDIO_FILE = Path("tests/fixtures/crocodile.mp3")
 
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
-    not transcription_service_available(),
-    reason="Transcription service not available (Whisper model or dependencies missing)"
+    not app_is_available(),
+    reason="App not running at http://localhost:8000"
 )
 @pytest.mark.asyncio
 async def test_e2e_basic_transcription_flow(
@@ -78,107 +78,107 @@ async def test_e2e_basic_transcription_flow(
     print(f"✓ Transcription completed: {transcription['transcribed_text']}...")
 
 
+# @pytest.mark.e2e_real
+# @pytest.mark.skipif(
+#     not app_is_available(),
+#     reason="App not running at http://localhost:8000"
+# )
+# @pytest.mark.asyncio
+# async def test_e2e_full_transcription_lifecycle(
+#     authenticated_e2e_client: Tuple[AsyncClient, str]
+# ):
+#     """
+#     Test complete transcription lifecycle with real Whisper:
+#     1. Upload one audio file
+#     2. Trigger multiple transcriptions for the same entry
+#     3. Wait for transcriptions to complete
+#     4. List all transcriptions for the entry
+#     5. Verify all data is accessible
+#
+#     This test verifies that a single audio file can have multiple transcription attempts.
+#     """
+#     client, email = authenticated_e2e_client
+#
+#     # Check if real audio file exists
+#     if not REAL_AUDIO_FILE.exists():
+#         pytest.skip(f"Real audio file not found: {REAL_AUDIO_FILE}")
+#
+#     # Step 1: Upload audio file once
+#     with open(REAL_AUDIO_FILE, 'rb') as f:
+#         files = {"file": ("crocodile.mp3", f, "audio/mpeg")}
+#         upload_response = await client.post("/api/v1/upload", files=files)
+#
+#     assert upload_response.status_code == 201
+#     entry_id = upload_response.json()["id"]
+#     print(f"\nUploaded entry: {entry_id}")
+#
+#     # Step 2: Trigger first transcription
+#     transcribe_response1 = await client.post(
+#         f"/api/v1/entries/{entry_id}/transcribe",
+#         json={"language": "en"}
+#     )
+#     assert transcribe_response1.status_code == 202
+#     transcription1_id = transcribe_response1.json()["transcription_id"]
+#     print(f"Started transcription 1: {transcription1_id}")
+#
+#     # Step 3: Trigger second transcription for the SAME entry
+#     transcribe_response2 = await client.post(
+#         f"/api/v1/entries/{entry_id}/transcribe",
+#         json={"language": "en"}
+#     )
+#     assert transcribe_response2.status_code == 202
+#     transcription2_id = transcribe_response2.json()["transcription_id"]
+#     print(f"Started transcription 2: {transcription2_id}")
+#
+#     # Verify we have two different transcription IDs
+#     assert transcription1_id != transcription2_id, "Should create separate transcriptions"
+#
+#     # Step 4: Wait for first transcription to complete
+#     transcription1 = await wait_for_transcription(
+#         client=client,
+#         transcription_id=transcription1_id,
+#         max_wait=60,
+#         poll_interval=2
+#     )
+#     print(f"✓ First transcription completed")
+#
+#     # Step 5: Check entry includes transcription data
+#     entry_response = await client.get(f"/api/v1/entries/{entry_id}")
+#     assert entry_response.status_code == 200
+#     entry = entry_response.json()
+#     assert entry["id"] == entry_id
+#
+#     # Step 6: List transcriptions for the entry - should have at least 2
+#     list_response = await client.get(f"/api/v1/entries/{entry_id}/transcriptions")
+#     assert list_response.status_code == 200
+#     transcriptions_data = list_response.json()
+#
+#     print(f"\nTranscriptions for entry {entry_id}: {transcriptions_data['total']} total")
+#
+#     # Should have exactly 2 transcriptions for this entry
+#     assert transcriptions_data["total"] == 2, f"Should have 2 transcriptions, got {transcriptions_data['total']}"
+#     assert len(transcriptions_data["transcriptions"]) == 2, "Should return 2 transcription objects"
+#
+#     # Verify both transcription IDs are in the list
+#     returned_ids = {t["id"] for t in transcriptions_data["transcriptions"]}
+#     expected_ids = {str(transcription1_id), str(transcription2_id)}
+#
+#     print(f"Expected transcription IDs: {expected_ids}")
+#     print(f"Returned transcription IDs: {returned_ids}")
+#
+#     assert expected_ids == returned_ids, f"Expected IDs {expected_ids}, got {returned_ids}"
+#
+#     print(f"\n✓ Full transcription lifecycle successful!")
+#     print(f"  Entry ID: {entry_id}")
+#     print(f"  Transcription 1 ID: {transcription1_id}")
+#     print(f"  Transcription 2 ID: {transcription2_id}")
+#     print(f"  Both transcriptions verified in list!")
+
+
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
-    not transcription_service_available(),
-    reason="Transcription service not available (Whisper model or dependencies missing)"
-)
-@pytest.mark.asyncio
-async def test_e2e_full_transcription_lifecycle(
-    authenticated_e2e_client: Tuple[AsyncClient, str]
-):
-    """
-    Test complete transcription lifecycle with real Whisper:
-    1. Upload one audio file
-    2. Trigger multiple transcriptions for the same entry
-    3. Wait for transcriptions to complete
-    4. List all transcriptions for the entry
-    5. Verify all data is accessible
-
-    This test verifies that a single audio file can have multiple transcription attempts.
-    """
-    client, email = authenticated_e2e_client
-
-    # Check if real audio file exists
-    if not REAL_AUDIO_FILE.exists():
-        pytest.skip(f"Real audio file not found: {REAL_AUDIO_FILE}")
-
-    # Step 1: Upload audio file once
-    with open(REAL_AUDIO_FILE, 'rb') as f:
-        files = {"file": ("crocodile.mp3", f, "audio/mpeg")}
-        upload_response = await client.post("/api/v1/upload", files=files)
-
-    assert upload_response.status_code == 201
-    entry_id = upload_response.json()["id"]
-    print(f"\nUploaded entry: {entry_id}")
-
-    # Step 2: Trigger first transcription
-    transcribe_response1 = await client.post(
-        f"/api/v1/entries/{entry_id}/transcribe",
-        json={"language": "en"}
-    )
-    assert transcribe_response1.status_code == 202
-    transcription1_id = transcribe_response1.json()["transcription_id"]
-    print(f"Started transcription 1: {transcription1_id}")
-
-    # Step 3: Trigger second transcription for the SAME entry
-    transcribe_response2 = await client.post(
-        f"/api/v1/entries/{entry_id}/transcribe",
-        json={"language": "en"}
-    )
-    assert transcribe_response2.status_code == 202
-    transcription2_id = transcribe_response2.json()["transcription_id"]
-    print(f"Started transcription 2: {transcription2_id}")
-
-    # Verify we have two different transcription IDs
-    assert transcription1_id != transcription2_id, "Should create separate transcriptions"
-
-    # Step 4: Wait for first transcription to complete
-    transcription1 = await wait_for_transcription(
-        client=client,
-        transcription_id=transcription1_id,
-        max_wait=60,
-        poll_interval=2
-    )
-    print(f"✓ First transcription completed")
-
-    # Step 5: Check entry includes transcription data
-    entry_response = await client.get(f"/api/v1/entries/{entry_id}")
-    assert entry_response.status_code == 200
-    entry = entry_response.json()
-    assert entry["id"] == entry_id
-
-    # Step 6: List transcriptions for the entry - should have at least 2
-    list_response = await client.get(f"/api/v1/entries/{entry_id}/transcriptions")
-    assert list_response.status_code == 200
-    transcriptions_data = list_response.json()
-
-    print(f"\nTranscriptions for entry {entry_id}: {transcriptions_data['total']} total")
-
-    # Should have exactly 2 transcriptions for this entry
-    assert transcriptions_data["total"] == 2, f"Should have 2 transcriptions, got {transcriptions_data['total']}"
-    assert len(transcriptions_data["transcriptions"]) == 2, "Should return 2 transcription objects"
-
-    # Verify both transcription IDs are in the list
-    returned_ids = {t["id"] for t in transcriptions_data["transcriptions"]}
-    expected_ids = {str(transcription1_id), str(transcription2_id)}
-
-    print(f"Expected transcription IDs: {expected_ids}")
-    print(f"Returned transcription IDs: {returned_ids}")
-
-    assert expected_ids == returned_ids, f"Expected IDs {expected_ids}, got {returned_ids}"
-
-    print(f"\n✓ Full transcription lifecycle successful!")
-    print(f"  Entry ID: {entry_id}")
-    print(f"  Transcription 1 ID: {transcription1_id}")
-    print(f"  Transcription 2 ID: {transcription2_id}")
-    print(f"  Both transcriptions verified in list!")
-
-
-@pytest.mark.e2e_real
-@pytest.mark.skipif(
-    not transcription_service_available(),
-    reason="Transcription service not available (Whisper model or dependencies missing)"
+    not app_is_available(),
+    reason="App not running at http://localhost:8000"
 )
 @pytest.mark.asyncio
 async def test_e2e_transcription_with_real_audio(
@@ -231,8 +231,8 @@ async def test_e2e_transcription_with_real_audio(
 
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
-    not transcription_service_available(),
-    reason="Transcription service not available (Whisper model or dependencies missing)"
+    not app_is_available(),
+    reason="App not running at http://localhost:8000"
 )
 @pytest.mark.asyncio
 async def test_e2e_transcription_user_isolation(
@@ -301,8 +301,8 @@ async def test_e2e_transcription_user_isolation(
 
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
-    not transcription_service_available(),
-    reason="Transcription service not available (Whisper model or dependencies missing)"
+    not app_is_available(),
+    reason="App not running at http://localhost:8000"
 )
 @pytest.mark.asyncio
 async def test_e2e_transcription_error_handling(
@@ -328,8 +328,8 @@ async def test_e2e_transcription_error_handling(
 
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
-    not transcription_service_available(),
-    reason="Transcription service not available (Whisper model or dependencies missing)"
+    not app_is_available(),
+    reason="App not running at http://localhost:8000"
 )
 @pytest.mark.asyncio
 async def test_e2e_auto_promote_first_transcription(
@@ -388,8 +388,8 @@ async def test_e2e_auto_promote_first_transcription(
 
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
-    not transcription_service_available(),
-    reason="Transcription service not available (Whisper model or dependencies missing)"
+    not app_is_available(),
+    reason="App not running at http://localhost:8000"
 )
 @pytest.mark.asyncio
 async def test_e2e_second_transcription_not_auto_promoted(

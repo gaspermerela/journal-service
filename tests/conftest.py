@@ -1,13 +1,12 @@
 """
 Pytest configuration and fixtures for journal service tests.
 """
-import asyncio
 import os
-import shutil
 import tempfile
 import uuid
 from pathlib import Path
 from typing import AsyncGenerator, Generator, Tuple
+from unittest.mock import Mock
 
 import pytest
 from httpx import AsyncClient, ASGITransport
@@ -15,11 +14,11 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import NullPool
 
-from unittest.mock import Mock, AsyncMock
-
 # Set required environment variables before importing Settings to avoid validation error
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-testing-only-not-for-production")
 os.environ.setdefault("DATABASE_PASSWORD", "password")  # Matches TEST_DATABASE_URL
+os.environ.setdefault("TRANSCRIPTION_PROVIDER", "groq")  # Use Groq for E2E tests
+os.environ.setdefault("LLM_PROVIDER", "groq")  # Use Groq for E2E tests
 
 from app.config import Settings
 from app.database import Base, get_db
@@ -133,7 +132,7 @@ def test_settings(test_storage_path) -> Settings:
 
 
 @pytest.fixture
-async def client(db_session: AsyncSession, test_settings: Settings, mock_transcription_service) -> AsyncGenerator[AsyncClient, None]:
+async def client(db_session: AsyncSession, test_settings: Settings, mock_transcription_service, mock_llm_cleanup_service) -> AsyncGenerator[AsyncClient, None]:
     """
     Create an async test client for the FastAPI application.
     Overrides the database dependency to use test database.
@@ -148,8 +147,9 @@ async def client(db_session: AsyncSession, test_settings: Settings, mock_transcr
     from app import config
     config.settings = test_settings
 
-    # Mock transcription service to avoid loading Whisper in tests
+    # Mock AI services to avoid loading Whisper/Ollama/Groq in tests
     app.state.transcription_service = mock_transcription_service
+    app.state.llm_cleanup_service = mock_llm_cleanup_service
 
     # Create client
     async with AsyncClient(
@@ -161,6 +161,7 @@ async def client(db_session: AsyncSession, test_settings: Settings, mock_transcr
     # Clear overrides
     app.dependency_overrides.clear()
     app.state.transcription_service = None
+    app.state.llm_cleanup_service = None
 
 
 @pytest.fixture
@@ -365,19 +366,21 @@ def mock_whisper_model():
 @pytest.fixture
 def mock_transcription_service():
     """
-    Mock transcription service for integration tests.
+    NoOp transcription service for integration tests.
     Avoids loading Whisper model while testing API endpoints.
     """
-    service = AsyncMock()
-    service.transcribe_audio.return_value = {
-        "text": "This is a mocked transcription result.",
-        "language": "en",
-        "segments": []
-    }
-    service.get_supported_languages.return_value = ["en", "es", "fr", "de", "auto"]
-    # Use Mock (not AsyncMock) for non-async method
-    service.get_model_name = Mock(return_value="whisper-base")
-    return service
+    from app.services.transcription_noop import NoOpTranscriptionService
+    return NoOpTranscriptionService(model_name="noop-whisper-test")
+
+
+@pytest.fixture
+def mock_llm_cleanup_service():
+    """
+    NoOp LLM cleanup service for integration tests.
+    Avoids loading Ollama/Groq while testing API endpoints.
+    """
+    from app.services.llm_cleanup_noop import NoOpLLMCleanupService
+    return NoOpLLMCleanupService(model_name="noop-llm-test")
 
 
 @pytest.fixture
@@ -465,7 +468,6 @@ async def authenticated_e2e_client(real_api_client: AsyncClient) -> Tuple[AsyncC
         Tuple of (authenticated client, user email)
     """
     import os
-    from typing import Tuple
 
     # Generate unique email for this test
     email = f"e2e_user_{os.urandom(4).hex()}@example.com"
@@ -504,11 +506,6 @@ def app_is_available() -> bool:
         return False
 
 
-def transcription_service_available() -> bool:
-    """Check if transcription service (app) is available for e2e tests."""
-    return app_is_available()
-
-
 def ollama_available() -> bool:
     """Check if Ollama service is available at http://localhost:11434."""
     try:
@@ -517,8 +514,3 @@ def ollama_available() -> bool:
         return response.status_code == 200
     except Exception:
         return False
-
-
-def cleanup_service_available() -> bool:
-    """Check if cleanup service (app + Ollama) is available for e2e tests."""
-    return app_is_available() and ollama_available()
