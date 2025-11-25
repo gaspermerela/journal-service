@@ -6,13 +6,13 @@ import pytest
 from unittest.mock import AsyncMock, Mock, patch
 import httpx
 
-from app.services.llm_cleanup import LLMCleanupService
+from app.services.llm_cleanup_ollama import OllamaLLMCleanupService
 
 
 @pytest.fixture
 def cleanup_service():
-    """Create LLMCleanupService instance for testing."""
-    return LLMCleanupService()
+    """Create OllamaLLMCleanupService instance for testing."""
+    return OllamaLLMCleanupService()
 
 
 @pytest.fixture

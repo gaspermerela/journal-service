@@ -22,7 +22,7 @@ from httpx import AsyncClient
 from typing import Tuple
 
 from tests.e2e.e2e_utils import wait_for_transcription, wait_for_cleanup, poll_until_condition
-from tests.conftest import cleanup_service_available
+from tests.conftest import app_is_available
 from app.config import settings
 
 
@@ -80,7 +80,7 @@ async def wait_for_notion_sync(
 
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
-    not (cleanup_service_available() and notion_test_available()),
+    not (app_is_available() and notion_test_available()),
     reason="Required services not running or Notion test credentials not configured"
 )
 @pytest.mark.asyncio
@@ -222,7 +222,7 @@ async def test_e2e_real_full_workflow_with_notion_sync(
 
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
-    not (cleanup_service_available() and notion_test_available()),
+    not (app_is_available() and notion_test_available()),
     reason="Required services not running or Notion test credentials not configured"
 )
 @pytest.mark.asyncio
@@ -325,7 +325,7 @@ async def test_e2e_real_auto_sync_workflow(
 
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
-    not (cleanup_service_available() and notion_test_available()),
+    not (app_is_available() and notion_test_available()),
     reason="Required services not running or Notion test credentials not configured"
 )
 @pytest.mark.asyncio

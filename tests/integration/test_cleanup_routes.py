@@ -98,24 +98,6 @@ async def sample_cleaned_entry(
     return cleaned_entry
 
 
-@pytest.fixture
-def mock_llm_cleanup_service():
-    """Mock LLM cleanup service for integration tests."""
-    with patch("app.routes.cleanup.LLMCleanupService") as mock_service_class:
-        mock_service = AsyncMock()
-        mock_service.cleanup_transcription.return_value = {
-            "cleaned_text": "This is cleaned transcription text.",
-            "analysis": {
-                "themes": ["test", "mock"],
-                "emotions": ["neutral"],
-                "characters": [],
-                "locations": []
-            }
-        }
-        mock_service_class.return_value = mock_service
-        yield mock_service
-
-
 class TestTriggerCleanup:
     """Tests for POST /api/v1/transcriptions/{id}/cleanup endpoint."""
 
@@ -124,8 +106,7 @@ class TestTriggerCleanup:
         self,
         authenticated_client: AsyncClient,
         completed_transcription: Transcription,
-        db_session: AsyncSession,
-        mock_llm_cleanup_service
+        db_session: AsyncSession
     ):
         """Test successfully triggering cleanup for a completed transcription."""
         response = await authenticated_client.post(

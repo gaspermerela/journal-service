@@ -92,10 +92,10 @@ class GroqTranscriptionService(TranscriptionService):
             if hasattr(response, "segments") and response.segments:
                 segments = [
                     {
-                        "id": seg.id,
-                        "start": seg.start,
-                        "end": seg.end,
-                        "text": seg.text
+                        "id": seg.get("id") if isinstance(seg, dict) else seg.id,
+                        "start": seg.get("start") if isinstance(seg, dict) else seg.start,
+                        "end": seg.get("end") if isinstance(seg, dict) else seg.end,
+                        "text": seg.get("text") if isinstance(seg, dict) else seg.text
                     }
                     for seg in response.segments
                 ]

@@ -19,7 +19,7 @@ from httpx import AsyncClient
 from typing import Tuple
 
 from tests.e2e.e2e_utils import wait_for_transcription, wait_for_cleanup
-from tests.conftest import cleanup_service_available
+from tests.conftest import app_is_available
 
 
 @pytest.mark.asyncio
@@ -103,7 +103,7 @@ async def test_e2e_workflow_api_structure(
 
 
 @pytest.mark.e2e_real
-@pytest.mark.skipif(not cleanup_service_available(), reason="Required services not running")
+@pytest.mark.skipif(not app_is_available(), reason="App not running at http://localhost:8000")
 @pytest.mark.asyncio
 async def test_e2e_real_complete_workflow(
     authenticated_e2e_client: Tuple[AsyncClient, str]

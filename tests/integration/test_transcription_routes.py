@@ -239,7 +239,7 @@ async def test_trigger_transcription_uses_configured_model(authenticated_client,
     # Verify the transcription was created with the correct model from service
     from app.services.database import db_service
     transcription = await db_service.get_transcription_by_id(db_session, data["transcription_id"])
-    assert transcription.model_used == "whisper-base"  # From mock
+    assert transcription.model_used == "noop-whisper-test"  # From NoOp service
 
 
 @pytest.mark.asyncio

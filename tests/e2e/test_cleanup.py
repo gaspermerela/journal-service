@@ -19,15 +19,15 @@ from httpx import AsyncClient
 from typing import Tuple
 
 from tests.e2e.e2e_utils import wait_for_transcription, wait_for_cleanup
-from tests.conftest import cleanup_service_available
+from tests.conftest import app_is_available
 
 # Real audio file to use for all tests
 REAL_AUDIO_FILE = Path("tests/fixtures/crocodile.mp3")
 
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
-    not cleanup_service_available(),
-    reason="Cleanup service not available (App or Ollama not running)"
+    not app_is_available(),
+    reason="App not running at http://localhost:8000"
 )
 @pytest.mark.asyncio
 async def test_e2e_cleanup_full_workflow(
@@ -117,8 +117,8 @@ async def test_e2e_cleanup_full_workflow(
 
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
-    not cleanup_service_available(),
-    reason="Cleanup service not available (App or Ollama not running)"
+    not app_is_available(),
+    reason="App not running at http://localhost:8000"
 )
 @pytest.mark.asyncio
 async def test_e2e_cleanup_multiple_attempts(
@@ -210,8 +210,8 @@ async def test_e2e_cleanup_multiple_attempts(
 
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
-    not cleanup_service_available(),
-    reason="Cleanup service not available (App or Ollama not running)"
+    not app_is_available(),
+    reason="App not running at http://localhost:8000"
 )
 @pytest.mark.asyncio
 async def test_e2e_cleanup_invalid_transcription(
@@ -234,8 +234,8 @@ async def test_e2e_cleanup_invalid_transcription(
 
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
-    not cleanup_service_available(),
-    reason="Cleanup service not available (App or Ollama not running)"
+    not app_is_available(),
+    reason="App not running at http://localhost:8000"
 )
 @pytest.mark.asyncio
 async def test_e2e_cleanup_list_for_entry(
@@ -268,8 +268,8 @@ async def test_e2e_cleanup_list_for_entry(
 
 @pytest.mark.e2e_real
 @pytest.mark.skipif(
-    not cleanup_service_available(),
-    reason="Cleanup service not available (App or Ollama not running)"
+    not app_is_available(),
+    reason="App not running at http://localhost:8000"
 )
 @pytest.mark.asyncio
 async def test_e2e_cleanup_user_isolation(
