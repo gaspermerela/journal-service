@@ -2,7 +2,7 @@
 NoOp LLM Cleanup Service for testing.
 Returns mock data without calling any actual LLM.
 """
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from app.services.llm_cleanup_base import LLMCleanupService
 from app.utils.logger import get_logger
@@ -29,7 +29,9 @@ class NoOpLLMCleanupService(LLMCleanupService):
     async def cleanup_transcription(
         self,
         transcription_text: str,
-        entry_type: str = "dream"
+        entry_type: str = "dream",
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Return mock cleaned data without calling any LLM.
@@ -37,11 +39,17 @@ class NoOpLLMCleanupService(LLMCleanupService):
         Args:
             transcription_text: Raw transcription text
             entry_type: Type of entry (dream, journal, etc.)
+            temperature: Temperature parameter (unused in NoOp)
+            top_p: Top-p parameter (unused in NoOp)
 
         Returns:
             Dict with mock cleaned data
         """
-        logger.info(f"NoOp cleanup called for entry_type={entry_type}, text_length={len(transcription_text)}")
+        logger.info(
+            f"NoOp cleanup called for entry_type={entry_type}, "
+            f"text_length={len(transcription_text)}, "
+            f"temperature={temperature}, top_p={top_p}"
+        )
 
         return {
             "cleaned_text": f"[NoOp Cleaned] {transcription_text}",
@@ -52,7 +60,9 @@ class NoOpLLMCleanupService(LLMCleanupService):
                 "locations": []
             },
             "prompt_template_id": None,
-            "llm_raw_response": '{"cleaned_text": "[NoOp Cleaned] ' + transcription_text + '"}'
+            "llm_raw_response": '{"cleaned_text": "[NoOp Cleaned] ' + transcription_text + '"}',
+            "temperature": temperature,
+            "top_p": top_p
         }
 
     async def test_connection(self) -> bool:

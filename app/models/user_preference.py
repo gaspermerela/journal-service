@@ -50,6 +50,13 @@ class UserPreference(Base):
         server_default="auto"
     )
 
+    # LLM preferences
+    preferred_llm_model: Mapped[str | None] = mapped_column(
+        String,
+        nullable=True,
+        comment="User's preferred LLM model for cleanup"
+    )
+
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

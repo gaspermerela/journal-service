@@ -16,6 +16,7 @@ from sqlalchemy import (
     JSON,
     Integer,
     Boolean,
+    Float,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -74,6 +75,8 @@ class CleanedEntry(Base):
         index=True
     )
     model_name = Column(String(100), nullable=False)
+    temperature = Column(Float, nullable=True, comment="LLM sampling temperature (0-2)")
+    top_p = Column(Float, nullable=True, comment="LLM nucleus sampling (0-1)")
     status = Column(
         SQLEnum(
             CleanupStatus,

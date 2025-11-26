@@ -141,7 +141,9 @@ class GroqLLMCleanupService(LLMCleanupService):
     async def cleanup_transcription(
         self,
         transcription_text: str,
-        entry_type: str = "dream"
+        entry_type: str = "dream",
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Clean up transcription text using Groq's chat completion API.
@@ -149,9 +151,11 @@ class GroqLLMCleanupService(LLMCleanupService):
         Args:
             transcription_text: Raw transcription text to clean
             entry_type: Type of entry (dream, journal, meeting, etc.)
+            temperature: Temperature for LLM sampling (0.0-2.0). If None, uses default (0.3).
+            top_p: Top-p for nucleus sampling (0.0-1.0). If None, Groq uses default.
 
         Returns:
-            Dict containing cleaned_text, analysis, and prompt_template_id
+            Dict containing cleaned_text, analysis, prompt_template_id, temperature, and top_p
 
         Raises:
             Exception: If cleanup fails after retries
@@ -163,12 +167,14 @@ class GroqLLMCleanupService(LLMCleanupService):
             try:
                 logger.info(
                     f"LLM cleanup attempt {attempt + 1}/{self.max_retries + 1} "
-                    f"using Groq model {self.model}"
+                    f"using Groq model {self.model}, temperature={temperature}, top_p={top_p}"
                 )
-                result = await self._call_groq(prompt)
+                result = await self._call_groq(prompt, temperature=temperature, top_p=top_p)
 
-                # Add prompt_template_id to result
+                # Add prompt_template_id and parameters to result
                 result["prompt_template_id"] = template_id
+                result["temperature"] = temperature if temperature is not None else 0.3
+                result["top_p"] = top_p
 
                 return result
             except Exception as e:
@@ -182,12 +188,19 @@ class GroqLLMCleanupService(LLMCleanupService):
         # Should never reach here
         raise Exception("LLM cleanup failed unexpectedly")
 
-    async def _call_groq(self, prompt: str) -> Dict[str, Any]:
+    async def _call_groq(
+        self,
+        prompt: str,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None
+    ) -> Dict[str, Any]:
         """
         Call Groq chat completion API to process the prompt.
 
         Args:
             prompt: Formatted prompt to send to LLM
+            temperature: Temperature for sampling (0.0-2.0). If None, uses default (0.3).
+            top_p: Top-p for nucleus sampling (0.0-1.0). If None, Groq uses default.
 
         Returns:
             Dict containing cleaned_text and analysis
@@ -198,19 +211,26 @@ class GroqLLMCleanupService(LLMCleanupService):
             KeyError: If response missing required fields
         """
         try:
-            # Call Groq chat completion API
-            response = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
+            # Build API call parameters
+            api_params = {
+                "model": self.model,
+                "messages": [
                     {
                         "role": "user",
                         "content": prompt
                     }
                 ],
-                temperature=0.3,  # Lower temperature for more consistent output
-                max_tokens=2000,
-                timeout=self.timeout
-            )
+                "temperature": temperature if temperature is not None else 0.3,
+                "max_tokens": 2000,
+                "timeout": self.timeout
+            }
+
+            # Add top_p if provided
+            if top_p is not None:
+                api_params["top_p"] = top_p
+
+            # Call Groq chat completion API
+            response = await self.client.chat.completions.create(**api_params)
 
             # Extract response text
             response_text = response.choices[0].message.content
