@@ -2,7 +2,7 @@
 Abstract base class for LLM cleanup services.
 """
 from abc import ABC, abstractmethod
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 class LLMCleanupService(ABC):
@@ -12,7 +12,9 @@ class LLMCleanupService(ABC):
     async def cleanup_transcription(
         self,
         transcription_text: str,
-        entry_type: str = "dream"
+        entry_type: str = "dream",
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Clean up transcription text using an LLM.
@@ -20,6 +22,8 @@ class LLMCleanupService(ABC):
         Args:
             transcription_text: Raw transcription text to clean
             entry_type: Type of entry (dream, journal, meeting, etc.)
+            temperature: Temperature for LLM sampling (0.0-2.0). If None, uses default.
+            top_p: Top-p for nucleus sampling (0.0-1.0). If None, uses default.
 
         Returns:
             Dict containing:
@@ -27,6 +31,8 @@ class LLMCleanupService(ABC):
                 - analysis: dict with themes, emotions, characters, locations
                 - prompt_template_id: Optional[int]
                 - llm_raw_response: str
+                - temperature: Optional[float] - temperature used
+                - top_p: Optional[float] - top_p used
 
         Raises:
             Exception: If cleanup fails after retries

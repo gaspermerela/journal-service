@@ -54,7 +54,9 @@ async def process_cleanup_background(
     transcription_text: str,
     entry_type: str,
     user_id: UUID,
-    voice_entry_id: UUID
+    voice_entry_id: UUID,
+    temperature: float = None,
+    top_p: float = None
 ):
     """
     Background task to process LLM cleanup.
@@ -65,6 +67,8 @@ async def process_cleanup_background(
         entry_type: Type of entry (dream, journal, etc.)
         user_id: User ID (for auto-sync)
         voice_entry_id: Voice entry ID (for auto-sync)
+        temperature: Temperature for LLM sampling (0.0-2.0)
+        top_p: Top-p for nucleus sampling (0.0-1.0)
     """
     from app.database import get_session
     from app.models.notion_sync import SyncStatus as NotionSyncStatus
@@ -87,12 +91,18 @@ async def process_cleanup_background(
             )
             await db.commit()
 
-            logger.info(f"Starting LLM cleanup for entry {cleaned_entry_id}")
+            logger.info(
+                f"Starting LLM cleanup for entry {cleaned_entry_id}",
+                temperature=temperature,
+                top_p=top_p
+            )
 
             # Call LLM service
             result = await llm_service.cleanup_transcription(
                 transcription_text=transcription_text,
-                entry_type=entry_type
+                entry_type=entry_type,
+                temperature=temperature,
+                top_p=top_p
             )
 
             # Update with results
@@ -103,7 +113,9 @@ async def process_cleanup_background(
                 cleaned_text=result["cleaned_text"],
                 analysis=result["analysis"],
                 prompt_template_id=result.get("prompt_template_id"),
-                llm_raw_response=result.get("llm_raw_response")
+                llm_raw_response=result.get("llm_raw_response"),
+                temperature=result.get("temperature"),
+                top_p=result.get("top_p")
             )
             await db.commit()
 
@@ -293,7 +305,9 @@ async def trigger_cleanup(
         transcription_text=transcription.transcribed_text,
         entry_type=voice_entry.entry_type,
         user_id=current_user.id,
-        voice_entry_id=voice_entry.id
+        voice_entry_id=voice_entry.id,
+        temperature=request.temperature,
+        top_p=request.top_p
     )
 
     logger.info(
@@ -351,8 +365,11 @@ async def get_cleaned_entry(
         user_id=cleaned_entry.user_id,
         cleaned_text=cleaned_entry.cleaned_text,
         analysis=cleaned_entry.analysis,
+        llm_raw_response=cleaned_entry.llm_raw_response,
         status=cleaned_entry.status,
         model_name=cleaned_entry.model_name,
+        temperature=cleaned_entry.temperature,
+        top_p=cleaned_entry.top_p,
         error_message=cleaned_entry.error_message,
         is_primary=cleaned_entry.is_primary,
         processing_time_seconds=cleaned_entry.processing_time_seconds,
@@ -409,8 +426,11 @@ async def get_cleaned_entries_by_entry(
             user_id=ce.user_id,
             cleaned_text=ce.cleaned_text,
             analysis=ce.analysis,
+            llm_raw_response=ce.llm_raw_response,
             status=ce.status,
             model_name=ce.model_name,
+            temperature=ce.temperature,
+            top_p=ce.top_p,
             error_message=ce.error_message,
             is_primary=ce.is_primary,
             processing_time_seconds=ce.processing_time_seconds,
@@ -507,8 +527,11 @@ async def set_primary_cleanup(
         user_id=updated_cleanup.user_id,
         cleaned_text=updated_cleanup.cleaned_text,
         analysis=updated_cleanup.analysis,
+        llm_raw_response=updated_cleanup.llm_raw_response,
         status=updated_cleanup.status,
         model_name=updated_cleanup.model_name,
+        temperature=updated_cleanup.temperature,
+        top_p=updated_cleanup.top_p,
         error_message=updated_cleanup.error_message,
         is_primary=updated_cleanup.is_primary,
         processing_time_seconds=updated_cleanup.processing_time_seconds,

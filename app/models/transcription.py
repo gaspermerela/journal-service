@@ -3,7 +3,7 @@ SQLAlchemy model for transcriptions table.
 """
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, DateTime, Boolean, Integer, ForeignKey, Index
+from sqlalchemy import String, Text, DateTime, Boolean, Integer, Float, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
@@ -78,6 +78,12 @@ class Transcription(Base):
     beam_size: Mapped[int | None] = mapped_column(
         Integer,
         nullable=True
+    )
+
+    temperature: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+        comment="Sampling temperature (0-2)"
     )
 
     # Timing

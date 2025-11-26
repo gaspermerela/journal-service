@@ -18,6 +18,10 @@ class UserPreferencesResponse(BaseModel):
         default="auto",
         description="Language code for transcription (e.g., 'en', 'es', 'sl') or 'auto' for automatic detection"
     )
+    preferred_llm_model: Optional[str] = Field(
+        default=None,
+        description="Preferred LLM model in format 'provider-model' (e.g., 'ollama-llama3.2:3b', 'groq-llama-3.3-70b-versatile')"
+    )
     created_at: datetime
     updated_at: datetime
 
@@ -34,6 +38,10 @@ class UserPreferencesUpdate(BaseModel):
     preferred_transcription_language: Optional[str] = Field(
         None,
         description="Language code for transcription (e.g., 'en', 'es', 'sl') or 'auto' for automatic detection"
+    )
+    preferred_llm_model: Optional[str] = Field(
+        None,
+        description="Preferred LLM model in format 'provider-model' (e.g., 'ollama-llama3.2:3b', 'groq-llama-3.3-70b-versatile')"
     )
 
     @field_validator('preferred_transcription_language')
@@ -68,6 +76,10 @@ class UserPreferencesCreate(BaseModel):
     preferred_transcription_language: str = Field(
         default="auto",
         description="Language code for transcription"
+    )
+    preferred_llm_model: Optional[str] = Field(
+        default=None,
+        description="Preferred LLM model"
     )
 
     @field_validator('preferred_transcription_language')

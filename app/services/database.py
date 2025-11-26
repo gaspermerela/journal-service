@@ -1259,7 +1259,9 @@ class DatabaseService:
         analysis: Optional[dict] = None,
         error_message: Optional[str] = None,
         prompt_template_id: Optional[int] = None,
-        llm_raw_response: Optional[str] = None
+        llm_raw_response: Optional[str] = None,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None
     ) -> CleanedEntry:
         """
         Update cleaned entry with processing results.
@@ -1273,6 +1275,8 @@ class DatabaseService:
             error_message: Error message if failed
             prompt_template_id: ID of prompt template used (optional)
             llm_raw_response: Raw LLM response before parsing (optional)
+            temperature: Temperature used for LLM (optional)
+            top_p: Top-p value used for LLM (optional)
 
         Returns:
             Updated CleanedEntry instance
@@ -1301,6 +1305,10 @@ class DatabaseService:
                 cleaned_entry.prompt_template_id = prompt_template_id
             if llm_raw_response is not None:
                 cleaned_entry.llm_raw_response = llm_raw_response
+            if temperature is not None:
+                cleaned_entry.temperature = temperature
+            if top_p is not None:
+                cleaned_entry.top_p = top_p
 
             # Update timestamps based on status (use timezone-naive datetime)
             if cleanup_status == CleanupStatus.PROCESSING and not cleaned_entry.processing_started_at:

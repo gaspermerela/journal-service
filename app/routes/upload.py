@@ -72,7 +72,9 @@ async def transcription_then_cleanup_task(
     cleaned_entry_id: uuid.UUID,
     entry_type: str,
     user_id: uuid.UUID,
-    beam_size: Optional[int] = None
+    beam_size: Optional[int] = None,
+    temperature: Optional[float] = None,
+    top_p: Optional[float] = None
 ):
     """
     Background task that runs transcription, then triggers cleanup when done.
@@ -104,13 +106,19 @@ async def transcription_then_cleanup_task(
 
         if transcription_result and transcription_result.status == "completed" and transcription_result.transcribed_text:
             # Trigger cleanup
-            logger.info(f"Transcription completed, starting cleanup for {cleaned_entry_id}")
+            logger.info(
+                f"Transcription completed, starting cleanup for {cleaned_entry_id}",
+                temperature=temperature,
+                top_p=top_p
+            )
             await process_cleanup_background(
                 cleaned_entry_id=cleaned_entry_id,
                 transcription_text=transcription_result.transcribed_text,
                 entry_type=entry_type,
                 user_id=user_id,
-                voice_entry_id=entry_id
+                voice_entry_id=entry_id,
+                temperature=temperature,
+                top_p=top_p
             )
         else:
             # Transcription failed, mark cleanup as failed too
@@ -481,6 +489,8 @@ async def upload_transcribe_and_cleanup(
     entry_type: str = Form("dream", description="Type of voice entry (dream, journal, meeting, note, etc.)"),
     language: Optional[str] = Form(None, description="Language code for transcription (e.g., 'en', 'es', 'sl') or 'auto' for detection. If not provided, uses user preference."),
     beam_size: Optional[int] = Form(None, description="Beam size for transcription (1-10, higher = more accurate but slower). If not provided, uses default from config."),
+    temperature: Optional[float] = Form(None, description="Temperature for LLM cleanup (0.0-2.0, higher = more creative). If not provided, uses default."),
+    top_p: Optional[float] = Form(None, description="Top-p for LLM cleanup (0.0-1.0, nucleus sampling). If not provided, uses default."),
     db: AsyncSession = Depends(get_db),
     transcription_service: TranscriptionService = Depends(get_transcription_service),
     current_user: User = Depends(get_current_user)
@@ -618,7 +628,9 @@ async def upload_transcribe_and_cleanup(
             cleaned_entry_id=cleaned_entry.id,
             entry_type=entry_type,
             user_id=current_user.id,
-            beam_size=beam_size
+            beam_size=beam_size,
+            temperature=temperature,
+            top_p=top_p
         )
 
         logger.info(

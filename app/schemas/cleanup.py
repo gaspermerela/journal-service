@@ -20,8 +20,18 @@ class CleanupAnalysis(BaseModel):
 
 class CleanupTriggerRequest(BaseModel):
     """Request to trigger cleanup for a transcription."""
-    # Empty for now, could add options like custom_prompt in future
-    pass
+    temperature: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=2.0,
+        description="Temperature for LLM (0.0-2.0, higher = more creative)"
+    )
+    top_p: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Top-p sampling for LLM (0.0-1.0, nucleus sampling)"
+    )
 
 
 class CleanupResponse(BaseModel):
@@ -49,6 +59,8 @@ class CleanedEntryDetail(BaseModel):
     llm_raw_response: Optional[str] = Field(None, description="Raw LLM response before parsing")
     status: CleanupStatus = Field(description="Cleanup processing status")
     model_name: str = Field(description="LLM model used")
+    temperature: Optional[float] = Field(None, description="Temperature used for LLM")
+    top_p: Optional[float] = Field(None, description="Top-p value used for LLM")
     error_message: Optional[str] = Field(None, description="Error details if failed")
     is_primary: bool = Field(description="Whether this is the primary cleanup to display")
     processing_time_seconds: Optional[float] = Field(None, description="Processing duration")
@@ -64,6 +76,24 @@ class UploadTranscribeCleanupRequest(BaseModel):
     """Request for combined upload, transcribe, and cleanup workflow."""
     language: str = Field(default="auto", description="Language code or 'auto' for detection")
     entry_type: str = Field(default="dream", description="Type of entry (dream, journal, meeting, note, etc.)")
+    beam_size: Optional[int] = Field(
+        default=None,
+        ge=1,
+        le=10,
+        description="Beam size for transcription (1-10, higher = more accurate but slower)"
+    )
+    temperature: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=2.0,
+        description="Temperature for LLM cleanup (0.0-2.0, higher = more creative)"
+    )
+    top_p: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Top-p sampling for LLM cleanup (0.0-1.0)"
+    )
 
 
 class UploadTranscribeCleanupResponse(BaseModel):
