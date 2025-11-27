@@ -1,0 +1,271 @@
+"""
+Unit tests for model listing service methods.
+"""
+import pytest
+from unittest.mock import AsyncMock, patch, MagicMock
+from app.services.transcription import WhisperLocalService
+from app.services.transcription_groq import GroqTranscriptionService
+from app.services.transcription_noop import NoOpTranscriptionService
+from app.services.llm_cleanup_ollama import OllamaLLMCleanupService
+from app.services.llm_cleanup_groq import GroqLLMCleanupService
+from app.services.llm_cleanup_noop import NoOpLLMCleanupService
+
+
+class TestWhisperLocalServiceModels:
+    """Test WhisperLocalService.list_available_models()"""
+
+    @pytest.mark.asyncio
+    async def test_list_available_models_returns_whisper_models(self):
+        """Test that Whisper service returns hardcoded list of models."""
+        # Create service with mock model
+        mock_model = MagicMock()
+        service = WhisperLocalService(
+            model=mock_model,
+            model_name="large-v3",
+            device="cpu"
+        )
+
+        models = await service.list_available_models()
+
+        # Should return list of dicts
+        assert isinstance(models, list)
+        assert len(models) == 6  # tiny, base, small, medium, large, large-v3
+
+        # Check structure of models
+        for model in models:
+            assert "id" in model
+            assert "name" in model
+            assert "size" in model
+            assert "speed" in model
+
+        # Check specific models are included
+        model_ids = [m["id"] for m in models]
+        assert "tiny" in model_ids
+        assert "base" in model_ids
+        assert "small" in model_ids
+        assert "medium" in model_ids
+        assert "large" in model_ids
+        assert "large-v3" in model_ids
+
+
+class TestGroqTranscriptionServiceModels:
+    """Test GroqTranscriptionService.list_available_models()"""
+
+    @pytest.mark.asyncio
+    async def test_list_available_models_fetches_from_groq_api(self):
+        """Test that Groq service fetches models from API and filters whisper models."""
+        service = GroqTranscriptionService(
+            api_key="test-api-key",
+            model="whisper-large-v3"
+        )
+
+        # Mock API response
+        mock_response = {
+            "data": [
+                {
+                    "id": "whisper-large-v3",
+                    "owned_by": "OpenAI",
+                    "context_window": 448,
+                    "active": True
+                },
+                {
+                    "id": "whisper-large-v3-turbo",
+                    "owned_by": "OpenAI",
+                    "context_window": 448,
+                    "active": True
+                },
+                {
+                    "id": "distil-whisper-large-v3-en",
+                    "owned_by": "Hugging Face",
+                    "context_window": 448,
+                    "active": True
+                },
+                {
+                    "id": "llama-3.3-70b-versatile",
+                    "owned_by": "Meta",
+                    "context_window": 8192,
+                    "active": True
+                }
+            ]
+        }
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_response_obj = MagicMock()  # Synchronous mock for response
+            mock_response_obj.raise_for_status = MagicMock()
+            mock_response_obj.json = MagicMock(return_value=mock_response)
+            mock_client.get = AsyncMock(return_value=mock_response_obj)
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = AsyncMock()
+            mock_client_class.return_value = mock_client
+
+            models = await service.list_available_models()
+
+        # Should return only whisper models (filtered out llama)
+        assert isinstance(models, list)
+        assert len(models) == 3  # whisper-large-v3, whisper-large-v3-turbo, distil-whisper-large-v3-en
+
+        model_ids = [m["id"] for m in models]
+        assert "whisper-large-v3" in model_ids
+        assert "whisper-large-v3-turbo" in model_ids
+        assert "distil-whisper-large-v3-en" in model_ids
+        assert "llama-3.3-70b-versatile" not in model_ids  # LLM model should be filtered out
+
+    @pytest.mark.asyncio
+    async def test_list_available_models_handles_api_error(self):
+        """Test that API errors are propagated as RuntimeError."""
+        service = GroqTranscriptionService(
+            api_key="test-api-key",
+            model="whisper-large-v3"
+        )
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.get.side_effect = Exception("API connection failed")
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = AsyncMock()
+            mock_client_class.return_value = mock_client
+
+            with pytest.raises(RuntimeError, match="Failed to fetch Groq models"):
+                await service.list_available_models()
+
+
+class TestNoOpTranscriptionServiceModels:
+    """Test NoOpTranscriptionService.list_available_models()"""
+
+    @pytest.mark.asyncio
+    async def test_list_available_models_returns_test_model(self):
+        """Test that NoOp service returns test model."""
+        service = NoOpTranscriptionService()
+
+        models = await service.list_available_models()
+
+        assert isinstance(models, list)
+        assert len(models) == 1
+        assert models[0]["id"] == "noop-whisper-test"
+        assert models[0]["name"] == "NoOp Test Model"
+
+
+class TestOllamaLLMCleanupServiceModels:
+    """Test OllamaLLMCleanupService.list_available_models()"""
+
+    @pytest.mark.asyncio
+    async def test_list_available_models_returns_hardcoded_list(self):
+        """Test that Ollama service returns hardcoded list of models."""
+        service = OllamaLLMCleanupService()
+
+        models = await service.list_available_models()
+
+        # Should return hardcoded list
+        assert isinstance(models, list)
+        assert len(models) == 6  # llama3.2:3b, llama3.2:1b, llama3.1:8b, llama3.1:70b, qwen2.5:7b, mistral:7b
+
+        # Check structure
+        for model in models:
+            assert "id" in model
+            assert "name" in model
+
+        # Check specific models
+        model_ids = [m["id"] for m in models]
+        assert "llama3.2:3b" in model_ids
+        assert "llama3.2:1b" in model_ids
+        assert "llama3.1:8b" in model_ids
+        assert "mistral:7b" in model_ids
+
+
+class TestGroqLLMCleanupServiceModels:
+    """Test GroqLLMCleanupService.list_available_models()"""
+
+    @pytest.mark.asyncio
+    async def test_list_available_models_fetches_from_groq_api(self):
+        """Test that Groq LLM service fetches models and excludes whisper models."""
+        service = GroqLLMCleanupService(
+            api_key="test-api-key",
+            model="llama-3.3-70b-versatile"
+        )
+
+        # Mock API response
+        mock_response = {
+            "data": [
+                {
+                    "id": "llama-3.3-70b-versatile",
+                    "owned_by": "Meta",
+                    "context_window": 8192,
+                    "active": True
+                },
+                {
+                    "id": "llama3-8b-8192",
+                    "owned_by": "Meta",
+                    "context_window": 8192,
+                    "active": True
+                },
+                {
+                    "id": "whisper-large-v3",
+                    "owned_by": "OpenAI",
+                    "context_window": 448,
+                    "active": True
+                },
+                {
+                    "id": "distil-whisper-large-v3-en",
+                    "owned_by": "Hugging Face",
+                    "context_window": 448,
+                    "active": True
+                }
+            ]
+        }
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_response_obj = MagicMock()  # Synchronous mock for response
+            mock_response_obj.raise_for_status = MagicMock()
+            mock_response_obj.json = MagicMock(return_value=mock_response)
+            mock_client.get = AsyncMock(return_value=mock_response_obj)
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = AsyncMock()
+            mock_client_class.return_value = mock_client
+
+            models = await service.list_available_models()
+
+        # Should return only LLM models (filtered out whisper)
+        assert isinstance(models, list)
+        assert len(models) == 2  # llama-3.3-70b-versatile, llama3-8b-8192
+
+        model_ids = [m["id"] for m in models]
+        assert "llama-3.3-70b-versatile" in model_ids
+        assert "llama3-8b-8192" in model_ids
+        assert "whisper-large-v3" not in model_ids  # Whisper models should be filtered out
+        assert "distil-whisper-large-v3-en" not in model_ids
+
+    @pytest.mark.asyncio
+    async def test_list_available_models_handles_api_error(self):
+        """Test that API errors are propagated as RuntimeError."""
+        service = GroqLLMCleanupService(
+            api_key="test-api-key",
+            model="llama-3.3-70b-versatile"
+        )
+
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client.get.side_effect = Exception("API connection failed")
+            mock_client.__aenter__.return_value = mock_client
+            mock_client.__aexit__.return_value = AsyncMock()
+            mock_client_class.return_value = mock_client
+
+            with pytest.raises(RuntimeError, match="Failed to fetch Groq models"):
+                await service.list_available_models()
+
+
+class TestNoOpLLMCleanupServiceModels:
+    """Test NoOpLLMCleanupService.list_available_models()"""
+
+    @pytest.mark.asyncio
+    async def test_list_available_models_returns_test_model(self):
+        """Test that NoOp service returns test model."""
+        service = NoOpLLMCleanupService()
+
+        models = await service.list_available_models()
+
+        assert isinstance(models, list)
+        assert len(models) == 1
+        assert models[0]["id"] == "noop-llm-test"
+        assert models[0]["name"] == "NoOp Test Model"

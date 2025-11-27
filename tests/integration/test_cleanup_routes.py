@@ -548,3 +548,168 @@ class TestSetPrimaryCleanup:
         data = response.json()
         assert "is_primary" in data
         assert data["is_primary"] is True
+
+
+# ============================================================================
+# Parameter Tests (temperature, top_p)
+# ============================================================================
+
+class TestCleanupParameterHandling:
+    """Test cleanup parameter handling (temperature, top_p)."""
+
+    @pytest.mark.asyncio
+    async def test_trigger_cleanup_with_temperature(
+        self,
+        authenticated_client: AsyncClient,
+        completed_transcription: Transcription
+    ):
+        """Test cleanup accepts temperature parameter."""
+        # Trigger cleanup with temperature
+        response = await authenticated_client.post(
+            f"/api/v1/transcriptions/{completed_transcription.id}/cleanup",
+            json={"temperature": 0.7}
+        )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert "id" in data
+        assert data["status"] == "pending"
+
+    @pytest.mark.asyncio
+    async def test_trigger_cleanup_with_top_p(
+        self,
+        authenticated_client: AsyncClient,
+        completed_transcription: Transcription
+    ):
+        """Test cleanup accepts top_p parameter."""
+        # Trigger cleanup with top_p
+        response = await authenticated_client.post(
+            f"/api/v1/transcriptions/{completed_transcription.id}/cleanup",
+            json={"top_p": 0.9}
+        )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert "id" in data
+        assert data["status"] == "pending"
+
+    @pytest.mark.asyncio
+    async def test_trigger_cleanup_with_both_parameters(
+        self,
+        authenticated_client: AsyncClient,
+        completed_transcription: Transcription
+    ):
+        """Test cleanup accepts both temperature and top_p."""
+        # Trigger cleanup with both parameters
+        response = await authenticated_client.post(
+            f"/api/v1/transcriptions/{completed_transcription.id}/cleanup",
+            json={"temperature": 0.5, "top_p": 0.8}
+        )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert "id" in data
+        assert data["status"] == "pending"
+
+    @pytest.mark.asyncio
+    async def test_trigger_cleanup_temperature_out_of_range_high(
+        self,
+        authenticated_client: AsyncClient,
+        completed_transcription: Transcription
+    ):
+        """Test cleanup rejects temperature above 2.0."""
+        response = await authenticated_client.post(
+            f"/api/v1/transcriptions/{completed_transcription.id}/cleanup",
+            json={"temperature": 3.0}
+        )
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    @pytest.mark.asyncio
+    async def test_trigger_cleanup_temperature_out_of_range_low(
+        self,
+        authenticated_client: AsyncClient,
+        completed_transcription: Transcription
+    ):
+        """Test cleanup rejects negative temperature."""
+        response = await authenticated_client.post(
+            f"/api/v1/transcriptions/{completed_transcription.id}/cleanup",
+            json={"temperature": -1.0}
+        )
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    @pytest.mark.asyncio
+    async def test_trigger_cleanup_top_p_out_of_range(
+        self,
+        authenticated_client: AsyncClient,
+        completed_transcription: Transcription
+    ):
+        """Test cleanup rejects top_p above 1.0."""
+        response = await authenticated_client.post(
+            f"/api/v1/transcriptions/{completed_transcription.id}/cleanup",
+            json={"top_p": 1.5}
+        )
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    @pytest.mark.asyncio
+    async def test_trigger_cleanup_parameters_in_response(
+        self,
+        authenticated_client: AsyncClient,
+        db_session: AsyncSession,
+        sample_voice_entry: VoiceEntry,
+        completed_transcription: Transcription,
+        test_user: User
+    ):
+        """Test GET endpoint returns temperature and top_p parameters."""
+        # Create cleaned entry with parameters
+        cleaned_entry = CleanedEntry(
+            id=uuid.uuid4(),
+            voice_entry_id=sample_voice_entry.id,
+            transcription_id=completed_transcription.id,
+            user_id=test_user.id,
+            cleaned_text="Test cleaned text",
+            analysis={"themes": [], "emotions": [], "characters": [], "locations": []},
+            model_name="test-model",
+            temperature=0.6,
+            top_p=0.85,
+            status="completed"
+        )
+
+        db_session.add(cleaned_entry)
+        await db_session.commit()
+
+        # Get cleaned entry and verify parameters in response
+        response = await authenticated_client.get(
+            f"/api/v1/cleaned-entries/{cleaned_entry.id}"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["temperature"] == 0.6
+        assert data["top_p"] == 0.85
+
+    @pytest.mark.asyncio
+    async def test_trigger_cleanup_without_parameters_backward_compatible(
+        self,
+        authenticated_client: AsyncClient,
+        completed_transcription: Transcription
+    ):
+        """Test cleanup works without temperature/top_p (backward compatibility)."""
+        # Trigger cleanup without parameters (empty body)
+        response = await authenticated_client.post(
+            f"/api/v1/transcriptions/{completed_transcription.id}/cleanup",
+            json={}
+        )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert "id" in data
+        assert data["status"] == "pending"

@@ -55,3 +55,9 @@ class NoOpTranscriptionService(TranscriptionService):
     def get_model_name(self) -> str:
         """Return model name."""
         return self.model_name
+
+    async def list_available_models(self) -> list[Dict[str, Any]]:
+        """Return mock list of available models for testing."""
+        return [
+            {"id": "noop-whisper-test", "name": "NoOp Test Model"}
+        ]

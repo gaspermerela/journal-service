@@ -157,3 +157,45 @@ class GroqTranscriptionService(TranscriptionService):
             Model name string (e.g., "groq-whisper-large-v3")
         """
         return f"groq-{self.model}"
+
+    async def list_available_models(self) -> list[Dict[str, Any]]:
+        """
+        Fetch available transcription models from Groq API.
+        Filters for Whisper models only.
+
+        Returns:
+            List of dicts with Whisper model information
+
+        Raises:
+            RuntimeError: If API request fails
+        """
+        try:
+            import httpx
+
+            url = "https://api.groq.com/openai/v1/models"
+            headers = {"Authorization": f"Bearer {self.api_key}"}
+
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+
+            # Filter for whisper models only (transcription models)
+            transcription_models = [
+                {
+                    "id": model["id"],
+                    "name": model["id"],
+                    "owned_by": model.get("owned_by"),
+                    "context_window": model.get("context_window"),
+                    "active": model.get("active", True)
+                }
+                for model in data.get("data", [])
+                if model["id"].startswith("whisper-") or model["id"].startswith("distil-whisper-")
+            ]
+
+            logger.info(f"Found {len(transcription_models)} Groq transcription models")
+            return transcription_models
+
+        except Exception as e:
+            logger.error(f"Failed to fetch Groq models: {e}", exc_info=True)
+            raise RuntimeError(f"Failed to fetch Groq models: {str(e)}") from e

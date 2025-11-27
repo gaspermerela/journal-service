@@ -6,8 +6,13 @@ Requires authentication.
 import pytest
 import asyncio
 from uuid import uuid4
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.routes.transcription import get_transcription_service
+from app.models.voice_entry import VoiceEntry
+from app.models.transcription import Transcription
+from app.models.user import User
 
 
 @pytest.mark.asyncio
@@ -284,3 +289,97 @@ async def test_transcription_background_task_execution(authenticated_client, sam
     # Note: In test environment, background tasks may execute immediately
     assert transcription is not None
     assert transcription.status in ["pending", "processing", "completed"]
+
+
+# ============================================================================
+# Parameter Tests (beam_size)
+# ============================================================================
+
+class TestTranscriptionBeamSizeParameter:
+    """Test beam_size parameter handling for transcriptions."""
+
+    @pytest.mark.asyncio
+    async def test_trigger_transcription_with_beam_size(
+        self,
+        authenticated_client: AsyncClient,
+        sample_voice_entry: VoiceEntry
+    ):
+        """Test transcription accepts beam_size parameter."""
+        # Trigger transcription with beam_size
+        response = await authenticated_client.post(
+            f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
+            json={"language": "en", "beam_size": 5}
+        )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["status"] == "processing"
+        assert "transcription_id" in data
+
+    @pytest.mark.asyncio
+    async def test_trigger_transcription_beam_size_out_of_range_high(
+        self,
+        authenticated_client: AsyncClient,
+        sample_voice_entry: VoiceEntry
+    ):
+        """Test transcription rejects beam_size above 10."""
+        response = await authenticated_client.post(
+            f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
+            json={"language": "en", "beam_size": 11}
+        )
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    @pytest.mark.asyncio
+    async def test_trigger_transcription_beam_size_out_of_range_low(
+        self,
+        authenticated_client: AsyncClient,
+        sample_voice_entry: VoiceEntry
+    ):
+        """Test transcription rejects beam_size below 1."""
+        response = await authenticated_client.post(
+            f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
+            json={"language": "en", "beam_size": 0}
+        )
+
+        assert response.status_code == 422
+        data = response.json()
+        assert "detail" in data
+
+    @pytest.mark.asyncio
+    async def test_trigger_transcription_beam_size_in_response(
+        self,
+        authenticated_client: AsyncClient,
+        db_session: AsyncSession,
+        sample_voice_entry: VoiceEntry,
+        test_user: User
+    ):
+        """Test GET endpoint returns beam_size parameter."""
+        from app.models.transcription import Transcription
+        import uuid
+
+        # Create transcription with beam_size
+        transcription = Transcription(
+            id=uuid.uuid4(),
+            entry_id=sample_voice_entry.id,
+            transcribed_text="Test transcription",
+            status="completed",
+            model_used="whisper-base",
+            language_code="en",
+            beam_size=7,
+            is_primary=True
+        )
+
+        db_session.add(transcription)
+        await db_session.commit()
+
+        # Get transcription and verify beam_size in response
+        response = await authenticated_client.get(
+            f"/api/v1/transcriptions/{transcription.id}"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["beam_size"] == 7

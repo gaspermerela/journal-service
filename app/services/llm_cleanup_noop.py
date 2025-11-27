@@ -73,3 +73,9 @@ class NoOpLLMCleanupService(LLMCleanupService):
             Always True
         """
         return True
+
+    async def list_available_models(self) -> list[Dict[str, Any]]:
+        """Return mock list of available models for testing."""
+        return [
+            {"id": "noop-llm-test", "name": "NoOp Test Model"}
+        ]

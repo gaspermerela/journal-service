@@ -342,3 +342,19 @@ class OllamaLLMCleanupService(LLMCleanupService):
         except Exception as e:
             logger.error(f"Ollama connection test failed: {str(e)}")
             return False
+
+    async def list_available_models(self) -> list[Dict[str, Any]]:
+        """
+        Return hardcoded list of common Ollama models.
+
+        Returns:
+            List of dicts with model information
+        """
+        return [
+            {"id": "llama3.2:3b", "name": "Llama 3.2 3B"},
+            {"id": "llama3.2:1b", "name": "Llama 3.2 1B"},
+            {"id": "llama3.1:8b", "name": "Llama 3.1 8B"},
+            {"id": "llama3.1:70b", "name": "Llama 3.1 70B"},
+            {"id": "qwen2.5:7b", "name": "Qwen 2.5 7B"},
+            {"id": "mistral:7b", "name": "Mistral 7B"}
+        ]
