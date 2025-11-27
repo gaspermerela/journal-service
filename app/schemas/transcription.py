@@ -48,6 +48,8 @@ class TranscriptionCreate(BaseModel):
     model_used: str
     language_code: str
     is_primary: bool = False
+    beam_size: Optional[int] = None
+    temperature: Optional[float] = None
 
 
 class TranscriptionResponse(TranscriptionBase):
