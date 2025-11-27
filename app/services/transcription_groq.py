@@ -40,7 +40,8 @@ class GroqTranscriptionService(TranscriptionService):
         self,
         audio_path: Path,
         language: str = "en",
-        beam_size: Optional[int] = None
+        beam_size: Optional[int] = None,
+        temperature: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Transcribe audio file using Groq's Whisper API.
@@ -49,6 +50,7 @@ class GroqTranscriptionService(TranscriptionService):
             audio_path: Path to audio file
             language: Language code or 'auto' for automatic detection
             beam_size: Not used for Groq API (Groq doesn't expose beam_size control)
+            temperature: Temperature for transcription sampling (0.0-1.0). If None, uses Groq's default.
 
         Returns:
             Dict with transcription result
@@ -79,6 +81,10 @@ class GroqTranscriptionService(TranscriptionService):
                 # Only add language if not "auto"
                 if language and language.lower() != "auto":
                     transcription_params["language"] = language
+
+                # Add temperature if provided
+                if temperature is not None:
+                    transcription_params["temperature"] = temperature
 
                 response = await self.client.audio.transcriptions.create(**transcription_params)
 

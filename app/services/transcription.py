@@ -23,7 +23,8 @@ class TranscriptionService(ABC):
         self,
         audio_path: Path,
         language: str = "en",
-        beam_size: Optional[int] = None
+        beam_size: Optional[int] = None,
+        temperature: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Transcribe audio file to text.
@@ -32,6 +33,7 @@ class TranscriptionService(ABC):
             audio_path: Path to audio file
             language: Language code (e.g., 'en', 'es') or 'auto' for detection
             beam_size: Beam size for transcription (1-10). If None, uses default.
+            temperature: Temperature for transcription sampling (0.0-1.0). If None, uses default (0.0).
 
         Returns:
             Dict containing:
@@ -122,7 +124,8 @@ class WhisperLocalService(TranscriptionService):
         self,
         audio_path: Path,
         language: str = "en",
-        beam_size: Optional[int] = None
+        beam_size: Optional[int] = None,
+        temperature: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Transcribe audio file using local Whisper model.
@@ -131,6 +134,7 @@ class WhisperLocalService(TranscriptionService):
             audio_path: Path to audio file
             language: Language code or 'auto' for automatic detection
             beam_size: Beam size for transcription (1-10). If None, uses default based on model size.
+            temperature: Temperature for transcription sampling (0.0-1.0). If None, uses default (0.0).
 
         Returns:
             Dict with transcription result (includes beam_size used)
@@ -164,7 +168,8 @@ class WhisperLocalService(TranscriptionService):
                     self._transcribe_sync,
                     str(audio_path),
                     language,
-                    beam_size
+                    beam_size,
+                    temperature
                 )
 
             logger.info(
@@ -181,7 +186,7 @@ class WhisperLocalService(TranscriptionService):
             )
             raise RuntimeError(f"Transcription failed: {str(e)}") from e
 
-    def _transcribe_sync(self, audio_path: str, language: str, beam_size: Optional[int] = None) -> Dict[str, Any]:
+    def _transcribe_sync(self, audio_path: str, language: str, beam_size: Optional[int] = None, temperature: Optional[float] = None) -> Dict[str, Any]:
         """
         Synchronous transcription (runs in thread pool).
 
@@ -189,6 +194,7 @@ class WhisperLocalService(TranscriptionService):
             audio_path: Path to audio file as string
             language: Language code or 'auto'
             beam_size: Beam size for transcription (1-10). If None, uses config default.
+            temperature: Temperature for transcription sampling (0.0-1.0). If None, uses default (0.0).
 
         Returns:
             Dict with transcription result (includes beam_size used)
@@ -206,6 +212,10 @@ class WhisperLocalService(TranscriptionService):
         if beam_size is None:
             beam_size = settings.WHISPER_DEFAULT_BEAM_SIZE
 
+        # Use provided temperature or default to 0.0
+        if temperature is None:
+            temperature = 0.0
+
         # For large models, still use best_of=2 for better quality
         is_large_model = "large" in self.model_name.lower()
 
@@ -214,6 +224,7 @@ class WhisperLocalService(TranscriptionService):
             "language": None if language == "auto" else language,
             "task": "transcribe",  # vs "translate"
             "beam_size": beam_size,
+            "temperature": temperature,
             "best_of": 1 if not is_large_model else 2,  # Better for large models
         }
 
