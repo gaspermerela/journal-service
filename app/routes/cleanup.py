@@ -113,9 +113,8 @@ async def process_cleanup_background(
                 cleaned_text=result["cleaned_text"],
                 analysis=result["analysis"],
                 prompt_template_id=result.get("prompt_template_id"),
-                llm_raw_response=result.get("llm_raw_response"),
-                temperature=result.get("temperature"),
-                top_p=result.get("top_p")
+                llm_raw_response=result.get("llm_raw_response")
+                # temperature and top_p already set at creation time
             )
             await db.commit()
 
@@ -293,7 +292,9 @@ async def trigger_cleanup(
         voice_entry_id=voice_entry.id,
         transcription_id=transcription_id,
         user_id=current_user.id,
-        model_name=llm_service.get_model_name()
+        model_name=llm_service.get_model_name(),
+        temperature=request.temperature,
+        top_p=request.top_p
     )
 
     await db.commit()

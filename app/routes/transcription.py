@@ -109,13 +109,13 @@ async def process_transcription_task(
                 beam_size=result.get("beam_size")
             )
 
-            # Update with result (including beam_size used)
+            # Update with result
             await db_service.update_transcription_status(
                 db=db,
                 transcription_id=transcription_id,
                 status="completed",
-                transcribed_text=result["text"],
-                beam_size=result.get("beam_size")
+                transcribed_text=result["text"]
+                # beam_size and temperature already set at creation time
             )
             await db.commit()
 
@@ -232,7 +232,9 @@ async def trigger_transcription(
         status="pending",
         model_used=model_name,
         language_code=request_data.language,
-        is_primary=False  # Can be set later via set-primary endpoint
+        is_primary=False,  # Can be set later via set-primary endpoint
+        beam_size=request_data.beam_size,
+        temperature=request_data.temperature
     )
 
     transcription = await db_service.create_transcription(db, transcription_data)

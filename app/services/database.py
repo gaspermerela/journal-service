@@ -326,7 +326,9 @@ class DatabaseService:
                 status=transcription_data.status,
                 model_used=transcription_data.model_used,
                 language_code=transcription_data.language_code,
-                is_primary=transcription_data.is_primary
+                is_primary=transcription_data.is_primary,
+                beam_size=transcription_data.beam_size,
+                temperature=transcription_data.temperature
             )
 
             db.add(transcription)
@@ -614,8 +616,7 @@ class DatabaseService:
                 transcription.transcription_completed_at = datetime.now(timezone.utc)
                 if transcribed_text:
                     transcription.transcribed_text = transcribed_text
-                if beam_size is not None:
-                    transcription.beam_size = beam_size
+                # beam_size and temperature are set at creation time and are immutable
 
             if status == "failed":
                 transcription.transcription_completed_at = datetime.now(timezone.utc)
@@ -1098,7 +1099,9 @@ class DatabaseService:
         voice_entry_id: UUID,
         transcription_id: UUID,
         user_id: UUID,
-        model_name: str
+        model_name: str,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None
     ) -> CleanedEntry:
         """
         Create a new cleaned entry record.
@@ -1122,7 +1125,9 @@ class DatabaseService:
                 transcription_id=transcription_id,
                 user_id=user_id,
                 model_name=model_name,
-                status=CleanupStatus.PENDING
+                status=CleanupStatus.PENDING,
+                temperature=temperature,
+                top_p=top_p
             )
 
             db.add(cleaned_entry)
@@ -1305,10 +1310,7 @@ class DatabaseService:
                 cleaned_entry.prompt_template_id = prompt_template_id
             if llm_raw_response is not None:
                 cleaned_entry.llm_raw_response = llm_raw_response
-            if temperature is not None:
-                cleaned_entry.temperature = temperature
-            if top_p is not None:
-                cleaned_entry.top_p = top_p
+            # temperature and top_p are set at creation time and are immutable
 
             # Update timestamps based on status (use timezone-naive datetime)
             if cleanup_status == CleanupStatus.PROCESSING and not cleaned_entry.processing_started_at:

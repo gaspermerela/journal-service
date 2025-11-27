@@ -399,7 +399,9 @@ async def upload_and_transcribe(
             status="pending",
             model_used=model_name,
             language_code=effective_language,
-            is_primary=False
+            is_primary=False,
+            beam_size=beam_size,
+            temperature=temperature
         )
 
         transcription = await db_service.create_transcription(db, transcription_data)
@@ -592,7 +594,9 @@ async def upload_transcribe_and_cleanup(
             status="pending",
             model_used=model_name,
             language_code=effective_language,
-            is_primary=False
+            is_primary=False,
+            beam_size=beam_size,
+            temperature=temperature
         )
 
         transcription = await db_service.create_transcription(db, transcription_data)
@@ -610,7 +614,9 @@ async def upload_transcribe_and_cleanup(
             voice_entry_id=entry.id,
             transcription_id=transcription.id,
             user_id=current_user.id,
-            model_name=settings.OLLAMA_MODEL
+            model_name=settings.OLLAMA_MODEL,
+            temperature=temperature,
+            top_p=top_p
         )
         await db.commit()
 
