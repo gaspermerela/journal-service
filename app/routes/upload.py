@@ -93,7 +93,8 @@ async def transcription_then_cleanup_task(
         audio_file_path=audio_file_path,
         language=language,
         transcription_service=transcription_service,
-        beam_size=beam_size
+        beam_size=beam_size,
+        temperature=temperature
     )
 
     # Check if transcription succeeded
@@ -304,6 +305,7 @@ async def upload_and_transcribe(
     entry_type: str = Form("dream", description="Type of voice entry (dream, journal, meeting, note, etc.)"),
     language: Optional[str] = Form(None, description="Language code for transcription (e.g., 'en', 'es', 'sl') or 'auto' for detection. If not provided, uses user preference."),
     beam_size: Optional[int] = Form(None, description="Beam size for transcription (1-10, higher = more accurate but slower). If not provided, uses default from config."),
+    temperature: Optional[float] = Form(None, ge=0.0, le=1.0, description="Temperature for transcription sampling (0.0-1.0, higher = more random). If not provided, uses default."),
     db: AsyncSession = Depends(get_db),
     transcription_service: TranscriptionService = Depends(get_transcription_service),
     current_user: User = Depends(get_current_user)
@@ -420,7 +422,8 @@ async def upload_and_transcribe(
             audio_file_path=entry.file_path,
             language=effective_language,
             transcription_service=transcription_service,
-            beam_size=beam_size
+            beam_size=beam_size,
+            temperature=temperature
         )
 
         logger.info(

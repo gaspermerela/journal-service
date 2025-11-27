@@ -28,32 +28,32 @@ services:
 
   # LLM TEXT CLEANUP
   # https://collabnix.com/setting-up-ollama-models-with-docker-compose-a-step-by-step-guide/
-  ollama:
-    image: ollama/ollama:latest
-    container_name: journal-ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    healthcheck:
-      test: [ "CMD", "/bin/ollama", "list" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
-  ollama-init:
-    image: ollama/ollama:latest
-    container_name: journal-ollama-init
-    volumes:
-      - ollama_data:/root/.ollama
-    command: pull llama3.2:3b
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
-    depends_on:
-      ollama:
-        condition: service_healthy
-    restart: "no"
+#  ollama:
+#    image: ollama/ollama:latest
+#    container_name: journal-ollama
+#    ports:
+#      - "11434:11434"
+#    volumes:
+#      - ollama_data:/root/.ollama
+#    healthcheck:
+#      test: [ "CMD", "/bin/ollama", "list" ]
+#      interval: 30s
+#      timeout: 10s
+#      retries: 3
+#      start_period: 30s
+#
+#  ollama-init:
+#    image: ollama/ollama:latest
+#    container_name: journal-ollama-init
+#    volumes:
+#      - ollama_data:/root/.ollama
+#    command: pull llama3.2:3b
+#    environment:
+#      - OLLAMA_HOST=http://ollama:11434
+#    depends_on:
+#      ollama:
+#        condition: service_healthy
+#    restart: "no"
 
 #  webui:
 #    image: ghcr.io/ollama-webui/ollama-webui:main
@@ -76,10 +76,10 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
-      ollama-init:
-        condition: service_completed_successfully
+#      ollama:
+#        condition: service_healthy
+#      ollama-init:
+#        condition: service_completed_successfully
     ports:
       - "8000:8000"
     environment:

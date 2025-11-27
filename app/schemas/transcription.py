@@ -26,6 +26,12 @@ class TranscriptionTriggerRequest(BaseModel):
         default=None,
         description="Beam size for transcription (1-10, higher = more accurate but slower)"
     )
+    temperature: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Temperature for transcription sampling (0.0-1.0, higher = more random)"
+    )
 
     @field_validator('beam_size')
     @classmethod

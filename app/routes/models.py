@@ -1,79 +1,84 @@
 """
-API routes for listing available models.
+API routes for listing available models and options.
 """
 from fastapi import APIRouter, HTTPException, Request
-from app.schemas.models import ModelsListResponse, LanguagesListResponse, ModelInfo
-from app.config import settings
+
+from app.config import settings, TRANSCRIPTION_PROVIDER_PARAMETERS, LLM_PROVIDER_PARAMETERS
+from app.schemas.models import (
+    LanguagesListResponse,
+    ModelInfo,
+    UnifiedOptionsResponse,
+    ServiceOptions,
+    ParameterConfig
+)
 from app.utils.logger import get_logger
 
 logger = get_logger("routes.models")
 
-router = APIRouter(prefix="/api/v1/models", tags=["Models"])
+router = APIRouter(prefix="/api/v1", tags=["Models"])
 
 
-@router.get("/transcription", response_model=ModelsListResponse)
-async def list_transcription_models(request: Request):
+@router.get("/options", response_model=UnifiedOptionsResponse)
+async def get_options(request: Request) -> UnifiedOptionsResponse:
     """
-    List available transcription models for the current provider.
+    Get unified options for transcription and LLM services.
 
-    Returns models based on TRANSCRIPTION_PROVIDER setting:
-    - `groq`: Fetches from Groq API dynamically
-    - `whisper`: Returns local Whisper models (hardcoded)
+    Returns available models and provider-specific parameters with constraints.
+    Frontend uses this to dynamically render configuration UI.
 
     **No authentication required** - this endpoint is public.
 
     Returns:
-        ModelsListResponse: Provider name and list of available models
+        UnifiedOptionsResponse: Combined options for both services including:
+            - provider: Current active provider (groq, whisper, ollama)
+            - models: List of available models
+            - parameters: Available parameters with type, min/max, default, description
     """
     transcription_service = request.app.state.transcription_service
-
-    try:
-        models = await transcription_service.list_available_models()
-
-        return ModelsListResponse(
-            provider=settings.TRANSCRIPTION_PROVIDER,
-            models=[ModelInfo(**model) for model in models]
-        )
-    except Exception as e:
-        logger.error(f"Failed to fetch transcription models: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=503,
-            detail=f"Failed to fetch transcription models: {str(e)}"
-        )
-
-
-@router.get("/llm", response_model=ModelsListResponse)
-async def list_llm_models(request: Request):
-    """
-    List available LLM models for the current provider.
-
-    Returns models based on LLM_PROVIDER setting:
-    - `groq`: Fetches from Groq API dynamically (excludes whisper models)
-    - `ollama`: Returns common Ollama models (hardcoded)
-
-    **No authentication required** - this endpoint is public.
-
-    Returns:
-        ModelsListResponse: Provider name and list of available models
-    """
     llm_service = request.app.state.llm_cleanup_service
 
     try:
-        models = await llm_service.list_available_models()
+        # Get models from services
+        transcription_models = await transcription_service.list_available_models()
+        llm_models = await llm_service.list_available_models()
 
-        return ModelsListResponse(
-            provider=settings.LLM_PROVIDER,
-            models=[ModelInfo(**model) for model in models]
+        # Get provider-specific parameters
+        transcription_params = TRANSCRIPTION_PROVIDER_PARAMETERS.get(
+            settings.TRANSCRIPTION_PROVIDER,
+            {}
+        )
+        llm_params = LLM_PROVIDER_PARAMETERS.get(
+            settings.LLM_PROVIDER,
+            {}
+        )
+
+        return UnifiedOptionsResponse(
+            transcription=ServiceOptions(
+                provider=settings.TRANSCRIPTION_PROVIDER,
+                models=[ModelInfo(**m) for m in transcription_models],
+                parameters={
+                    k: ParameterConfig(**v)
+                    for k, v in transcription_params.items()
+                }
+            ),
+            llm=ServiceOptions(
+                provider=settings.LLM_PROVIDER,
+                models=[ModelInfo(**m) for m in llm_models],
+                parameters={
+                    k: ParameterConfig(**v)
+                    for k, v in llm_params.items()
+                }
+            )
         )
     except Exception as e:
-        logger.error(f"Failed to fetch LLM models: {e}", exc_info=True)
+        logger.error(f"Failed to fetch options: {e}", exc_info=True)
         raise HTTPException(
             status_code=503,
-            detail=f"Failed to fetch LLM models: {str(e)}"
+            detail=f"Failed to fetch options: {str(e)}"
         )
 
 
-@router.get("/languages", response_model=LanguagesListResponse)
+@router.get("/models/languages", response_model=LanguagesListResponse)
 async def list_supported_languages():
     """
     List supported transcription languages.

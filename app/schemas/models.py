@@ -2,7 +2,7 @@
 Schemas for model listing endpoints.
 """
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import Dict, List, Optional, Union
 
 
 class ModelInfo(BaseModel):
@@ -51,5 +51,127 @@ class LanguagesListResponse(BaseModel):
             "example": {
                 "languages": ["auto", "en", "es", "fr", "de", "it", "pt", "ru", "ja", "ko", "zh"],
                 "count": 100
+            }
+        }
+
+
+class ParameterConfig(BaseModel):
+    """Configuration for a single parameter."""
+
+    type: str = Field(..., description="Parameter type (float, int, string, etc.)")
+    min: Optional[float] = Field(None, description="Minimum value (for numeric types)")
+    max: Optional[float] = Field(None, description="Maximum value (for numeric types)")
+    default: Union[float, int, str, None] = Field(None, description="Default value")
+    description: str = Field(..., description="Parameter description")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "type": "float",
+                "min": 0.0,
+                "max": 2.0,
+                "default": 1.0,
+                "description": "Temperature for LLM sampling (0.0-2.0, higher = more creative)"
+            }
+        }
+
+
+class ServiceOptions(BaseModel):
+    """Options for a specific service (transcription or LLM)."""
+
+    provider: str = Field(..., description="Current active provider")
+    models: List[ModelInfo] = Field(..., description="Available models")
+    parameters: Dict[str, ParameterConfig] = Field(..., description="Available parameters with configuration")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "provider": "groq",
+                "models": [
+                    {
+                        "id": "llama-3.3-70b-versatile",
+                        "name": "Llama 3.3 70B Versatile",
+                        "owned_by": "Meta",
+                        "context_window": 131072,
+                        "active": True
+                    }
+                ],
+                "parameters": {
+                    "temperature": {
+                        "type": "float",
+                        "min": 0.0,
+                        "max": 2.0,
+                        "default": 1.0,
+                        "description": "Temperature for LLM sampling (0.0-2.0, higher = more creative)"
+                    },
+                    "top_p": {
+                        "type": "float",
+                        "min": 0.0,
+                        "max": 1.0,
+                        "default": 1.0,
+                        "description": "Top-p nucleus sampling (0.0-1.0)"
+                    }
+                }
+            }
+        }
+
+
+class UnifiedOptionsResponse(BaseModel):
+    """Unified response containing all options for transcription and LLM services."""
+
+    transcription: ServiceOptions = Field(..., description="Transcription service options")
+    llm: ServiceOptions = Field(..., description="LLM cleanup service options")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "transcription": {
+                    "provider": "groq",
+                    "models": [
+                        {
+                            "id": "whisper-large-v3",
+                            "name": "Whisper Large V3",
+                            "owned_by": "OpenAI",
+                            "active": True
+                        }
+                    ],
+                    "parameters": {
+                        "temperature": {
+                            "type": "float",
+                            "min": 0.0,
+                            "max": 1.0,
+                            "default": 0.0,
+                            "description": "Temperature for transcription sampling"
+                        }
+                    }
+                },
+                "llm": {
+                    "provider": "groq",
+                    "models": [
+                        {
+                            "id": "llama-3.3-70b-versatile",
+                            "name": "Llama 3.3 70B Versatile",
+                            "owned_by": "Meta",
+                            "context_window": 131072,
+                            "active": True
+                        }
+                    ],
+                    "parameters": {
+                        "temperature": {
+                            "type": "float",
+                            "min": 0.0,
+                            "max": 2.0,
+                            "default": 1.0,
+                            "description": "Temperature for LLM sampling"
+                        },
+                        "top_p": {
+                            "type": "float",
+                            "min": 0.0,
+                            "max": 1.0,
+                            "default": 1.0,
+                            "description": "Top-p nucleus sampling"
+                        }
+                    }
+                }
             }
         }

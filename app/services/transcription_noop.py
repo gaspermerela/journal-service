@@ -23,7 +23,8 @@ class NoOpTranscriptionService(TranscriptionService):
         self,
         audio_path: Path,
         language: str = "en",
-        beam_size: Optional[int] = None
+        beam_size: Optional[int] = None,
+        temperature: Optional[float] = None
     ) -> Dict[str, Any]:
         """
         Return mock transcription without calling any service.
@@ -32,6 +33,7 @@ class NoOpTranscriptionService(TranscriptionService):
             audio_path: Path to audio file
             language: Language code
             beam_size: Beam size (ignored for NoOp)
+            temperature: Temperature (ignored for NoOp)
 
         Returns:
             Dict with mock transcription data

@@ -135,5 +135,69 @@ class Settings(BaseSettings):
         return self.ENCRYPTION_KEY or self.JWT_SECRET_KEY
 
 
+# Provider Parameter Configurations
+# Used by /api/v1/options endpoint to inform frontend of available parameters
+
+# Transcription Provider Parameters
+TRANSCRIPTION_PROVIDER_PARAMETERS = {
+    "groq": {
+        "temperature": {
+            "type": "float",
+            "min": 0.0,
+            "max": 1.0,
+            "default": 0.0,
+            "description": "Temperature for transcription sampling (0.0-1.0, higher = more random)"
+        }
+    },
+    "whisper": {
+        "temperature": {
+            "type": "float",
+            "min": 0.0,
+            "max": 1.0,
+            "default": 0.0,
+            "description": "Temperature for transcription sampling (0.0-1.0, higher = more random)"
+        }
+    },
+    "noop": {}  # Test provider - no configurable parameters
+}
+
+# LLM Provider Parameters
+LLM_PROVIDER_PARAMETERS = {
+    "groq": {
+        "temperature": {
+            "type": "float",
+            "min": 0.0,
+            "max": 2.0,
+            "default": 1.0,
+            "description": "Temperature for LLM sampling (0.0-2.0, higher = more creative)"
+        },
+        "top_p": {
+            "type": "float",
+            "min": 0.0,
+            "max": 1.0,
+            "default": 1.0,
+            "description": "Top-p nucleus sampling (0.0-1.0)"
+        }
+    },
+    "ollama": {
+        "temperature": {
+            "type": "float",
+            "min": 0.0,
+            "max": 2.0,
+            "default": 1.0,
+            "description": "Temperature for LLM sampling (0.0-2.0, higher = more creative)"
+        },
+        "top_p": {
+            "type": "float",
+            "min": 0.0,
+            "max": 1.0,
+            "default": 1.0,
+            "description": "Top-p nucleus sampling (0.0-1.0)"
+        }
+    },
+    "noop": {}  # Test provider - no configurable parameters
+}
+
+
 # Global settings instance
 settings = Settings()
