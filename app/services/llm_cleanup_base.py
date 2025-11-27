@@ -68,3 +68,13 @@ class LLMCleanupService(ABC):
             True if connection successful, False otherwise
         """
         pass
+
+    @abstractmethod
+    async def list_available_models(self) -> list[Dict[str, Any]]:
+        """
+        Get list of available LLM models for this provider.
+
+        Returns:
+            List of dicts with model information (id, name, optional metadata)
+        """
+        pass

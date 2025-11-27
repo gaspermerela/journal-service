@@ -66,6 +66,16 @@ class TranscriptionService(ABC):
         """
         pass
 
+    @abstractmethod
+    async def list_available_models(self) -> list[Dict[str, Any]]:
+        """
+        Get list of available models for this transcription provider.
+
+        Returns:
+            List of dicts with model information (id, name, optional metadata)
+        """
+        pass
+
 
 class WhisperLocalService(TranscriptionService):
     """
@@ -255,6 +265,22 @@ class WhisperLocalService(TranscriptionService):
             Model name with 'whisper-' prefix (e.g., 'whisper-small')
         """
         return f"whisper-{self.model_name}"
+
+    async def list_available_models(self) -> list[Dict[str, Any]]:
+        """
+        Return hardcoded list of available local Whisper models.
+
+        Returns:
+            List of dicts with model information
+        """
+        return [
+            {"id": "tiny", "name": "Whisper Tiny", "size": "~75MB", "speed": "very fast"},
+            {"id": "base", "name": "Whisper Base", "size": "~150MB", "speed": "fast"},
+            {"id": "small", "name": "Whisper Small", "size": "~500MB", "speed": "moderate"},
+            {"id": "medium", "name": "Whisper Medium", "size": "~1.5GB", "speed": "slow"},
+            {"id": "large", "name": "Whisper Large", "size": "~3GB", "speed": "very slow"},
+            {"id": "large-v3", "name": "Whisper Large v3", "size": "~3GB", "speed": "very slow"}
+        ]
 
 
 def create_transcription_service(

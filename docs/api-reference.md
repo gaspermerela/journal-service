@@ -66,6 +66,14 @@ For granular control, use separate endpoints:
 | `/api/v1/user/preferences` | GET | Yes | Get current user's preferences |
 | `/api/v1/user/preferences` | PUT | Yes | Update user preferences (e.g., preferred transcription language) |
 
+### Models 🤖
+
+| Endpoint | Method | Auth Required | Description |
+|----------|--------|---------------|-------------|
+| `/api/v1/models/transcription` | GET | No | List available transcription models for current provider |
+| `/api/v1/models/llm` | GET | No | List available LLM models for current provider |
+| `/api/v1/models/languages` | GET | No | List supported transcription languages |
+
 ### System 💚
 
 | Endpoint | Method | Auth Required | Description |
@@ -367,6 +375,142 @@ When uploading audio files, the system determines the transcription language usi
 3. **Auto-detection** - Falls back to `"auto"` if neither is set
 
 This allows users to set a default language once and omit the `language` parameter in subsequent uploads.
+
+### Models
+
+Model listing endpoints help you discover available AI models and supported languages for your current provider configuration.
+
+**List available transcription models:**
+```bash
+curl "http://localhost:8000/api/v1/models/transcription"
+```
+
+**Response (Groq provider example):**
+```json
+{
+  "provider": "groq",
+  "models": [
+    {
+      "id": "whisper-large-v3",
+      "name": "whisper-large-v3",
+      "owned_by": "OpenAI",
+      "context_window": 448,
+      "active": true
+    },
+    {
+      "id": "whisper-large-v3-turbo",
+      "name": "whisper-large-v3-turbo",
+      "owned_by": "OpenAI",
+      "context_window": 448,
+      "active": true
+    }
+  ]
+}
+```
+
+**Response (Local Whisper provider example):**
+```json
+{
+  "provider": "whisper",
+  "models": [
+    {
+      "id": "tiny",
+      "name": "Whisper Tiny",
+      "size": "~75MB",
+      "speed": "very fast"
+    },
+    {
+      "id": "large-v3",
+      "name": "Whisper Large v3",
+      "size": "~3GB",
+      "speed": "very slow"
+    }
+  ]
+}
+```
+
+**List available LLM models:**
+```bash
+curl "http://localhost:8000/api/v1/models/llm"
+```
+
+**Response (Groq provider example):**
+```json
+{
+  "provider": "groq",
+  "models": [
+    {
+      "id": "llama-3.3-70b-versatile",
+      "name": "llama-3.3-70b-versatile",
+      "owned_by": "Meta",
+      "context_window": 8192,
+      "active": true
+    },
+    {
+      "id": "llama3-8b-8192",
+      "name": "llama3-8b-8192",
+      "owned_by": "Meta",
+      "context_window": 8192,
+      "active": true
+    }
+  ]
+}
+```
+
+**Response (Ollama provider example):**
+```json
+{
+  "provider": "ollama",
+  "models": [
+    {
+      "id": "llama3.2:3b",
+      "name": "Llama 3.2 3B"
+    },
+    {
+      "id": "llama3.1:8b",
+      "name": "Llama 3.1 8B"
+    },
+    {
+      "id": "mistral:7b",
+      "name": "Mistral 7B"
+    }
+  ]
+}
+```
+
+**List supported languages:**
+```bash
+curl "http://localhost:8000/api/v1/models/languages"
+```
+
+**Response:**
+```json
+{
+  "languages": [
+    "auto",
+    "en",
+    "es",
+    "fr",
+    "de",
+    "it",
+    "pt",
+    "ru",
+    "ja",
+    "ko",
+    "zh",
+    "...and 90+ more"
+  ],
+  "count": 100
+}
+```
+
+**Notes:**
+- **No authentication required** - all model listing endpoints are public
+- **Provider-scoped** - endpoints return models only for the currently configured provider (`TRANSCRIPTION_PROVIDER` and `LLM_PROVIDER` environment variables)
+- **Dynamic vs Static**:
+  - **Groq**: Models fetched dynamically from Groq API
+  - **Local (Whisper/Ollama)**: Hardcoded list of common models
+- **Language support**: Both Whisper and Groq support 99+ languages plus auto-detection
 
 ### System
 

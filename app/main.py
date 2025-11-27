@@ -8,7 +8,7 @@ import whisper
 
 from app.config import settings
 from app.database import check_db_connection
-from app.routes import upload, health, entries, transcription, auth, cleanup, notion, user_preferences
+from app.routes import upload, health, entries, transcription, auth, cleanup, notion, user_preferences, models
 from app.middleware.logging import RequestLoggingMiddleware
 from app.services.transcription import create_transcription_service
 from app.services.llm_cleanup import create_llm_cleanup_service
@@ -170,6 +170,10 @@ app.include_router(
     user_preferences.router,
     prefix="/api/v1/user",
     tags=["User Preferences"]
+)
+app.include_router(
+    models.router,
+    tags=["Models"]
 )
 
 
