@@ -209,13 +209,32 @@ async def process_cleanup_background(
                 f"LLM cleanup failed for entry {cleaned_entry_id}: {str(e)}",
                 exc_info=True
             )
-            # Update status to failed
+
+            # Extract debug information from custom exception if available
+            llm_raw_response = None
+            prompt_template_id = None
+
+            # Import here to avoid circular dependency
+            from app.services.llm_cleanup_base import LLMCleanupError
+
+            if isinstance(e, LLMCleanupError):
+                llm_raw_response = e.llm_raw_response
+                prompt_template_id = e.prompt_template_id
+                logger.info(
+                    f"Extracted debug info from LLMCleanupError",
+                    has_raw_response=llm_raw_response is not None,
+                    has_template_id=prompt_template_id is not None
+                )
+
+            # Update status to failed with debug information
             try:
                 await db_service.update_cleaned_entry_processing(
                     db=db,
                     cleaned_entry_id=cleaned_entry_id,
                     cleanup_status=CleanupStatus.FAILED,
-                    error_message=str(e)
+                    error_message=str(e),
+                    llm_raw_response=llm_raw_response,
+                    prompt_template_id=prompt_template_id
                 )
                 await db.commit()
             except Exception as update_error:

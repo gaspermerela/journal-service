@@ -11,7 +11,7 @@ from sqlalchemy import select
 from app.config import settings, get_output_schema, generate_json_schema_instruction
 from app.models.prompt_template import PromptTemplate
 from app.utils.logger import get_logger
-from app.services.llm_cleanup_base import LLMCleanupService
+from app.services.llm_cleanup_base import LLMCleanupService, LLMCleanupError
 
 
 logger = get_logger("services.llm_cleanup_ollama")
@@ -188,7 +188,7 @@ class OllamaLLMCleanupService(LLMCleanupService):
             Dict containing cleaned_text, analysis, prompt_template_id, temperature, and top_p
 
         Raises:
-            Exception: If cleanup fails after retries
+            LLMCleanupError: If cleanup fails after retries (includes debug info)
         """
         # Log warning if model selection requested but not supported
         if model and model != self.model:
@@ -199,6 +199,9 @@ class OllamaLLMCleanupService(LLMCleanupService):
 
         prompt_template, template_id = await self._get_prompt_template(entry_type)
         prompt = prompt_template.format(transcription_text=transcription_text)
+
+        last_raw_response = None
+        last_exception = None
 
         for attempt in range(self.max_retries + 1):
             try:
@@ -220,15 +223,29 @@ class OllamaLLMCleanupService(LLMCleanupService):
 
                 return result
             except Exception as e:
+                last_exception = e
+                # Try to extract raw response if it's in the exception context
+                if hasattr(e, 'llm_raw_response'):
+                    last_raw_response = e.llm_raw_response
+
                 logger.warning(
                     f"LLM cleanup attempt {attempt + 1} failed: {str(e)}"
                 )
                 if attempt == self.max_retries:
                     logger.error("All LLM cleanup attempts failed")
-                    raise
+                    # Raise custom exception with debug info
+                    raise LLMCleanupError(
+                        message=str(e),
+                        llm_raw_response=last_raw_response,
+                        prompt_template_id=template_id
+                    ) from e
 
         # Should never reach here
-        raise Exception("LLM cleanup failed unexpectedly")
+        raise LLMCleanupError(
+            message="LLM cleanup failed unexpectedly",
+            llm_raw_response=last_raw_response,
+            prompt_template_id=template_id
+        )
 
     async def _call_ollama(
         self,
@@ -283,7 +300,12 @@ class OllamaLLMCleanupService(LLMCleanupService):
             logger.debug(f"Raw LLM response: {response_text}...")
 
             # Parse the JSON response with schema-based parsing
-            result = self._parse_llm_response(response_text, entry_type)
+            try:
+                result = self._parse_llm_response(response_text, entry_type)
+            except (ValueError, KeyError, json.JSONDecodeError) as parse_error:
+                # Attach raw response to parsing exceptions for debugging
+                parse_error.llm_raw_response = response_text
+                raise
 
             # Include raw response for debugging and storage
             result["llm_raw_response"] = response_text
