@@ -27,7 +27,7 @@ class TestPromptFallbackMechanisms:
             id=1,
             name="test_prompt",
             entry_type="dream",
-            prompt_text="Test prompt with {transcription_text} placeholder",
+            prompt_text="Test prompt with {transcription_text} placeholder\n\n{output_format}",
             description="Test prompt",
             is_active=True,
             version=1
@@ -155,7 +155,7 @@ class TestPromptFallbackMechanisms:
             id=5,
             name="custom_prompt",
             entry_type="journal",
-            prompt_text="Custom prompt for {transcription_text}",
+            prompt_text="Custom prompt for {transcription_text}\n\n{output_format}",
             description="Custom",
             is_active=True,
             version=2
@@ -220,7 +220,7 @@ class TestPromptTemplateValidation:
             id=1,
             name="valid",
             entry_type="dream",
-            prompt_text="Valid prompt with {transcription_text} placeholder",
+            prompt_text="Valid prompt with {transcription_text} placeholder\n\n{output_format}",
             is_active=True,
             version=1
         )

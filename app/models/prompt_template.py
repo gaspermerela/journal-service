@@ -60,7 +60,16 @@ class PromptTemplate(Base):
 
     @property
     def is_valid(self) -> bool:
-        """Check if the prompt template has required fields."""
+        """
+        Check if the prompt template has required placeholders.
+
+        Required placeholders:
+        - {transcription_text}: Where the transcription will be inserted
+
+        Optional placeholders:
+        - {output_format}: Where JSON output schema instructions will be inserted
+          (if missing, schema will be appended at the end)
+        """
         return (
             self.prompt_text is not None
             and len(self.prompt_text.strip()) > 0

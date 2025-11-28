@@ -123,15 +123,16 @@ class GroqLLMCleanupService(LLMCleanupService):
 
     async def _get_prompt_template(self, entry_type: str) -> Tuple[str, Optional[int]]:
         """
-        Get complete prompt with JSON schema instruction appended.
+        Get complete prompt with JSON schema instruction inserted.
 
         Tries database first, falls back to hardcoded prompts.
-        Automatically appends JSON schema instruction based on entry_type.
+        Automatically replaces {output_format} placeholder with JSON schema instruction.
 
         Fallback order:
         1. Try to load active prompt from database
         2. Fall back to hardcoded constants if DB fails
-        3. Append JSON schema instruction based on entry_type
+        3. Replace {output_format} placeholder with JSON schema instruction
+        4. If {output_format} missing, append schema at the end (legacy fallback)
 
         Returns:
             Tuple of (complete_prompt, template_id or None)
@@ -149,10 +150,9 @@ class GroqLLMCleanupService(LLMCleanupService):
             prompt_text = self._get_hardcoded_fallback_prompt(entry_type)
             template_id = None
 
-        # Append JSON schema instruction based on entry_type
+        # Generate JSON schema instruction based on entry_type
         try:
             schema_instruction = generate_json_schema_instruction(entry_type)
-            complete_prompt = f"{prompt_text}\n\n{schema_instruction}"
         except ValueError as e:
             # Unknown entry_type - use generic schema
             logger.error(
@@ -161,6 +161,16 @@ class GroqLLMCleanupService(LLMCleanupService):
                 error=str(e)
             )
             schema_instruction = generate_json_schema_instruction("dream")
+
+        # Replace {output_format} placeholder if present, otherwise append
+        if "{output_format}" in prompt_text:
+            complete_prompt = prompt_text.replace("{output_format}", schema_instruction)
+        else:
+            logger.warning(
+                f"Prompt template missing {{output_format}} placeholder, appending at end",
+                entry_type=entry_type,
+                template_id=template_id
+            )
             complete_prompt = f"{prompt_text}\n\n{schema_instruction}"
 
         return (complete_prompt, template_id)
