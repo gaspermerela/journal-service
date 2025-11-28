@@ -41,7 +41,8 @@ class GroqTranscriptionService(TranscriptionService):
         audio_path: Path,
         language: str = "en",
         beam_size: Optional[int] = None,
-        temperature: Optional[float] = None
+        temperature: Optional[float] = None,
+        model: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Transcribe audio file using Groq's Whisper API.
@@ -51,6 +52,7 @@ class GroqTranscriptionService(TranscriptionService):
             language: Language code or 'auto' for automatic detection
             beam_size: Not used for Groq API (Groq doesn't expose beam_size control)
             temperature: Temperature for transcription sampling (0.0-1.0). If None, uses Groq's default.
+            model: Model to use for transcription. If None, uses the service's default model.
 
         Returns:
             Dict with transcription result
@@ -62,9 +64,12 @@ class GroqTranscriptionService(TranscriptionService):
         if not audio_path.exists():
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
+        # Use provided model or fall back to instance default
+        effective_model = model if model else self.model
+
         logger.info(
             f"Starting Groq transcription: file={audio_path.name}, "
-            f"language={language}, model={self.model}"
+            f"language={language}, model={effective_model}"
         )
 
         try:
@@ -74,7 +79,7 @@ class GroqTranscriptionService(TranscriptionService):
                 # Note: Groq API doesn't support beam_size parameter
                 transcription_params = {
                     "file": (audio_path.name, audio_file),
-                    "model": self.model,
+                    "model": effective_model,
                     "response_format": "verbose_json",  # Get detailed response with segments
                 }
 

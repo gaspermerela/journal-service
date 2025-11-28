@@ -60,7 +60,8 @@ async def process_transcription_task(
     language: str,
     transcription_service: TranscriptionService,
     beam_size: Optional[int] = None,
-    temperature: Optional[float] = None
+    temperature: Optional[float] = None,
+    transcription_model: Optional[str] = None
 ):
     """
     Background task to process audio transcription.
@@ -73,6 +74,7 @@ async def process_transcription_task(
         transcription_service: Transcription service instance
         beam_size: Beam size for transcription (1-10, optional)
         temperature: Temperature for transcription sampling (0.0-1.0, optional)
+        transcription_model: Model to use for transcription (optional, uses service default if None)
     """
     from app.database import AsyncSessionLocal
 
@@ -99,7 +101,8 @@ async def process_transcription_task(
                 audio_path=Path(audio_file_path),
                 language=language,
                 beam_size=beam_size,
-                temperature=temperature
+                temperature=temperature,
+                model=transcription_model
             )
 
             logger.info(
@@ -255,7 +258,8 @@ async def trigger_transcription(
         language=request_data.language,
         transcription_service=transcription_service,
         beam_size=request_data.beam_size,
-        temperature=request_data.temperature
+        temperature=request_data.temperature,
+        transcription_model=request_data.transcription_model
     )
 
     logger.info(f"Background transcription task queued", transcription_id=str(transcription.id))

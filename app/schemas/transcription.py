@@ -32,6 +32,10 @@ class TranscriptionTriggerRequest(BaseModel):
         le=1.0,
         description="Temperature for transcription sampling (0.0-1.0, higher = more random)"
     )
+    transcription_model: Optional[str] = Field(
+        default=None,
+        description="Transcription model to use (e.g., 'whisper-large-v3'). If not provided, uses configured default."
+    )
 
     @field_validator('beam_size')
     @classmethod

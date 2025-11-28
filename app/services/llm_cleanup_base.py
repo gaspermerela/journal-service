@@ -14,7 +14,8 @@ class LLMCleanupService(ABC):
         transcription_text: str,
         entry_type: str = "dream",
         temperature: Optional[float] = None,
-        top_p: Optional[float] = None
+        top_p: Optional[float] = None,
+        model: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Clean up transcription text using an LLM.
@@ -24,6 +25,7 @@ class LLMCleanupService(ABC):
             entry_type: Type of entry (dream, journal, meeting, etc.)
             temperature: Temperature for LLM sampling (0.0-2.0). If None, uses default.
             top_p: Top-p for nucleus sampling (0.0-1.0). If None, uses default.
+            model: Model to use for cleanup. If None, uses the service's default model.
 
         Returns:
             Dict containing:

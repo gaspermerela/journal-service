@@ -174,7 +174,8 @@ class OllamaLLMCleanupService(LLMCleanupService):
         transcription_text: str,
         entry_type: str = "dream",
         temperature: Optional[float] = None,
-        top_p: Optional[float] = None
+        top_p: Optional[float] = None,
+        model: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Clean up transcription text using Ollama LLM.
@@ -184,6 +185,7 @@ class OllamaLLMCleanupService(LLMCleanupService):
             entry_type: Type of entry (dream, journal, meeting, etc.)
             temperature: Temperature for LLM sampling (0.0-2.0). If None, uses default (0.3).
             top_p: Top-p for nucleus sampling (0.0-1.0). If None, uses default.
+            model: Model to use for cleanup. IGNORED for local Ollama (uses configured model).
 
         Returns:
             Dict containing cleaned_text, analysis, prompt_template_id, temperature, and top_p
@@ -191,6 +193,13 @@ class OllamaLLMCleanupService(LLMCleanupService):
         Raises:
             Exception: If cleanup fails after retries
         """
+        # Log warning if model selection requested but not supported
+        if model and model != self.model:
+            logger.warning(
+                f"Model selection not supported for local Ollama. "
+                f"Requested: {model}, Using: {self.model}"
+            )
+
         prompt_template, template_id = await self._get_prompt_template(entry_type)
         prompt = prompt_template.format(transcription_text=transcription_text)
 

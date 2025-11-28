@@ -56,7 +56,8 @@ async def process_cleanup_background(
     user_id: UUID,
     voice_entry_id: UUID,
     temperature: float = None,
-    top_p: float = None
+    top_p: float = None,
+    llm_model: str = None
 ):
     """
     Background task to process LLM cleanup.
@@ -69,6 +70,7 @@ async def process_cleanup_background(
         voice_entry_id: Voice entry ID (for auto-sync)
         temperature: Temperature for LLM sampling (0.0-2.0)
         top_p: Top-p for nucleus sampling (0.0-1.0)
+        llm_model: Model to use for cleanup (optional, uses service default if None)
     """
     from app.database import get_session
     from app.models.notion_sync import SyncStatus as NotionSyncStatus
@@ -102,7 +104,8 @@ async def process_cleanup_background(
                 transcription_text=transcription_text,
                 entry_type=entry_type,
                 temperature=temperature,
-                top_p=top_p
+                top_p=top_p,
+                model=llm_model
             )
 
             # Update with results
@@ -308,7 +311,8 @@ async def trigger_cleanup(
         user_id=current_user.id,
         voice_entry_id=voice_entry.id,
         temperature=request.temperature,
-        top_p=request.top_p
+        top_p=request.top_p,
+        llm_model=request.llm_model
     )
 
     logger.info(
