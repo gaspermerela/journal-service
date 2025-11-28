@@ -72,15 +72,26 @@ async def transcription_then_cleanup_task(
     cleaned_entry_id: uuid.UUID,
     entry_type: str,
     user_id: uuid.UUID,
-    beam_size: Optional[int] = None,
-    temperature: Optional[float] = None,
-    top_p: Optional[float] = None
+    transcription_beam_size: Optional[int] = None,
+    transcription_temperature: Optional[float] = None,
+    transcription_model: Optional[str] = None,
+    cleanup_temperature: Optional[float] = None,
+    cleanup_top_p: Optional[float] = None,
+    llm_model: Optional[str] = None
 ):
     """
     Background task that runs transcription, then triggers cleanup when done.
 
     This function is executed as a background task and handles the complete
     workflow of transcribing audio and then cleaning up the transcription.
+
+    Args:
+        transcription_beam_size: Beam size for transcription (1-10)
+        transcription_temperature: Temperature for transcription (0.0-1.0)
+        transcription_model: Model to use for transcription
+        cleanup_temperature: Temperature for LLM cleanup (0.0-2.0)
+        cleanup_top_p: Top-p for LLM cleanup (0.0-1.0)
+        llm_model: Model to use for LLM cleanup
     """
     # Import here to avoid circular imports
     from app.routes.transcription import process_transcription_task
@@ -93,8 +104,9 @@ async def transcription_then_cleanup_task(
         audio_file_path=audio_file_path,
         language=language,
         transcription_service=transcription_service,
-        beam_size=beam_size,
-        temperature=temperature
+        beam_size=transcription_beam_size,
+        temperature=transcription_temperature,
+        transcription_model=transcription_model
     )
 
     # Check if transcription succeeded
@@ -109,8 +121,8 @@ async def transcription_then_cleanup_task(
             # Trigger cleanup
             logger.info(
                 f"Transcription completed, starting cleanup for {cleaned_entry_id}",
-                temperature=temperature,
-                top_p=top_p
+                cleanup_temperature=cleanup_temperature,
+                cleanup_top_p=cleanup_top_p
             )
             await process_cleanup_background(
                 cleaned_entry_id=cleaned_entry_id,
@@ -118,8 +130,9 @@ async def transcription_then_cleanup_task(
                 entry_type=entry_type,
                 user_id=user_id,
                 voice_entry_id=entry_id,
-                temperature=temperature,
-                top_p=top_p
+                temperature=cleanup_temperature,
+                top_p=cleanup_top_p,
+                llm_model=llm_model
             )
         else:
             # Transcription failed, mark cleanup as failed too
@@ -304,8 +317,9 @@ async def upload_and_transcribe(
     file: UploadFile = File(..., description="Audio file to upload (MP3 or M4A)"),
     entry_type: str = Form("dream", description="Type of voice entry (dream, journal, meeting, note, etc.)"),
     language: Optional[str] = Form(None, description="Language code for transcription (e.g., 'en', 'es', 'sl') or 'auto' for detection. If not provided, uses user preference."),
-    beam_size: Optional[int] = Form(None, description="Beam size for transcription (1-10, higher = more accurate but slower). If not provided, uses default from config."),
-    temperature: Optional[float] = Form(None, ge=0.0, le=1.0, description="Temperature for transcription sampling (0.0-1.0, higher = more random). If not provided, uses default."),
+    transcription_beam_size: Optional[int] = Form(None, description="Beam size for transcription (1-10, higher = more accurate but slower). If not provided, uses default from config."),
+    transcription_temperature: Optional[float] = Form(None, ge=0.0, le=1.0, description="Temperature for transcription sampling (0.0-1.0, higher = more random). If not provided, uses default."),
+    transcription_model: Optional[str] = Form(None, description="Transcription model to use (e.g., 'whisper-large-v3'). If not provided, uses configured default."),
     db: AsyncSession = Depends(get_db),
     transcription_service: TranscriptionService = Depends(get_transcription_service),
     current_user: User = Depends(get_current_user)
@@ -400,8 +414,8 @@ async def upload_and_transcribe(
             model_used=model_name,
             language_code=effective_language,
             is_primary=False,
-            beam_size=beam_size,
-            temperature=temperature
+            beam_size=transcription_beam_size,
+            temperature=transcription_temperature
         )
 
         transcription = await db_service.create_transcription(db, transcription_data)
@@ -424,8 +438,9 @@ async def upload_and_transcribe(
             audio_file_path=entry.file_path,
             language=effective_language,
             transcription_service=transcription_service,
-            beam_size=beam_size,
-            temperature=temperature
+            beam_size=transcription_beam_size,
+            temperature=transcription_temperature,
+            transcription_model=transcription_model
         )
 
         logger.info(
@@ -493,9 +508,12 @@ async def upload_transcribe_and_cleanup(
     file: UploadFile = File(..., description="Audio file to upload (MP3 or M4A)"),
     entry_type: str = Form("dream", description="Type of voice entry (dream, journal, meeting, note, etc.)"),
     language: Optional[str] = Form(None, description="Language code for transcription (e.g., 'en', 'es', 'sl') or 'auto' for detection. If not provided, uses user preference."),
-    beam_size: Optional[int] = Form(None, description="Beam size for transcription (1-10, higher = more accurate but slower). If not provided, uses default from config."),
-    temperature: Optional[float] = Form(None, description="Temperature for LLM cleanup (0.0-2.0, higher = more creative). If not provided, uses default."),
-    top_p: Optional[float] = Form(None, description="Top-p for LLM cleanup (0.0-1.0, nucleus sampling). If not provided, uses default."),
+    transcription_beam_size: Optional[int] = Form(None, description="Beam size for transcription (1-10, higher = more accurate but slower). If not provided, uses default from config."),
+    transcription_temperature: Optional[float] = Form(None, ge=0.0, le=1.0, description="Temperature for transcription sampling (0.0-1.0, higher = more random). If not provided, uses default."),
+    transcription_model: Optional[str] = Form(None, description="Transcription model to use (e.g., 'whisper-large-v3'). If not provided, uses configured default."),
+    cleanup_temperature: Optional[float] = Form(None, ge=0.0, le=2.0, description="Temperature for LLM cleanup (0.0-2.0, higher = more creative). If not provided, uses default."),
+    cleanup_top_p: Optional[float] = Form(None, ge=0.0, le=1.0, description="Top-p for LLM cleanup (0.0-1.0, nucleus sampling). If not provided, uses default."),
+    llm_model: Optional[str] = Form(None, description="LLM model to use for cleanup (e.g., 'llama-3.3-70b-versatile'). If not provided, uses configured default."),
     db: AsyncSession = Depends(get_db),
     transcription_service: TranscriptionService = Depends(get_transcription_service),
     current_user: User = Depends(get_current_user)
@@ -595,8 +613,8 @@ async def upload_transcribe_and_cleanup(
             model_used=model_name,
             language_code=effective_language,
             is_primary=False,
-            beam_size=beam_size,
-            temperature=temperature
+            beam_size=transcription_beam_size,
+            temperature=transcription_temperature
         )
 
         transcription = await db_service.create_transcription(db, transcription_data)
@@ -615,8 +633,8 @@ async def upload_transcribe_and_cleanup(
             transcription_id=transcription.id,
             user_id=current_user.id,
             model_name=settings.OLLAMA_MODEL,
-            temperature=temperature,
-            top_p=top_p
+            temperature=cleanup_temperature,
+            top_p=cleanup_top_p
         )
         await db.commit()
 
@@ -637,9 +655,12 @@ async def upload_transcribe_and_cleanup(
             cleaned_entry_id=cleaned_entry.id,
             entry_type=entry_type,
             user_id=current_user.id,
-            beam_size=beam_size,
-            temperature=temperature,
-            top_p=top_p
+            transcription_beam_size=transcription_beam_size,
+            transcription_temperature=transcription_temperature,
+            transcription_model=transcription_model,
+            cleanup_temperature=cleanup_temperature,
+            cleanup_top_p=cleanup_top_p,
+            llm_model=llm_model
         )
 
         logger.info(

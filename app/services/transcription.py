@@ -24,7 +24,8 @@ class TranscriptionService(ABC):
         audio_path: Path,
         language: str = "en",
         beam_size: Optional[int] = None,
-        temperature: Optional[float] = None
+        temperature: Optional[float] = None,
+        model: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Transcribe audio file to text.
@@ -34,6 +35,7 @@ class TranscriptionService(ABC):
             language: Language code (e.g., 'en', 'es') or 'auto' for detection
             beam_size: Beam size for transcription (1-10). If None, uses default.
             temperature: Temperature for transcription sampling (0.0-1.0). If None, uses default (0.0).
+            model: Model to use for transcription. If None, uses the service's default model.
 
         Returns:
             Dict containing:
@@ -125,7 +127,8 @@ class WhisperLocalService(TranscriptionService):
         audio_path: Path,
         language: str = "en",
         beam_size: Optional[int] = None,
-        temperature: Optional[float] = None
+        temperature: Optional[float] = None,
+        model: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Transcribe audio file using local Whisper model.
@@ -135,6 +138,7 @@ class WhisperLocalService(TranscriptionService):
             language: Language code or 'auto' for automatic detection
             beam_size: Beam size for transcription (1-10). If None, uses default based on model size.
             temperature: Temperature for transcription sampling (0.0-1.0). If None, uses default (0.0).
+            model: Model to use for transcription. IGNORED for local Whisper (uses configured model).
 
         Returns:
             Dict with transcription result (includes beam_size used)
@@ -145,6 +149,13 @@ class WhisperLocalService(TranscriptionService):
         """
         if not audio_path.exists():
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
+
+        # Log warning if model selection requested but not supported
+        if model and model != self.model_name:
+            logger.warning(
+                f"Model selection not supported for local Whisper. "
+                f"Requested: {model}, Using: {self.model_name}"
+            )
 
         logger.info(
             f"Starting transcription: file={audio_path.name}, "

@@ -32,6 +32,10 @@ class CleanupTriggerRequest(BaseModel):
         le=1.0,
         description="Top-p sampling for LLM (0.0-1.0, nucleus sampling)"
     )
+    llm_model: Optional[str] = Field(
+        default=None,
+        description="LLM model to use for cleanup (e.g., 'llama-3.3-70b-versatile'). If not provided, uses configured default."
+    )
 
 
 class CleanupResponse(BaseModel):

@@ -143,7 +143,8 @@ class GroqLLMCleanupService(LLMCleanupService):
         transcription_text: str,
         entry_type: str = "dream",
         temperature: Optional[float] = None,
-        top_p: Optional[float] = None
+        top_p: Optional[float] = None,
+        model: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Clean up transcription text using Groq's chat completion API.
@@ -153,6 +154,7 @@ class GroqLLMCleanupService(LLMCleanupService):
             entry_type: Type of entry (dream, journal, meeting, etc.)
             temperature: Temperature for LLM sampling (0.0-2.0). If None, uses default (0.3).
             top_p: Top-p for nucleus sampling (0.0-1.0). If None, Groq uses default.
+            model: Model to use for cleanup. If None, uses the service's default model.
 
         Returns:
             Dict containing cleaned_text, analysis, prompt_template_id, temperature, and top_p
@@ -160,6 +162,9 @@ class GroqLLMCleanupService(LLMCleanupService):
         Raises:
             Exception: If cleanup fails after retries
         """
+        # Use provided model or fall back to instance default
+        effective_model = model if model else self.model
+
         prompt_template, template_id = await self._get_prompt_template(entry_type)
         prompt = prompt_template.format(transcription_text=transcription_text)
 
@@ -167,9 +172,9 @@ class GroqLLMCleanupService(LLMCleanupService):
             try:
                 logger.info(
                     f"LLM cleanup attempt {attempt + 1}/{self.max_retries + 1} "
-                    f"using Groq model {self.model}, temperature={temperature}, top_p={top_p}"
+                    f"using Groq model {effective_model}, temperature={temperature}, top_p={top_p}"
                 )
-                result = await self._call_groq(prompt, temperature=temperature, top_p=top_p)
+                result = await self._call_groq(prompt, temperature=temperature, top_p=top_p, model=effective_model)
 
                 # Add prompt_template_id and parameters to result
                 result["prompt_template_id"] = template_id
@@ -192,7 +197,8 @@ class GroqLLMCleanupService(LLMCleanupService):
         self,
         prompt: str,
         temperature: Optional[float] = None,
-        top_p: Optional[float] = None
+        top_p: Optional[float] = None,
+        model: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Call Groq chat completion API to process the prompt.
@@ -201,6 +207,7 @@ class GroqLLMCleanupService(LLMCleanupService):
             prompt: Formatted prompt to send to LLM
             temperature: Temperature for sampling (0.0-2.0). If None, uses default (0.3).
             top_p: Top-p for nucleus sampling (0.0-1.0). If None, Groq uses default.
+            model: Model to use. If None, uses self.model.
 
         Returns:
             Dict containing cleaned_text and analysis
@@ -210,10 +217,12 @@ class GroqLLMCleanupService(LLMCleanupService):
             json.JSONDecodeError: If response is not valid JSON
             KeyError: If response missing required fields
         """
+        effective_model = model if model else self.model
+
         try:
             # Build API call parameters
             api_params = {
-                "model": self.model,
+                "model": effective_model,
                 "messages": [
                     {
                         "role": "user",
