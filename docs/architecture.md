@@ -60,12 +60,36 @@ File structure:
 **Why:** User data isolation, stateless auth \
 **Implementation:** Access and refresh tokens
 
+## API Endpoints Overview
+
+The service provides REST endpoints across 9 functional areas:
+
+1. **Authentication** - Registration, login, token refresh
+2. **Upload** - File upload with optional transcription and cleanup
+3. **Entries** - CRUD operations for voice entries (list, get, download audio, delete)
+4. **Transcriptions** - Transcription management with set-primary and deletion
+5. **Cleanup** - LLM cleanup with set-primary and deletion
+6. **Notion Integration** - Configuration, sync, and status tracking
+7. **User Preferences** - Get and update user settings
+8. **Models/Options** - Discover available models, parameters, and languages
+9. **Health** - Service health check
+
+**Key Features:**
+- **Unified options endpoint** - `/api/v1/options` for dynamic parameter discovery, 
+depending on what we are running (local whisper or groq for transcription, local ollama or groq for cleanup)
+- **Soft deletion prevention** - Cannot delete last transcription for an entry
+- **Cascading deletes** - Entry deletion removes all child records and audio file
+- **Idempotent Notion sync** - Re-syncing updates existing Notion page
+- **Immutable AI parameters** - Parameters saved at creation time for auditability
+
 ## Current Limitations
 
 - No rate limiting
-- No file deletion API
-- No file retrieval (only metadata)
-- Single server only
+- No batch operations (deletion, sync)
+- Single server only (local disk storage)
+- No webhook support for async operation completion
+- No graceful shutdown (background tasks may be killed mid-processing)
+- No data encryption 
 
 ## Tech Stack
 
