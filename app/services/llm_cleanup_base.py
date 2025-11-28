@@ -5,6 +5,28 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 
 
+class LLMCleanupError(Exception):
+    """
+    Custom exception for LLM cleanup failures that preserves debug information.
+
+    Attributes:
+        message: Error message
+        llm_raw_response: Raw response from LLM (if available)
+        prompt_template_id: ID of prompt template used (if available)
+    """
+
+    def __init__(
+        self,
+        message: str,
+        llm_raw_response: Optional[str] = None,
+        prompt_template_id: Optional[int] = None
+    ):
+        super().__init__(message)
+        self.message = message
+        self.llm_raw_response = llm_raw_response
+        self.prompt_template_id = prompt_template_id
+
+
 class LLMCleanupService(ABC):
     """Abstract base class for LLM cleanup service implementations."""
 

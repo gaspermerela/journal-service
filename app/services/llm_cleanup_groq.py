@@ -2,21 +2,28 @@
 Groq LLM Cleanup Service implementation.
 """
 import json
+import re
 from typing import Dict, Any, Optional, Tuple
 
 from groq import AsyncGroq
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings, get_output_schema, generate_json_schema_instruction
 from app.models.prompt_template import PromptTemplate
-from app.utils.logger import get_logger
-from app.services.llm_cleanup_base import LLMCleanupService
+from app.services.llm_cleanup_base import LLMCleanupService, LLMCleanupError
 from app.services.llm_cleanup_ollama import DREAM_CLEANUP_PROMPT, GENERIC_CLEANUP_PROMPT
-
+from app.utils.logger import get_logger
 
 logger = get_logger("services.llm_cleanup_groq")
 
+INVALID_CHARS = (
+        r"[\x00-\x1F\x7F"  # ASCII control characters
+        r"\u2028\u2029"  # Unicode line/paragraph separators
+        r"\u200B\u200C\u200D"  # zero-width spaces
+        r"\u00AD"  # soft hyphen
+        r"]"
+    )
 
 class GroqLLMCleanupService(LLMCleanupService):
     """Service for cleaning transcriptions using Groq's chat completion API."""
@@ -180,13 +187,15 @@ class GroqLLMCleanupService(LLMCleanupService):
             Dict containing cleaned_text, analysis, prompt_template_id, temperature, and top_p
 
         Raises:
-            Exception: If cleanup fails after retries
+            LLMCleanupError: If cleanup fails after retries (includes debug info)
         """
         # Use provided model or fall back to instance default
         effective_model = model if model else self.model
 
         prompt_template, template_id = await self._get_prompt_template(entry_type)
         prompt = prompt_template.format(transcription_text=transcription_text)
+
+        last_raw_response = None
 
         for attempt in range(self.max_retries + 1):
             try:
@@ -209,15 +218,28 @@ class GroqLLMCleanupService(LLMCleanupService):
 
                 return result
             except Exception as e:
+                # Try to extract raw response if it's in the exception context
+                if hasattr(e, 'llm_raw_response'):
+                    last_raw_response = e.llm_raw_response
+
                 logger.warning(
                     f"LLM cleanup attempt {attempt + 1} failed: {str(e)}"
                 )
                 if attempt == self.max_retries:
                     logger.error("All LLM cleanup attempts failed")
-                    raise
+                    # Raise custom exception with debug info
+                    raise LLMCleanupError(
+                        message=str(e),
+                        llm_raw_response=last_raw_response,
+                        prompt_template_id=template_id
+                    ) from e
 
         # Should never reach here
-        raise Exception("LLM cleanup failed unexpectedly")
+        raise LLMCleanupError(
+            message="LLM cleanup failed unexpectedly",
+            llm_raw_response=last_raw_response,
+            prompt_template_id=template_id
+        )
 
     async def _call_groq(
         self,
@@ -275,7 +297,12 @@ class GroqLLMCleanupService(LLMCleanupService):
             logger.debug(f"Raw Groq LLM response: {response_text[:200]}...")
 
             # Parse the JSON response with schema-based parsing
-            result = self._parse_llm_response(response_text, entry_type)
+            try:
+                result = self._parse_llm_response(response_text, entry_type)
+            except (ValueError, KeyError, json.JSONDecodeError) as parse_error:
+                # Attach raw response to parsing exceptions for debugging
+                parse_error.llm_raw_response = response_text
+                raise
 
             # Include raw response for debugging and storage
             result["llm_raw_response"] = response_text
@@ -285,6 +312,15 @@ class GroqLLMCleanupService(LLMCleanupService):
         except Exception as e:
             logger.error(f"Groq API call failed: {str(e)}", exc_info=True)
             raise
+
+    def _sanitize_response(self, text: str) -> str:
+        import re
+        # Remove all control chars except normal whitespace
+        text = re.sub(r'[\x00-\x08\x0b-\x1f\x7f]', '', text)
+        return text
+
+    def sanitize_for_json(self, text: str) -> str:
+        return re.sub(INVALID_CHARS, "", text)
 
     def _parse_llm_response(self, response_text: str, entry_type: str = "dream") -> Dict[str, Any]:
         """
@@ -319,6 +355,7 @@ class GroqLLMCleanupService(LLMCleanupService):
 
         # Parse JSON
         try:
+            text = self.sanitize_for_json(text)
             parsed = json.loads(text)
         except json.JSONDecodeError as e:
             logger.error("Failed to parse LLM response as JSON", error=str(e))

@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import httpx
 
 from app.services.llm_cleanup_ollama import OllamaLLMCleanupService
+from app.services.llm_cleanup_base import LLMCleanupError
 
 
 @pytest.fixture
@@ -304,3 +305,30 @@ class TestLLMCleanupService:
 
         # Verify temperature is in result
         assert result["temperature"] == 0.3
+
+    @pytest.mark.asyncio
+    async def test_cleanup_invalid_json_preserves_debug_info(self, cleanup_service, mock_httpx_client):
+        """Test that invalid JSON errors preserve raw response and template ID for debugging."""
+        # Mock response with invalid JSON (contains control characters)
+        invalid_json_response = '{"cleaned_text": "test\x01with\x02control\x03chars"}'
+
+        mock_httpx_client.post.return_value = Mock(
+            json=Mock(return_value={"response": invalid_json_response})
+        )
+
+        # Should raise LLMCleanupError with debug info
+        with pytest.raises(LLMCleanupError) as exc_info:
+            await cleanup_service.cleanup_transcription(
+                transcription_text="Test text with issues",
+                entry_type="dream"
+            )
+
+        # Verify the exception contains debug information
+        error = exc_info.value
+        assert error.llm_raw_response is not None
+        assert error.llm_raw_response == invalid_json_response
+        assert "json" in str(error).lower() or "control character" in str(error).lower()
+
+        # Note: prompt_template_id may be None if using hardcoded fallback prompt
+        # but the field should exist
+        assert hasattr(error, 'prompt_template_id')
