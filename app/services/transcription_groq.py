@@ -120,7 +120,8 @@ class GroqTranscriptionService(TranscriptionService):
                 "text": transcribed_text,
                 "language": detected_language,
                 "segments": segments,
-                "beam_size": None  # Groq doesn't expose beam_size
+                "beam_size": None,  # Groq doesn't expose beam_size
+                "temperature": temperature  # Include temperature in result
             }
 
         except Exception as e:

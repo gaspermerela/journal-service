@@ -205,3 +205,102 @@ class TestLLMCleanupService:
         # Should still work, even with incomplete analysis
         assert "cleaned_text" in result
         assert "analysis" in result
+
+    @pytest.mark.asyncio
+    async def test_cleanup_with_temperature(self, cleanup_service, mock_httpx_client, mock_ollama_response):
+        """Test cleanup with custom temperature parameter."""
+        mock_httpx_client.post.return_value = Mock(
+            json=Mock(return_value=mock_ollama_response(
+                cleaned_text="Cleaned text with custom temperature",
+                themes=["test"]
+            ))
+        )
+
+        result = await cleanup_service.cleanup_transcription(
+            transcription_text="Test text",
+            entry_type="dream",
+            temperature=0.7
+        )
+
+        # Verify temperature was passed to Ollama API
+        call_args = mock_httpx_client.post.call_args
+        payload = call_args[1]["json"]
+        assert payload["options"]["temperature"] == 0.7
+
+        # Verify temperature is in result
+        assert result["temperature"] == 0.7
+
+    @pytest.mark.asyncio
+    async def test_cleanup_with_top_p(self, cleanup_service, mock_httpx_client, mock_ollama_response):
+        """Test cleanup with custom top_p parameter."""
+        mock_httpx_client.post.return_value = Mock(
+            json=Mock(return_value=mock_ollama_response(
+                cleaned_text="Cleaned text with custom top_p",
+                themes=["test"]
+            ))
+        )
+
+        result = await cleanup_service.cleanup_transcription(
+            transcription_text="Test text",
+            entry_type="dream",
+            top_p=0.9
+        )
+
+        # Verify top_p was passed to Ollama API
+        call_args = mock_httpx_client.post.call_args
+        payload = call_args[1]["json"]
+        assert payload["options"]["top_p"] == 0.9
+
+        # Verify top_p is in result
+        assert result["top_p"] == 0.9
+
+    @pytest.mark.asyncio
+    async def test_cleanup_with_temperature_and_top_p(self, cleanup_service, mock_httpx_client, mock_ollama_response):
+        """Test cleanup with both temperature and top_p parameters."""
+        mock_httpx_client.post.return_value = Mock(
+            json=Mock(return_value=mock_ollama_response(
+                cleaned_text="Cleaned text with both parameters",
+                themes=["test"],
+                emotions=["neutral"]
+            ))
+        )
+
+        result = await cleanup_service.cleanup_transcription(
+            transcription_text="Test text",
+            entry_type="dream",
+            temperature=0.5,
+            top_p=0.8
+        )
+
+        # Verify both parameters were passed to Ollama API
+        call_args = mock_httpx_client.post.call_args
+        payload = call_args[1]["json"]
+        assert payload["options"]["temperature"] == 0.5
+        assert payload["options"]["top_p"] == 0.8
+
+        # Verify both parameters are in result
+        assert result["temperature"] == 0.5
+        assert result["top_p"] == 0.8
+
+    @pytest.mark.asyncio
+    async def test_cleanup_default_temperature_when_not_provided(self, cleanup_service, mock_httpx_client, mock_ollama_response):
+        """Test cleanup uses default temperature when not provided."""
+        mock_httpx_client.post.return_value = Mock(
+            json=Mock(return_value=mock_ollama_response(
+                cleaned_text="Cleaned text",
+                themes=["test"]
+            ))
+        )
+
+        result = await cleanup_service.cleanup_transcription(
+            transcription_text="Test text",
+            entry_type="dream"
+        )
+
+        # Verify default temperature (0.3) was used
+        call_args = mock_httpx_client.post.call_args
+        payload = call_args[1]["json"]
+        assert payload["options"]["temperature"] == 0.3
+
+        # Verify temperature is in result
+        assert result["temperature"] == 0.3

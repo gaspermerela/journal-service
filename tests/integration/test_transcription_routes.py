@@ -356,11 +356,11 @@ class TestTranscriptionBeamSizeParameter:
         sample_voice_entry: VoiceEntry,
         test_user: User
     ):
-        """Test GET endpoint returns beam_size parameter."""
+        """Test GET endpoint returns beam_size and temperature parameters."""
         from app.models.transcription import Transcription
         import uuid
 
-        # Create transcription with beam_size
+        # Create transcription with beam_size and temperature
         transcription = Transcription(
             id=uuid.uuid4(),
             entry_id=sample_voice_entry.id,
@@ -369,13 +369,14 @@ class TestTranscriptionBeamSizeParameter:
             model_used="whisper-base",
             language_code="en",
             beam_size=7,
+            temperature=0.3,
             is_primary=True
         )
 
         db_session.add(transcription)
         await db_session.commit()
 
-        # Get transcription and verify beam_size in response
+        # Get transcription and verify beam_size and temperature in response
         response = await authenticated_client.get(
             f"/api/v1/transcriptions/{transcription.id}"
         )
@@ -383,3 +384,44 @@ class TestTranscriptionBeamSizeParameter:
         assert response.status_code == 200
         data = response.json()
         assert data["beam_size"] == 7
+        assert data["temperature"] == 0.3
+
+    @pytest.mark.asyncio
+    async def test_list_transcriptions_includes_temperature(
+        self,
+        authenticated_client: AsyncClient,
+        db_session: AsyncSession,
+        sample_voice_entry: VoiceEntry,
+        test_user: User
+    ):
+        """Test GET /entries/{id}/transcriptions returns temperature parameter."""
+        from app.models.transcription import Transcription
+        import uuid
+
+        # Create transcription with temperature
+        transcription = Transcription(
+            id=uuid.uuid4(),
+            entry_id=sample_voice_entry.id,
+            transcribed_text="Test transcription",
+            status="completed",
+            model_used="whisper-base",
+            language_code="en",
+            beam_size=5,
+            temperature=0.7,
+            is_primary=True
+        )
+
+        db_session.add(transcription)
+        await db_session.commit()
+
+        # Get transcriptions list and verify temperature in response
+        response = await authenticated_client.get(
+            f"/api/v1/entries/{sample_voice_entry.id}/transcriptions"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1
+        assert len(data["transcriptions"]) == 1
+        assert data["transcriptions"][0]["temperature"] == 0.7
+        assert data["transcriptions"][0]["beam_size"] == 5

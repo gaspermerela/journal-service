@@ -61,6 +61,7 @@ class TranscriptionResponse(TranscriptionBase):
     id: UUID
     entry_id: UUID
     transcribed_text: Optional[str] = None
+    temperature: Optional[float] = None
     transcription_started_at: Optional[datetime] = None
     transcription_completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
@@ -92,6 +93,7 @@ class TranscriptionStatusResponse(BaseModel):
     model_used: str
     language_code: str
     beam_size: Optional[int] = None
+    temperature: Optional[float] = None
     transcription_started_at: Optional[datetime] = None
     transcription_completed_at: Optional[datetime] = None
     error_message: Optional[str] = None

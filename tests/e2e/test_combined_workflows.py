@@ -229,3 +229,93 @@ async def test_e2e_upload_and_transcribe_error_handling(
     assert "invalid" in response.json()["detail"].lower()
 
     print(f"✓ Error handling verified - invalid file types rejected")
+
+
+@pytest.mark.e2e_real
+@pytest.mark.skipif(
+    not app_is_available(),
+    reason="App not running at http://localhost:8000"
+)
+@pytest.mark.asyncio
+async def test_e2e_upload_transcribe_cleanup_with_custom_parameters(
+    authenticated_e2e_client: Tuple[AsyncClient, str]
+):
+    """
+    Test upload-transcribe-cleanup with custom AI parameters.
+
+    Tests that custom parameters are accepted and stored:
+    - transcription_beam_size: beam size for transcription (7)
+    - transcription_temperature: temperature for transcription (0.4)
+    - cleanup_temperature: temperature for cleanup (0.6)
+    - cleanup_top_p: top_p for cleanup (0.85)
+    """
+    client, email = authenticated_e2e_client
+
+    if not REAL_AUDIO_FILE.exists():
+        pytest.skip(f"Real audio file not found: {REAL_AUDIO_FILE}")
+
+    # Upload, transcribe, and cleanup with custom parameters
+    with open(REAL_AUDIO_FILE, 'rb') as f:
+        files = {"file": ("crocodile.mp3", f, "audio/mpeg")}
+        data = {
+            "entry_type": "dream",
+            "language": "en",
+            "transcription_beam_size": "7",  # Custom beam size for transcription
+            "transcription_temperature": "0.4",  # Custom temperature for transcription
+            "cleanup_temperature": "0.6",  # Custom temperature for cleanup
+            "cleanup_top_p": "0.85"  # Custom top_p for cleanup
+        }
+        response = await client.post(
+            "/api/v1/upload-transcribe-cleanup",
+            files=files,
+            data=data
+        )
+
+    # Should return 202 with entry, transcription, and cleanup details
+    assert response.status_code == 202
+    result = response.json()
+
+    entry_id = result["entry_id"]
+    transcription_id = result["transcription_id"]
+    cleanup_id = result["cleanup_id"]
+
+    print(f"\n✓ Combined upload-transcribe-cleanup with custom parameters initiated")
+    print(f"  Entry ID: {entry_id}")
+    print(f"  Transcription ID: {transcription_id}")
+    print(f"  Cleanup ID: {cleanup_id}")
+
+    # Wait for transcription to complete
+    transcription = await wait_for_transcription(
+        client=client,
+        transcription_id=transcription_id
+    )
+
+    assert transcription["transcribed_text"] is not None
+    print(f"✓ Transcription completed: {transcription['transcribed_text'][:80]}...")
+
+    # Verify transcription parameters were stored
+    assert transcription["beam_size"] == 7, "beam_size should be 7"
+    assert transcription["temperature"] == 0.4, "transcription temperature should be 0.4"
+    print(f"✓ Transcription beam_size parameter verified: {transcription['beam_size']}")
+    print(f"✓ Transcription temperature parameter verified: {transcription['temperature']}")
+
+    # Wait for cleanup to complete
+    cleaned_entry = await wait_for_cleanup(
+        client=client,
+        cleanup_id=cleanup_id
+    )
+
+    assert cleaned_entry["cleaned_text"] is not None
+    print(f"✓ Cleanup completed: {cleaned_entry['cleaned_text'][:80]}...")
+
+    # Verify cleanup parameters were stored
+    assert cleaned_entry["temperature"] == 0.6, "cleanup temperature should be 0.6"
+    assert cleaned_entry["top_p"] == 0.85, "cleanup top_p should be 0.85"
+    print(f"✓ Cleanup temperature parameter verified: {cleaned_entry['temperature']}")
+    print(f"✓ Cleanup top_p parameter verified: {cleaned_entry['top_p']}")
+
+    print(f"\n✓ Complete workflow with custom parameters successful!")
+    print(f"  Transcription beam_size: {transcription['beam_size']}")
+    print(f"  Transcription temperature: {transcription['temperature']}")
+    print(f"  Cleanup temperature: {cleaned_entry['temperature']}")
+    print(f"  Cleanup top_p: {cleaned_entry['top_p']}")

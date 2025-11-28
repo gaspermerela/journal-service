@@ -255,6 +255,7 @@ class WhisperLocalService(TranscriptionService):
             "language": result.get("language", language),
             "segments": result.get("segments", []),
             "beam_size": beam_size,  # Include beam_size in result
+            "temperature": temperature,  # Include temperature in result
         }
 
     def get_supported_languages(self) -> list[str]:

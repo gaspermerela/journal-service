@@ -244,3 +244,39 @@ async def test_transcribe_beam_size_overrides_model_default(mock_whisper_model, 
     call_kwargs = mock_whisper_model.transcribe.call_args[1]
     assert call_kwargs["beam_size"] == 1
     assert result["beam_size"] == 1
+
+
+@pytest.mark.asyncio
+async def test_transcribe_with_temperature(mock_whisper_model, tmp_path):
+    """Test transcription with custom temperature parameter."""
+    audio_file = tmp_path / "test_audio.mp3"
+    audio_file.write_bytes(b"fake audio data")
+
+    service = WhisperLocalService(model=mock_whisper_model, model_name="base", device="cpu")
+    result = await service.transcribe_audio(audio_file, language="en", temperature=0.5)
+
+    # Verify temperature was passed to Whisper
+    call_kwargs = mock_whisper_model.transcribe.call_args[1]
+    assert call_kwargs["temperature"] == 0.5
+
+    # Verify temperature is in result
+    assert result["temperature"] == 0.5
+
+
+@pytest.mark.asyncio
+async def test_transcribe_with_beam_size_and_temperature(mock_whisper_model, tmp_path):
+    """Test transcription with both beam_size and temperature parameters."""
+    audio_file = tmp_path / "test_audio.mp3"
+    audio_file.write_bytes(b"fake audio data")
+
+    service = WhisperLocalService(model=mock_whisper_model, model_name="base", device="cpu")
+    result = await service.transcribe_audio(audio_file, language="en", beam_size=7, temperature=0.3)
+
+    # Verify both parameters were passed to Whisper
+    call_kwargs = mock_whisper_model.transcribe.call_args[1]
+    assert call_kwargs["beam_size"] == 7
+    assert call_kwargs["temperature"] == 0.3
+
+    # Verify both parameters are in result
+    assert result["beam_size"] == 7
+    assert result["temperature"] == 0.3
