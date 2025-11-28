@@ -8,7 +8,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.config import settings
+from app.config import settings, get_output_schema, generate_json_schema_instruction
 from app.models.prompt_template import PromptTemplate
 from app.utils.logger import get_logger
 from app.services.llm_cleanup_base import LLMCleanupService
@@ -18,6 +18,7 @@ logger = get_logger("services.llm_cleanup_ollama")
 
 
 # Prompt templates for different entry types
+# Note: JSON schema instructions are appended automatically based on entry_type
 DREAM_CLEANUP_PROMPT = """You are a dream journal assistant. Clean up this voice transcription of a dream:
 
 Original transcription:
@@ -28,19 +29,7 @@ Tasks:
 2. Remove filler words (um, uh, like, you know)
 3. Organize into coherent paragraphs
 4. Keep the original meaning and emotional tone intact
-5. Extract key themes (max 5)
-6. Identify emotions present
-7. Note any people/entities mentioned
-8. Note any locations mentioned
-
-Respond ONLY with valid JSON in this exact format (no markdown, no extra text):
-{{
-  "cleaned_text": "The cleaned version here",
-  "themes": ["theme1", "theme2"],
-  "emotions": ["emotion1", "emotion2"],
-  "characters": ["person or entity"],
-  "locations": ["place mentioned"]
-}}"""
+5. Extract key themes, emotions, characters, and locations"""
 
 
 GENERIC_CLEANUP_PROMPT = """You are a transcription cleanup assistant. Clean up this voice transcription:
@@ -53,19 +42,7 @@ Tasks:
 2. Remove filler words (um, uh, like, you know)
 3. Organize into coherent paragraphs
 4. Keep the original meaning and tone intact
-5. Extract key topics or themes (max 5)
-6. Identify the overall sentiment or emotions
-7. Note any people/entities mentioned
-8. Note any locations mentioned
-
-Respond ONLY with valid JSON in this exact format (no markdown, no extra text):
-{{
-  "cleaned_text": "The cleaned version here",
-  "themes": ["topic1", "topic2"],
-  "emotions": ["emotion1", "emotion2"],
-  "characters": ["person or entity"],
-  "locations": ["place mentioned"]
-}}"""
+5. Extract relevant analysis based on the entry type"""
 
 
 class OllamaLLMCleanupService(LLMCleanupService):
@@ -147,27 +124,47 @@ class OllamaLLMCleanupService(LLMCleanupService):
 
     async def _get_prompt_template(self, entry_type: str) -> Tuple[str, Optional[int]]:
         """
-        Get prompt template with robust fallback chain.
+        Get complete prompt with JSON schema instruction appended.
+
+        Tries database first, falls back to hardcoded prompts.
+        Automatically appends JSON schema instruction based on entry_type.
 
         Fallback order:
         1. Try to load active prompt from database
         2. Fall back to hardcoded constants if DB fails
+        3. Append JSON schema instruction based on entry_type
 
         Returns:
-            Tuple of (prompt_text, template_id or None)
+            Tuple of (complete_prompt, template_id or None)
         """
         # Try database first
         db_result = await self._get_prompt_from_db(entry_type)
         if db_result:
-            return db_result
+            prompt_text, template_id = db_result
+        else:
+            # Fallback to hardcoded prompts
+            logger.warning(
+                f"Using hardcoded fallback prompt for entry_type '{entry_type}' "
+                f"(database lookup failed or no active template)"
+            )
+            prompt_text = self._get_hardcoded_fallback_prompt(entry_type)
+            template_id = None
 
-        # Fallback to hardcoded prompts
-        logger.warning(
-            f"Using hardcoded fallback prompt for entry_type '{entry_type}' "
-            f"(database lookup failed or no active template)"
-        )
-        fallback_prompt = self._get_hardcoded_fallback_prompt(entry_type)
-        return (fallback_prompt, None)
+        # Append JSON schema instruction based on entry_type
+        try:
+            schema_instruction = generate_json_schema_instruction(entry_type)
+            complete_prompt = f"{prompt_text}\n\n{schema_instruction}"
+        except ValueError as e:
+            # Unknown entry_type - use generic schema
+            logger.error(
+                f"Unknown entry_type for schema generation, using 'dream' fallback",
+                entry_type=entry_type,
+                error=str(e)
+            )
+            schema_instruction = generate_json_schema_instruction("dream")
+            complete_prompt = f"{prompt_text}\n\n{schema_instruction}"
+
+        return (complete_prompt, template_id)
 
     async def cleanup_transcription(
         self,
@@ -209,7 +206,12 @@ class OllamaLLMCleanupService(LLMCleanupService):
                     f"LLM cleanup attempt {attempt + 1}/{self.max_retries + 1} "
                     f"using model {self.model}, temperature={temperature}, top_p={top_p}"
                 )
-                result = await self._call_ollama(prompt, temperature=temperature, top_p=top_p)
+                result = await self._call_ollama(
+                    prompt,
+                    entry_type=entry_type,
+                    temperature=temperature,
+                    top_p=top_p
+                )
 
                 # Add prompt_template_id and parameters to result
                 result["prompt_template_id"] = template_id
@@ -231,6 +233,7 @@ class OllamaLLMCleanupService(LLMCleanupService):
     async def _call_ollama(
         self,
         prompt: str,
+        entry_type: str = "dream",
         temperature: Optional[float] = None,
         top_p: Optional[float] = None
     ) -> Dict[str, Any]:
@@ -239,6 +242,7 @@ class OllamaLLMCleanupService(LLMCleanupService):
 
         Args:
             prompt: Formatted prompt to send to LLM
+            entry_type: Entry type for schema-based parsing
             temperature: Temperature for sampling (0.0-2.0). If None, uses default (0.3).
             top_p: Top-p for nucleus sampling (0.0-1.0). If None, Ollama uses default.
 
@@ -247,7 +251,7 @@ class OllamaLLMCleanupService(LLMCleanupService):
 
         Raises:
             httpx.HTTPError: If API call fails
-            json.JSONDecodeError: If response is not valid JSON
+            ValueError: If response is not valid JSON
             KeyError: If response missing required fields
         """
         url = f"{self.base_url}/api/generate"
@@ -278,62 +282,76 @@ class OllamaLLMCleanupService(LLMCleanupService):
 
             logger.debug(f"Raw LLM response: {response_text}...")
 
-            # Parse the JSON response
-            result = self._parse_llm_response(response_text)
+            # Parse the JSON response with schema-based parsing
+            result = self._parse_llm_response(response_text, entry_type)
 
             # Include raw response for debugging and storage
             result["llm_raw_response"] = response_text
 
             return result
 
-    def _parse_llm_response(self, response_text: str) -> Dict[str, Any]:
+    def _parse_llm_response(self, response_text: str, entry_type: str = "dream") -> Dict[str, Any]:
         """
-        Parse LLM response and extract structured data.
+        Parse and validate LLM JSON response using OUTPUT_SCHEMAS.
 
         Args:
             response_text: Raw response from LLM
+            entry_type: Entry type for schema lookup
 
         Returns:
             Dict containing cleaned_text and analysis
 
         Raises:
-            json.JSONDecodeError: If response is not valid JSON
-            KeyError: If response missing required fields
+            ValueError: If response is not valid JSON
+            KeyError: If cleaned_text is missing
         """
-        # Remove markdown code blocks if present
-        cleaned_response = response_text.strip()
-        if cleaned_response.startswith("```json"):
-            cleaned_response = cleaned_response[7:]
-        if cleaned_response.startswith("```"):
-            cleaned_response = cleaned_response[3:]
-        if cleaned_response.endswith("```"):
-            cleaned_response = cleaned_response[:-3]
+        logger.debug(
+            "Parsing LLM response",
+            entry_type=entry_type,
+            response_length=len(response_text)
+        )
 
-        cleaned_response = cleaned_response.strip()
+        # Strip markdown code blocks if present
+        text = response_text.strip()
+        if text.startswith("```json"):
+            text = text[7:]  # Remove ```json
+        elif text.startswith("```"):
+            text = text[3:]  # Remove ```
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
 
         # Parse JSON
         try:
-            parsed = json.loads(cleaned_response)
+            parsed = json.loads(text)
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse LLM response as JSON: {cleaned_response[:200]}")
-            raise ValueError(f"LLM returned invalid JSON: {str(e)}")
+            logger.error("Failed to parse LLM response as JSON", error=str(e))
+            raise ValueError(f"LLM response is not valid JSON: {e}")
 
-        # Validate required fields
+        # Validate required field
         if "cleaned_text" not in parsed:
-            raise KeyError("LLM response missing 'cleaned_text' field")
+            raise KeyError("LLM response missing required 'cleaned_text' field")
 
-        # Ensure analysis fields exist with defaults
-        result = {
+        # Get schema for this entry_type
+        try:
+            schema = get_output_schema(entry_type)
+        except ValueError:
+            logger.warning(
+                "Unknown entry_type, using 'dream' schema fallback",
+                entry_type=entry_type
+            )
+            schema = get_output_schema("dream")
+
+        # Parse analysis fields with graceful degradation
+        analysis = {}
+        for field_name in schema["fields"].keys():
+            # Use .get() with default - tolerates missing fields
+            analysis[field_name] = parsed.get(field_name, [])
+
+        return {
             "cleaned_text": parsed["cleaned_text"],
-            "analysis": {
-                "themes": parsed.get("themes", []),
-                "emotions": parsed.get("emotions", []),
-                "characters": parsed.get("characters", []),
-                "locations": parsed.get("locations", [])
-            }
+            "analysis": analysis
         }
-
-        return result
 
     async def test_connection(self) -> bool:
         """
