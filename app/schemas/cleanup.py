@@ -71,6 +71,9 @@ class CleanedEntryDetail(BaseModel):
     created_at: datetime = Field(description="When cleanup was created")
     processing_started_at: Optional[datetime] = Field(None, description="Processing start time")
     processing_completed_at: Optional[datetime] = Field(None, description="Processing completion time")
+    prompt_template_id: Optional[int] = Field(None, description="ID of the prompt template used")
+    prompt_name: Optional[str] = Field(None, description="Name of the prompt template used")
+    prompt_description: Optional[str] = Field(None, description="Description of the prompt template used")
 
     class Config:
         from_attributes = True

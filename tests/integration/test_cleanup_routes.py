@@ -13,6 +13,28 @@ from app.models.cleaned_entry import CleanedEntry, CleanupStatus
 from app.models.transcription import Transcription
 from app.models.voice_entry import VoiceEntry
 from app.models.user import User
+from app.models.prompt_template import PromptTemplate
+
+
+@pytest.fixture
+async def sample_prompt_template(
+    db_session: AsyncSession
+) -> PromptTemplate:
+    """Create a sample prompt template for testing."""
+    prompt_template = PromptTemplate(
+        name="Dream Analysis v1",
+        entry_type="dream",
+        prompt_text="Analyze this dream: {transcription_text}\n\n{output_format}",
+        description="Standard dream analysis prompt",
+        is_active=False,  # Not active to avoid unique constraint issues in tests
+        version=1
+    )
+
+    db_session.add(prompt_template)
+    await db_session.commit()
+    await db_session.refresh(prompt_template)
+
+    return prompt_template
 
 
 @pytest.fixture
@@ -68,7 +90,8 @@ async def sample_cleaned_entry(
     db_session: AsyncSession,
     sample_voice_entry: VoiceEntry,
     completed_transcription: Transcription,
-    test_user: User
+    test_user: User,
+    sample_prompt_template: PromptTemplate
 ) -> CleanedEntry:
     """Create a completed cleaned entry."""
     cleaned_entry = CleanedEntry(
@@ -83,7 +106,7 @@ async def sample_cleaned_entry(
             "characters": [],
             "locations": ["mountains", "oceans"]
         },
-        prompt_template_id=1,  # Reference to dream_v1 prompt
+        prompt_template_id=sample_prompt_template.id,
         model_name="llama3.2:3b",
         processing_started_at=datetime.utcnow(),
         processing_completed_at=datetime.utcnow()
@@ -199,7 +222,8 @@ class TestGetCleanedEntry:
     async def test_get_cleaned_entry_success(
         self,
         authenticated_client: AsyncClient,
-        sample_cleaned_entry: CleanedEntry
+        sample_cleaned_entry: CleanedEntry,
+        sample_prompt_template: PromptTemplate
     ):
         """Test successfully retrieving a cleaned entry."""
         response = await authenticated_client.get(
@@ -213,6 +237,10 @@ class TestGetCleanedEntry:
         assert data["cleaned_text"] is not None
         assert "analysis" in data
         assert "themes" in data["analysis"]
+        # Verify prompt template fields
+        assert data["prompt_template_id"] == sample_prompt_template.id
+        assert data["prompt_name"] == "Dream Analysis v1"
+        assert data["prompt_description"] == "Standard dream analysis prompt"
 
     @pytest.mark.asyncio
     async def test_get_cleaned_entry_not_found(
@@ -290,7 +318,8 @@ class TestGetCleanedEntriesByVoiceEntry:
         self,
         authenticated_client: AsyncClient,
         sample_voice_entry: VoiceEntry,
-        sample_cleaned_entry: CleanedEntry
+        sample_cleaned_entry: CleanedEntry,
+        sample_prompt_template: PromptTemplate
     ):
         """Test successfully retrieving all cleaned entries for a voice entry."""
         response = await authenticated_client.get(
@@ -302,6 +331,12 @@ class TestGetCleanedEntriesByVoiceEntry:
         assert isinstance(data, list)
         assert len(data) >= 1
         assert data[0]["voice_entry_id"] == str(sample_voice_entry.id)
+        # Verify prompt template fields are included
+        assert "prompt_template_id" in data[0]
+        assert "prompt_name" in data[0]
+        assert "prompt_description" in data[0]
+        assert data[0]["prompt_template_id"] == sample_prompt_template.id
+        assert data[0]["prompt_name"] == "Dream Analysis v1"
 
     @pytest.mark.asyncio
     async def test_get_cleaned_entries_empty_list(
@@ -416,7 +451,8 @@ class TestSetPrimaryCleanup:
         sample_voice_entry: VoiceEntry,
         completed_transcription: Transcription,
         test_user: User,
-        db_session: AsyncSession
+        db_session: AsyncSession,
+        sample_prompt_template: PromptTemplate
     ):
         """Test setting a cleanup as primary."""
         from app.models.cleaned_entry import CleanedEntry, CleanupStatus
@@ -430,6 +466,7 @@ class TestSetPrimaryCleanup:
             user_id=test_user.id,
             cleaned_text="First cleanup",
             model_name="llama3.2:3b",
+            prompt_template_id=sample_prompt_template.id,
             is_primary=True
         )
         cleanup1.status = CleanupStatus.COMPLETED
@@ -441,6 +478,7 @@ class TestSetPrimaryCleanup:
             user_id=test_user.id,
             cleaned_text="Second cleanup",
             model_name="llama3.2:3b",
+            prompt_template_id=sample_prompt_template.id,
             is_primary=False
         )
         cleanup2.status = CleanupStatus.COMPLETED
@@ -457,6 +495,10 @@ class TestSetPrimaryCleanup:
         data = response.json()
         assert data["id"] == str(cleanup2.id)
         assert data["is_primary"] is True
+        # Verify prompt template fields are included
+        assert data["prompt_template_id"] == sample_prompt_template.id
+        assert data["prompt_name"] == "Dream Analysis v1"
+        assert data["prompt_description"] == "Standard dream analysis prompt"
 
         # Verify cleanup1 is no longer primary
         await db_session.refresh(cleanup1)
@@ -548,6 +590,46 @@ class TestSetPrimaryCleanup:
         data = response.json()
         assert "is_primary" in data
         assert data["is_primary"] is True
+
+    @pytest.mark.asyncio
+    async def test_get_cleanup_without_prompt_template(
+        self,
+        authenticated_client: AsyncClient,
+        sample_voice_entry: VoiceEntry,
+        completed_transcription: Transcription,
+        test_user: User,
+        db_session: AsyncSession
+    ):
+        """Test that cleanup response handles missing prompt template gracefully."""
+        from app.models.cleaned_entry import CleanedEntry, CleanupStatus
+        import uuid
+
+        # Create cleanup without prompt_template_id
+        cleanup = CleanedEntry(
+            id=uuid.uuid4(),
+            voice_entry_id=sample_voice_entry.id,
+            transcription_id=completed_transcription.id,
+            user_id=test_user.id,
+            cleaned_text="Test cleanup without prompt",
+            model_name="llama3.2:3b",
+            prompt_template_id=None,  # No prompt template
+            is_primary=True
+        )
+        cleanup.status = CleanupStatus.COMPLETED
+
+        db_session.add(cleanup)
+        await db_session.commit()
+
+        response = await authenticated_client.get(
+            f"/api/v1/cleaned-entries/{cleanup.id}"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        # Verify prompt fields are None when no template
+        assert data["prompt_template_id"] is None
+        assert data["prompt_name"] is None
+        assert data["prompt_description"] is None
 
 
 # ============================================================================

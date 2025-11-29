@@ -399,7 +399,10 @@ async def get_cleaned_entry(
         processing_time_seconds=cleaned_entry.processing_time_seconds,
         created_at=cleaned_entry.created_at,
         processing_started_at=cleaned_entry.processing_started_at,
-        processing_completed_at=cleaned_entry.processing_completed_at
+        processing_completed_at=cleaned_entry.processing_completed_at,
+        prompt_template_id=cleaned_entry.prompt_template_id,
+        prompt_name=cleaned_entry.prompt_template.name if cleaned_entry.prompt_template else None,
+        prompt_description=cleaned_entry.prompt_template.description if cleaned_entry.prompt_template else None
     )
 
 
@@ -460,7 +463,10 @@ async def get_cleaned_entries_by_entry(
             processing_time_seconds=ce.processing_time_seconds,
             created_at=ce.created_at,
             processing_started_at=ce.processing_started_at,
-            processing_completed_at=ce.processing_completed_at
+            processing_completed_at=ce.processing_completed_at,
+            prompt_template_id=ce.prompt_template_id,
+            prompt_name=ce.prompt_template.name if ce.prompt_template else None,
+            prompt_description=ce.prompt_template.description if ce.prompt_template else None
         )
         for ce in cleaned_entries
     ]
@@ -561,7 +567,10 @@ async def set_primary_cleanup(
         processing_time_seconds=updated_cleanup.processing_time_seconds,
         created_at=updated_cleanup.created_at,
         processing_started_at=updated_cleanup.processing_started_at,
-        processing_completed_at=updated_cleanup.processing_completed_at
+        processing_completed_at=updated_cleanup.processing_completed_at,
+        prompt_template_id=updated_cleanup.prompt_template_id,
+        prompt_name=updated_cleanup.prompt_template.name if updated_cleanup.prompt_template else None,
+        prompt_description=updated_cleanup.prompt_template.description if updated_cleanup.prompt_template else None
     )
 
 

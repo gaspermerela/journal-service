@@ -1172,6 +1172,7 @@ class DatabaseService:
         """
         try:
             query = select(CleanedEntry).where(CleanedEntry.id == cleaned_entry_id)
+            query = query.options(selectinload(CleanedEntry.prompt_template))
 
             if user_id is not None:
                 query = query.where(CleanedEntry.user_id == user_id)
@@ -1416,6 +1417,7 @@ class DatabaseService:
             query = select(CleanedEntry).where(
                 CleanedEntry.voice_entry_id == voice_entry_id
             )
+            query = query.options(selectinload(CleanedEntry.prompt_template))
 
             if user_id is not None:
                 query = query.where(CleanedEntry.user_id == user_id)

@@ -289,7 +289,7 @@ class GroqLLMCleanupService(LLMCleanupService):
                         "content": prompt
                     }
                 ],
-                "temperature": temperature if temperature is not None else 0.3,
+                "temperature": temperature if temperature is not None else 0.3, # TODO we probably want to be able to pass none
                 "max_tokens": 2000,
                 "timeout": self.timeout
             }
