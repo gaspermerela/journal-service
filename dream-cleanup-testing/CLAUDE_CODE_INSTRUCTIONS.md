@@ -187,7 +187,7 @@ All testing will be performed on this specific transcription for consistency.
 - English words present
 - Content duplicated
 - Content hallucinated/added
-- Artifacts remaining
+- "Hvala" artifacts remaining (Note: "Zdravstveno" is not penalized if in original transcription)
 
 ### Green Flags (Confirm these are present)
 - First person preserved throughout
@@ -203,7 +203,7 @@ All testing will be performed on this specific transcription for consistency.
 
 Verify these before assigning scores:
 
-1. **Artifact Search:** Does cleanup contain "Hvala" or "Zdravstveno"?
+1. **Artifact Search:** Does cleanup contain "Hvala"? (Note: "Zdravstveno" may appear in transcription itself - removing it is a bonus but keeping it is not penalized)
 2. **English Detection:** Any English words (and, the, but, with, for)?
 3. **Length Ratio:** Is cleanup 70-95% of original length?
 4. **Person Consistency:** Is first-person (jaz/sem) preserved?
