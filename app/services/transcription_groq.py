@@ -1,6 +1,7 @@
 """
 Groq API transcription service implementation.
 """
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -33,6 +34,11 @@ class GroqTranscriptionService(TranscriptionService):
         self.api_key = api_key
         self.model = model
         self.client = AsyncGroq(api_key=api_key)
+
+        # Cache for list_available_models() with 1-hour TTL
+        self._models_cache: Optional[list[Dict[str, Any]]] = None
+        self._models_cache_timestamp: Optional[datetime] = None
+        self._cache_ttl = timedelta(hours=1)
 
         logger.info(f"GroqTranscriptionService initialized with model={model}")
 
@@ -175,12 +181,21 @@ class GroqTranscriptionService(TranscriptionService):
         Fetch available transcription models from Groq API.
         Filters for Whisper models only.
 
+        Uses 1-hour cache to reduce API calls.
+
         Returns:
             List of dicts with Whisper model information
 
         Raises:
             RuntimeError: If API request fails
         """
+        # Check cache first
+        if self._models_cache is not None and self._models_cache_timestamp is not None:
+            if datetime.now() - self._models_cache_timestamp < self._cache_ttl:
+                logger.debug(f"Returning cached Groq transcription models ({len(self._models_cache)} models)")
+                return self._models_cache
+
+        # Cache miss or expired - fetch from API
         try:
             import httpx
 
@@ -205,7 +220,15 @@ class GroqTranscriptionService(TranscriptionService):
                 if model["id"].startswith("whisper-") or model["id"].startswith("distil-whisper-")
             ]
 
-            logger.info(f"Found {len(transcription_models)} Groq transcription models")
+            # Sort alphabetically for consistent ordering
+            # (Whisper models don't have varying context windows like LLM models)
+            transcription_models.sort(key=lambda m: m["id"])
+
+            # Update cache
+            self._models_cache = transcription_models
+            self._models_cache_timestamp = datetime.now()
+
+            logger.info(f"Fetched and cached {len(transcription_models)} Groq transcription models (cache TTL: 1 hour)")
             return transcription_models
 
         except Exception as e:

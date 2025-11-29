@@ -3,6 +3,7 @@ Groq LLM Cleanup Service implementation.
 """
 import json
 import re
+from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, Tuple
 
 from groq import AsyncGroq
@@ -48,6 +49,11 @@ class GroqLLMCleanupService(LLMCleanupService):
         self.max_retries = settings.LLM_MAX_RETRIES
         self.db_session = db_session
         self.client = AsyncGroq(api_key=self.api_key)
+
+        # Cache for list_available_models() with 1-hour TTL
+        self._models_cache: Optional[list[Dict[str, Any]]] = None
+        self._models_cache_timestamp: Optional[datetime] = None
+        self._cache_ttl = timedelta(hours=1)
 
         if not self.api_key:
             raise ValueError("GROQ_API_KEY is required for GroqLLMCleanupService")
@@ -416,12 +422,21 @@ class GroqLLMCleanupService(LLMCleanupService):
         Fetch available LLM models from Groq API.
         Filters out whisper models (those are for transcription).
 
+        Uses 1-hour cache to reduce API calls.
+
         Returns:
             List of dicts with LLM model information
 
         Raises:
             RuntimeError: If API request fails
         """
+        # Check cache first
+        if self._models_cache is not None and self._models_cache_timestamp is not None:
+            if datetime.now() - self._models_cache_timestamp < self._cache_ttl:
+                logger.debug(f"Returning cached Groq LLM models ({len(self._models_cache)} models)")
+                return self._models_cache
+
+        # Cache miss or expired - fetch from API
         try:
             import httpx
 
@@ -446,7 +461,15 @@ class GroqLLMCleanupService(LLMCleanupService):
                 if not (model["id"].startswith("whisper-") or model["id"].startswith("distil-whisper-"))
             ]
 
-            logger.info(f"Found {len(llm_models)} Groq LLM models")
+            # Sort by context window (descending) then by name (alphabetical)
+            # This puts most capable models first, with consistent ordering
+            llm_models.sort(key=lambda m: (-m.get("context_window", 0), m["id"]))
+
+            # Update cache
+            self._models_cache = llm_models
+            self._models_cache_timestamp = datetime.now()
+
+            logger.info(f"Fetched and cached {len(llm_models)} Groq LLM models (cache TTL: 1 hour)")
             return llm_models
 
         except Exception as e:
