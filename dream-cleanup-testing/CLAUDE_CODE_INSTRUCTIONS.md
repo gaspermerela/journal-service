@@ -77,25 +77,83 @@ You are optimizing Slovenian dream transcription cleanup. You have database acce
 
 ## Testing Workflow
 
+### Target Transcription
+**Transcription ID:** `5beeaea1-967a-4569-9c84-eccad8797b95`
+
+All testing will be performed on this specific transcription for consistency.
+
 ### Phase 1: Parameter Optimization
 
-1. Fetch latest raw transcription from DB
-2. Fetch current active cleanup prompt from DB
-3. **Case 1 - Temperature Only (top_p = null):**
-   - Run cleanup with configs T1-T7
-   - Score each result
-   - Identify best temperature-only config
-4. **Case 2 - Top-p Only (temperature = null):**
-   - Run cleanup with configs P1-P6
-   - Score each result
-   - Identify best top-p-only config
-5. **Compare:** Best from Case 1 vs Best from Case 2
-6. **Case 3 - Both (only if needed):**
+**IMPORTANT - Optimization Strategies:**
+
+1. **Token Optimization (Concurrent Processing):**
+   - Execute ALL cleanups for a case, THEN analyze all results in ONE response
+   - This saves 60-75% of Claude Code analysis tokens by sharing context once
+   - Groq API costs remain the same (same number of cleanup calls)
+
+2. **Caching Strategy (Resume Capability):**
+   - **Cache every cleanup result immediately** after receiving from Groq API
+   - Store as JSON files: `cache/{transcription_id}/{config_name}.json`
+   - If Claude Code session ends, **resume from cached results**
+   - Skip already-completed cleanups when resuming
+   - **Protects expensive Groq API calls** from being lost
+   - Cache file structure:
+     ```json
+     {
+       "config": "T1",
+       "model": "llama-3.3-70b-versatile",
+       "temperature": 0.0,
+       "top_p": null,
+       "timestamp": "2025-11-29T10:30:00Z",
+       "prompt_id": 123,
+       "cleaned_text": "...",
+       "raw_response": "...",
+       "transcription_id": "5beeaea1-967a-4569-9c84-eccad8797b95"
+     }
+     ```
+
+**Workflow:**
+
+1. **Setup:**
+   - Fetch transcription `5beeaea1-967a-4569-9c84-eccad8797b95` from DB
+   - Fetch current active cleanup prompt from DB
+   - Create directories:
+     - `dream-cleanup-testing/cache/5beeaea1-967a-4569-9c84-eccad8797b95/`
+     - `dream-cleanup-testing/results/`
+   - Check for existing cached results (resume if found)
+
+2. **Case 1 - Temperature Only (top_p = null):**
+   - **Execute:** Run cleanups T1-T7 (cache each immediately)
+   - **Check cache:** Skip configs that already have cached results
+   - **Collect:** Load all 7 results (from cache or fresh API calls)
+   - **Analyze:** Score all 7 results in ONE comprehensive response
+   - **Compare:** Identify best temperature-only config
+   - **Record:** Update results file with all 7 attempts
+
+3. **Case 2 - Top-p Only (temperature = null):**
+   - **Execute:** Run cleanups P1-P6 (cache each immediately)
+   - **Check cache:** Skip configs that already have cached results
+   - **Collect:** Load all 6 results (from cache or fresh API calls)
+   - **Analyze:** Score all 6 results in ONE comprehensive response
+   - **Compare:** Identify best top-p-only config
+   - **Record:** Update results file with all 6 attempts
+
+4. **Compare Best Results:**
+   - Compare best from Case 1 vs best from Case 2
+   - Determine if stopping criteria met (≥36/40)
+
+5. **Case 3 - Both (only if needed):**
    - If neither Case 1 nor Case 2 reaches target score (≥36/40)
-   - Run cleanup with configs B1-B4
-   - Score each result
-7. **Final comparison:** Best from all cases
-8. Record all results to results file
+   - **Execute:** Run cleanups B1-B4 (cache each immediately)
+   - **Check cache:** Skip configs that already have cached results
+   - **Collect:** Load all 4 results (from cache or fresh API calls)
+   - **Analyze:** Score all 4 results in ONE comprehensive response
+   - **Record:** Update results file with all 4 attempts
+
+6. **Final Analysis:**
+   - Identify overall best configuration
+   - Summarize findings at top of results file
+   - Prepare recommendations for Phase 2 (if needed)
 
 ### Phase 2: Prompt Optimization
 1. After finding best parameters, analyze common issues
