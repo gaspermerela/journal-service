@@ -627,12 +627,21 @@ async def upload_transcribe_and_cleanup(
         )
 
         # Step 5: Create cleanup record
+        # Determine cleanup model name in {provider}-{model} format
+        if llm_model:
+            # User specified a custom model
+            # Need to determine provider based on model name or current LLM_PROVIDER setting
+            cleanup_model_name = f"{settings.LLM_PROVIDER}-{llm_model}"
+        else:
+            # Use default from settings
+            cleanup_model_name = f"{settings.LLM_PROVIDER}-{settings.GROQ_LLM_MODEL if settings.LLM_PROVIDER == 'groq' else settings.OLLAMA_MODEL}"
+
         cleaned_entry = await db_service.create_cleaned_entry(
             db=db,
             voice_entry_id=entry.id,
             transcription_id=transcription.id,
             user_id=current_user.id,
-            model_name=settings.OLLAMA_MODEL,
+            model_name=cleanup_model_name,
             temperature=cleanup_temperature,
             top_p=cleanup_top_p
         )

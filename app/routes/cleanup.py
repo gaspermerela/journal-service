@@ -309,12 +309,20 @@ async def trigger_cleanup(
         )
 
     # Create cleaned entry record
+    # Determine cleanup model name in {provider}-{model} format
+    if request.llm_model:
+        # User specified a custom model
+        cleanup_model_name = f"{settings.LLM_PROVIDER}-{request.llm_model}"
+    else:
+        # Use default from service
+        cleanup_model_name = llm_service.get_model_name()
+
     cleaned_entry = await db_service.create_cleaned_entry(
         db=db,
         voice_entry_id=voice_entry.id,
         transcription_id=transcription_id,
         user_id=current_user.id,
-        model_name=llm_service.get_model_name(),
+        model_name=cleanup_model_name,
         temperature=request.temperature,
         top_p=request.top_p
     )
