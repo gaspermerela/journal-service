@@ -188,7 +188,146 @@ You can find reference examples in directory `dream-cleanup-testing/reference`. 
 ---
 
 ## Database Operations
-This section serves as a knowledge base of the correct way to fetch data from the DB and insert new prompts! 
+This section serves as a knowledge base of the correct way to fetch data from the DB and insert new prompts!
 
-**IMPORTANT:** You MUST change/update this section with all necessary instructions for minimal friction with DB commands in the future. 
+**IMPORTANT:** You MUST change/update this section with all necessary instructions for minimal friction with DB commands in the future.
+
+### Database Setup
+
+```python
+from app.database import get_session
+from sqlalchemy import select
+from app.models.transcription import Transcription
+from app.models.prompt_template import PromptTemplate
+
+# Use get_session() context manager for async operations
+async with get_session() as db:
+    # Your database operations here
+    await db.commit()  # Don't forget to commit!
+```
+
+### Fetching Latest Raw Transcription
+
+```python
+async with get_session() as db:
+    # Get the most recent completed transcription
+    stmt = (
+        select(Transcription)
+        .where(Transcription.status == "completed")
+        .order_by(Transcription.created_at.desc())
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    latest_transcription = result.scalar_one_or_none()
+
+    if latest_transcription:
+        transcription_id = latest_transcription.id
+        transcribed_text = latest_transcription.transcribed_text
+        model_used = latest_transcription.model_used
+```
+
+### Fetching Active Cleanup Prompt
+
+```python
+async with get_session() as db:
+    # Get active prompt template for a specific entry_type (e.g., "dream")
+    entry_type = "dream"
+
+    stmt = (
+        select(PromptTemplate)
+        .where(
+            PromptTemplate.entry_type == entry_type,
+            PromptTemplate.is_active == True
+        )
+        .order_by(PromptTemplate.updated_at.desc())
+    )
+    result = await db.execute(stmt)
+    active_prompt = result.scalars().first()
+
+    if active_prompt:
+        prompt_text = active_prompt.prompt_text
+        prompt_id = active_prompt.id
+        prompt_version = active_prompt.version
+        prompt_name = active_prompt.name
+```
+
+### Creating a New Prompt Template
+
+**CRITICAL:** Always wait for user confirmation before inserting a new prompt!
+
+```python
+from app.models.prompt_template import PromptTemplate
+from datetime import datetime
+
+async with get_session() as db:
+    # First, deactivate all existing prompts for this entry_type
+    entry_type = "dream"
+    stmt = (
+        select(PromptTemplate)
+        .where(
+            PromptTemplate.entry_type == entry_type,
+            PromptTemplate.is_active == True
+        )
+    )
+    result = await db.execute(stmt)
+    old_prompts = result.scalars().all()
+
+    for old_prompt in old_prompts:
+        old_prompt.is_active = False
+        old_prompt.updated_at = datetime.utcnow()
+
+    # Determine next version number
+    stmt = (
+        select(PromptTemplate)
+        .where(PromptTemplate.entry_type == entry_type)
+        .order_by(PromptTemplate.version.desc())
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    latest_prompt = result.scalar_one_or_none()
+    next_version = (latest_prompt.version + 1) if latest_prompt else 1
+
+    # Create new prompt template
+    new_prompt = PromptTemplate(
+        name=f"Dream Cleanup v{next_version}",
+        entry_type=entry_type,
+        prompt_text="Your prompt text here with {transcription_text} placeholder",
+        description="Description of changes in this version",
+        is_active=True,
+        version=next_version,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+
+    db.add(new_prompt)
+    await db.commit()
+    await db.refresh(new_prompt)
+
+    print(f"Created new prompt template: {new_prompt.name} (ID: {new_prompt.id})")
+```
+
+### Fetching Previous Cleanup Attempts
+
+```python
+from app.models.cleaned_entry import CleanedEntry
+
+async with get_session() as db:
+    # Get all cleanup attempts for a specific transcription
+    transcription_id = "your-transcription-uuid"
+
+    stmt = (
+        select(CleanedEntry)
+        .where(CleanedEntry.transcription_id == transcription_id)
+        .order_by(CleanedEntry.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    cleanup_attempts = result.scalars().all()
+
+    for attempt in cleanup_attempts:
+        cleaned_text = attempt.cleaned_text
+        model_name = attempt.model_name
+        temperature = attempt.temperature
+        top_p = attempt.top_p
+        prompt_template_id = attempt.prompt_template_id
+``` 
 
