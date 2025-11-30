@@ -322,25 +322,25 @@ async def main():
         # Run test cases
         all_results = {}
 
-        # Case 1: Temperature only
-        case1_results = await run_test_case(
-            "CASE 1: Temperature Only (top_p = null)",
-            TEMP_CONFIGS,
-            TRANSCRIPTION_ID,
-            client,
-            token
-        )
-        all_results.update(case1_results)
-
-        # Optionally run Case 2 and Case 3 (uncomment when ready)
-        # case2_results = await run_test_case(
-        #     "CASE 2: Top-p Only (temperature = null)",
-        #     TOPP_CONFIGS,
+        # Case 1: Temperature only (DISABLED - already completed)
+        # case1_results = await run_test_case(
+        #     "CASE 1: Temperature Only (top_p = null)",
+        #     TEMP_CONFIGS,
         #     TRANSCRIPTION_ID,
         #     client,
         #     token
         # )
-        # all_results.update(case2_results)
+        # all_results.update(case1_results)
+
+        # Case 2: Top-p only
+        case2_results = await run_test_case(
+            "CASE 2: Top-p Only (temperature = null)",
+            TOPP_CONFIGS,
+            TRANSCRIPTION_ID,
+            client,
+            token
+        )
+        all_results.update(case2_results)
 
         # Save summary
         summary_file = CACHE_DIR / "_summary.json"
