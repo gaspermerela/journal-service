@@ -3,11 +3,24 @@ Execute dream cleanup tests via journal-service API and cache results.
 
 This version uses the existing API endpoints instead of calling Groq directly,
 which means results are automatically saved to the database and visible in the frontend.
+
+Usage:
+    python run_cleanups_api.py <model> [--case <1|2|3|all>]
+
+Examples:
+    python run_cleanups_api.py llama-3.3-70b-versatile --case 1   # Temperature only
+    python run_cleanups_api.py gpt-oss-120b --case 2              # Top-p only
+    python run_cleanups_api.py gpt-oss-120b --case all            # All cases
+
+Cache Structure:
+    cache/{transcription_id}_{model_name}/
+    Example: cache/5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
 """
 import asyncio
 import json
 import sys
 import time
+import argparse
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
@@ -24,10 +37,9 @@ load_dotenv(project_root / ".env")
 
 # Configuration
 TRANSCRIPTION_ID = "5beeaea1-967a-4569-9c84-eccad8797b95"
-CACHE_DIR = Path(__file__).parent / "cache" / TRANSCRIPTION_ID
 API_BASE_URL = "http://localhost:8000/api/v1"
 POLL_INTERVAL = 2  # seconds
-MAX_POLL_TIME = 120  # seconds
+MAX_POLL_TIME = 180  # seconds (increased for larger models)
 
 # Test configurations
 TEMP_CONFIGS = [
@@ -57,21 +69,36 @@ BOTH_CONFIGS = [
 ]
 
 
-def load_cached_result(config_name: str) -> Optional[Dict[str, Any]]:
+def get_cache_dir(model_name: str) -> Path:
+    """
+    Get model-specific cache directory.
+
+    Format: cache/{transcription_id}_{sanitized_model_name}/
+    Example: cache/5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
+    """
+    base_dir = Path(__file__).parent / "cache"
+    # Sanitize model name for directory (replace / and : with -)
+    safe_model_name = model_name.replace("/", "-").replace(":", "-")
+    cache_dir = base_dir / f"{TRANSCRIPTION_ID}_{safe_model_name}"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def load_cached_result(cache_dir: Path, config_name: str) -> Optional[Dict[str, Any]]:
     """Load cached result if it exists."""
-    cache_file = CACHE_DIR / f"{config_name}.json"
+    cache_file = cache_dir / f"{config_name}.json"
     if cache_file.exists():
         with open(cache_file, 'r', encoding='utf-8') as f:
             return json.load(f)
     return None
 
 
-def save_to_cache(config_name: str, result: Dict[str, Any]) -> None:
+def save_to_cache(cache_dir: Path, config_name: str, result: Dict[str, Any]) -> None:
     """Save result to cache."""
-    cache_file = CACHE_DIR / f"{config_name}.json"
+    cache_file = cache_dir / f"{config_name}.json"
     with open(cache_file, 'w', encoding='utf-8') as f:
         json.dump(result, f, indent=2, ensure_ascii=False)
-    print(f"   💾 Cached to: {cache_file.name}")
+    print(f"   Cached to: {cache_file.name}")
 
 
 async def authenticate(client: httpx.AsyncClient, email: str, password: str) -> str:
@@ -94,7 +121,8 @@ async def trigger_cleanup_via_api(
     client: httpx.AsyncClient,
     transcription_id: str,
     config: Dict[str, Any],
-    token: str
+    token: str,
+    model_name: str
 ) -> str:
     """
     Trigger cleanup via API endpoint.
@@ -106,10 +134,10 @@ async def trigger_cleanup_via_api(
     temperature = config["temperature"]
     top_p = config["top_p"]
 
-    print(f"\n🚀 Triggering {config_name} via API (temp={temperature}, top_p={top_p})...")
+    print(f"\n[TRIGGER] {config_name} (model={model_name}, temp={temperature}, top_p={top_p})...")
 
     # Build request body
-    request_body = {}
+    request_body = {"llm_model": model_name}
     if temperature is not None:
         request_body["temperature"] = temperature
     if top_p is not None:
@@ -125,11 +153,11 @@ async def trigger_cleanup_via_api(
         data = response.json()
         cleanup_id = data["id"]
 
-        print(f"   ✅ Cleanup triggered! ID: {cleanup_id}")
+        print(f"   [OK] Cleanup triggered! ID: {cleanup_id}")
         return cleanup_id
 
     except httpx.HTTPStatusError as e:
-        print(f"   ❌ API Error: {e.response.status_code} - {e.response.text}")
+        print(f"   [ERROR] API Error: {e.response.status_code} - {e.response.text}")
         raise
 
 
@@ -168,24 +196,24 @@ async def poll_cleanup_status(
             if status == "completed":
                 processing_time = data.get("processing_time_seconds", 0)
                 cleaned_length = len(data.get("cleaned_text", ""))
-                print(f"   ✅ Completed! ({processing_time:.2f}s, {cleaned_length} chars)")
+                print(f"   [DONE] Completed! ({processing_time:.2f}s, {cleaned_length} chars)")
                 return data
 
             elif status == "failed":
                 error = data.get("error_message", "Unknown error")
-                print(f"   ❌ Failed: {error}")
+                print(f"   [FAIL] Failed: {error}")
                 return data
 
             elif status == "processing":
-                print(f"   ⏳ Processing... (poll #{poll_count}, {elapsed:.1f}s elapsed)")
+                print(f"   [WAIT] Processing... (poll #{poll_count}, {elapsed:.1f}s elapsed)")
                 await asyncio.sleep(POLL_INTERVAL)
 
             else:  # pending
-                print(f"   ⏳ Pending... (poll #{poll_count}, {elapsed:.1f}s elapsed)")
+                print(f"   [WAIT] Pending... (poll #{poll_count}, {elapsed:.1f}s elapsed)")
                 await asyncio.sleep(POLL_INTERVAL)
 
         except httpx.HTTPStatusError as e:
-            print(f"   ❌ Polling error: {e.response.status_code} - {e.response.text}")
+            print(f"   [ERROR] Polling error: {e.response.status_code} - {e.response.text}")
             raise
 
 
@@ -193,7 +221,8 @@ async def run_cleanup_via_api(
     client: httpx.AsyncClient,
     transcription_id: str,
     config: Dict[str, Any],
-    token: str
+    token: str,
+    model_name: str
 ) -> Dict[str, Any]:
     """
     Execute a single cleanup via API and wait for completion.
@@ -206,7 +235,9 @@ async def run_cleanup_via_api(
 
     try:
         # Trigger cleanup
-        cleanup_id = await trigger_cleanup_via_api(client, transcription_id, config, token)
+        cleanup_id = await trigger_cleanup_via_api(
+            client, transcription_id, config, token, model_name
+        )
 
         # Poll for completion
         result = await poll_cleanup_status(client, cleanup_id, token, config_name)
@@ -236,9 +267,10 @@ async def run_cleanup_via_api(
         return cached_result
 
     except Exception as e:
-        print(f"   ❌ Error: {str(e)}")
+        print(f"   [ERROR] Error: {str(e)}")
         return {
             "config": config_name,
+            "model": model_name,
             "temperature": temperature,
             "top_p": top_p,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -253,7 +285,9 @@ async def run_test_case(
     configs: list,
     transcription_id: str,
     client: httpx.AsyncClient,
-    token: str
+    token: str,
+    cache_dir: Path,
+    model_name: str
 ) -> Dict[str, Dict[str, Any]]:
     """
     Run all configs for a test case, using cache when available.
@@ -262,6 +296,7 @@ async def run_test_case(
     """
     print(f"\n{'='*60}")
     print(f"  {case_name}")
+    print(f"  Model: {model_name}")
     print(f"{'='*60}")
 
     results = {}
@@ -270,24 +305,26 @@ async def run_test_case(
         config_name = config["name"]
 
         # Check cache first
-        cached = load_cached_result(config_name)
+        cached = load_cached_result(cache_dir, config_name)
         if cached:
-            print(f"\n📦 {config_name} - Using cached result from {cached.get('timestamp', 'unknown')}")
+            print(f"\n[CACHE] {config_name} - Using cached result from {cached.get('timestamp', 'unknown')}")
             results[config_name] = cached
             continue
 
         # Execute cleanup via API
-        result = await run_cleanup_via_api(client, transcription_id, config, token)
+        result = await run_cleanup_via_api(
+            client, transcription_id, config, token, model_name
+        )
 
         # Cache immediately
-        save_to_cache(config_name, result)
+        save_to_cache(cache_dir, config_name, result)
 
         results[config_name] = result
 
     return results
 
 
-async def main():
+async def main(model_name: str, case: str):
     """Main execution function."""
     print("Dream Cleanup Testing - API Integration with Database Persistence")
     print("="*60)
@@ -297,58 +334,83 @@ async def main():
     password = os.getenv("TEST_USER_PASSWORD")
 
     if not email or not password:
-        print("❌ Error: TEST_USER_EMAIL and TEST_USER_PASSWORD must be set in .env")
+        print("[ERROR] TEST_USER_EMAIL and TEST_USER_PASSWORD must be set in .env")
         print("   Add these lines to your .env file:")
         print("   TEST_USER_EMAIL=your-email@example.com")
         print("   TEST_USER_PASSWORD=your-password")
         return
 
-    print(f"📄 Transcription: {TRANSCRIPTION_ID}")
-    print(f"🌐 API Base URL: {API_BASE_URL}")
-    print(f"📁 Cache directory: {CACHE_DIR}")
-    print(f"👤 User: {email}")
+    cache_dir = get_cache_dir(model_name)
+
+    print(f"Transcription: {TRANSCRIPTION_ID}")
+    print(f"API Base URL: {API_BASE_URL}")
+    print(f"Model: {model_name}")
+    print(f"Cache directory: {cache_dir}")
+    print(f"Test case: {case}")
+    print(f"User: {email}")
 
     # Create async HTTP client
-    async with httpx.AsyncClient(timeout=180.0) as client:
+    async with httpx.AsyncClient(timeout=300.0) as client:
         # Authenticate
-        print(f"\n🔐 Authenticating...")
+        print(f"\n[AUTH] Authenticating...")
         try:
             token = await authenticate(client, email, password)
-            print(f"   ✅ Authentication successful!")
+            print(f"   [OK] Authentication successful!")
         except Exception as e:
-            print(f"   ❌ Authentication failed: {e}")
+            print(f"   [ERROR] Authentication failed: {e}")
             return
 
         # Run test cases
         all_results = {}
 
-        # Case 1: Temperature only (DISABLED - already completed)
-        # case1_results = await run_test_case(
-        #     "CASE 1: Temperature Only (top_p = null)",
-        #     TEMP_CONFIGS,
-        #     TRANSCRIPTION_ID,
-        #     client,
-        #     token
-        # )
-        # all_results.update(case1_results)
+        # Case 1: Temperature only
+        if case in ("1", "all"):
+            case1_results = await run_test_case(
+                "CASE 1: Temperature Only (top_p = null)",
+                TEMP_CONFIGS,
+                TRANSCRIPTION_ID,
+                client,
+                token,
+                cache_dir,
+                model_name
+            )
+            all_results.update(case1_results)
 
         # Case 2: Top-p only
-        case2_results = await run_test_case(
-            "CASE 2: Top-p Only (temperature = null)",
-            TOPP_CONFIGS,
-            TRANSCRIPTION_ID,
-            client,
-            token
-        )
-        all_results.update(case2_results)
+        if case in ("2", "all"):
+            case2_results = await run_test_case(
+                "CASE 2: Top-p Only (temperature = null)",
+                TOPP_CONFIGS,
+                TRANSCRIPTION_ID,
+                client,
+                token,
+                cache_dir,
+                model_name
+            )
+            all_results.update(case2_results)
+
+        # Case 3: Both parameters
+        if case in ("3", "all"):
+            case3_results = await run_test_case(
+                "CASE 3: Both Parameters (temperature + top_p)",
+                BOTH_CONFIGS,
+                TRANSCRIPTION_ID,
+                client,
+                token,
+                cache_dir,
+                model_name
+            )
+            all_results.update(case3_results)
 
         # Save summary
-        summary_file = CACHE_DIR / "_summary.json"
+        summary_file = cache_dir / "_summary.json"
         with open(summary_file, 'w', encoding='utf-8') as f:
             json.dump({
                 "transcription_id": TRANSCRIPTION_ID,
+                "model": model_name,
                 "api_base_url": API_BASE_URL,
                 "execution_timestamp": datetime.now(timezone.utc).isoformat(),
+                "test_case": case,
                 "total_configs_executed": len(all_results),
                 "configs": list(all_results.keys()),
                 "using_api": True,
@@ -356,14 +418,37 @@ async def main():
             }, f, indent=2)
 
         print(f"\n{'='*60}")
-        print(f"✅ Execution complete!")
+        print(f"[COMPLETE] Execution complete!")
         print(f"   Total configs processed: {len(all_results)}")
         print(f"   Summary saved to: {summary_file}")
-        print(f"   💾 Results saved to database!")
-        print(f"   🌐 View in frontend or via API:")
+        print(f"   Results saved to database!")
+        print(f"   View in frontend or via API:")
         print(f"      GET {API_BASE_URL}/entries/{TRANSCRIPTION_ID}/cleaned")
         print(f"{'='*60}\n")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(
+        description="Execute dream cleanup tests via API",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+    python run_cleanups_api.py llama-3.3-70b-versatile --case 1   # Temperature only
+    python run_cleanups_api.py gpt-oss-120b --case 2              # Top-p only
+    python run_cleanups_api.py gpt-oss-120b --case all            # All cases
+        """
+    )
+    parser.add_argument(
+        "model",
+        type=str,
+        help="LLM model name (required). Examples: llama-3.3-70b-versatile, gpt-oss-120b"
+    )
+    parser.add_argument(
+        "--case", "-c",
+        choices=["1", "2", "3", "all"],
+        default="all",
+        help="Test case: 1=Temperature, 2=Top-p, 3=Both, all=All cases (default: all)"
+    )
+
+    args = parser.parse_args()
+    asyncio.run(main(args.model, args.case))
