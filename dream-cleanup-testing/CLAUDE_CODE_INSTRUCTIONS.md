@@ -8,19 +8,21 @@ You are optimizing Slovenian dream transcription cleanup. You have database acce
 
 ## Models to Test
 
+**Note:** Model IDs must use exact Groq format (e.g., `openai/gpt-oss-120b`, not `gpt-oss-120b`).
+
 ### Tier 1 - Priority Testing
-| Model | Why | Watch For |
-|-------|-----|-----------|
-| openai/gpt-oss-120b | Best grammar, largest | Content changes |
-| moonshotai/kimi-k2-instruct | Strong multilingual, 262K context | Unknown Slovenian quality |
-| qwen/qwen3-32b | 100+ languages | May be too creative |
+| Model ID (Groq) | Why | Watch For |
+|-----------------|-----|-----------|
+| `openai/gpt-oss-120b` | Best grammar, largest | Content changes |
+| `moonshotai/kimi-k2-instruct` | Strong multilingual, 262K context | Unknown Slovenian quality |
+| `qwen/qwen3-32b` | 100+ languages | May be too creative |
 
 ### Tier 2 - Secondary Testing
-| Model | Why | Watch For |
-|-------|-----|-----------|
-| openai/gpt-oss-20b | Cheaper, good balance | Slightly worse grammar |
-| llama-3.3-70b-versatile | Large, general purpose | Less multilingual focus |
-| meta-llama/llama-4-maverick-17b-128e-instruct | Newer architecture | Unknown quality |
+| Model ID (Groq) | Why | Watch For |
+|-----------------|-----|-----------|
+| `openai/gpt-oss-20b` | Cheaper, good balance | Slightly worse grammar |
+| `llama-3.3-70b-versatile` | Large, general purpose | Less multilingual focus |
+| `meta-llama/llama-4-maverick-17b-128e-instruct` | Newer architecture | Unknown quality |
 
 ### Skip These Models
 - playai-tts, playai-tts-arabic (TTS only)
@@ -98,33 +100,56 @@ All testing will be performed on this specific transcription for consistency.
 
 2. **Caching Strategy (Resume Capability):**
    - **Cache every cleanup result immediately** after receiving from Groq API
-   - Store as JSON files: `cache/{transcription_id}/{config_name}.json`
+   - Store as JSON files in **model-specific directories**: `cache/{transcription_id}_{model_name}/{config_name}.json`
    - If Claude Code session ends, **resume from cached results**
    - Skip already-completed cleanups when resuming
    - **Protects expensive Groq API calls** from being lost
-   - Cache file structure:
-     ```json
-     {
-       "config": "T1",
-       "model": "llama-3.3-70b-versatile",
-       "temperature": 0.0,
-       "top_p": null,
-       "timestamp": "2025-11-29T10:30:00Z",
-       "prompt_id": 123,
-       "cleaned_text": "...",
-       "raw_response": "...",
-       "transcription_id": "5beeaea1-967a-4569-9c84-eccad8797b95"
-     }
-     ```
+
+   **Cache Directory Structure:**
+   ```
+   cache/
+   ├── fetched_data.json                                          # Raw transcription + prompt
+   ├── 5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
+   │   ├── T1.json, T2.json, ... T7.json                         # Temperature tests
+   │   ├── P1.json, P2.json, ... P6.json                         # Top-p tests
+   │   ├── B1.json, T1_v2.json, T3_v2.json, ...                  # Both params + re-runs
+   │   └── _summary.json                                          # Batch metadata
+   ├── 5beeaea1-967a-4569-9c84-eccad8797b95_gpt-oss-120b/        # New model tests
+   │   ├── T1.json, T2.json, ...
+   │   └── _summary.json
+   └── 5beeaea1-967a-4569-9c84-eccad8797b95_kimi-k2-instruct/    # Future model tests
+       └── ...
+   ```
+
+   **Cache File Structure:**
+   ```json
+   {
+     "config": "T1",
+     "model": "groq-llama-3.3-70b-versatile",
+     "temperature": 0.0,
+     "top_p": null,
+     "timestamp": "2025-11-29T10:30:00Z",
+     "processing_time_seconds": 4.09,
+     "prompt_id": 378,
+     "prompt_name": "dream_v5",
+     "cleaned_text": "...",
+     "themes": [...],
+     "emotions": [...],
+     "characters": [...],
+     "locations": [...],
+     "raw_response": "...",
+     "transcription_id": "5beeaea1-967a-4569-9c84-eccad8797b95",
+     "status": "success"
+   }
+   ```
 
 **Workflow:**
 
 1. **Setup:**
-   - Fetch transcription `5beeaea1-967a-4569-9c84-eccad8797b95` from DB
+   - Fetch transcription `5beeaea1-967a-4569-9c84-eccad8797b95` from DB (or use cached `fetched_data.json`)
    - Fetch current active cleanup prompt from DB
-   - Create directories:
-     - `dream-cleanup-testing/cache/5beeaea1-967a-4569-9c84-eccad8797b95/`
-     - `dream-cleanup-testing/results/`
+   - Specify model to test (required argument)
+   - Cache directory auto-created: `cache/{transcription_id}_{model_name}/`
    - Check for existing cached results (resume if found)
 
 2. **Case 1 - Temperature Only (top_p = null):**
