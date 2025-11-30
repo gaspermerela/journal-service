@@ -21,16 +21,16 @@ WHY VERSIONING (not deletion):
 USAGE:
 ------
 # Re-execute T3 (fresh API call, creates T3_v2.json):
-python rerun_one_config.py T3
+python rerun_one_config.py T3 --model llama-3.3-70b-versatile --prompt dream_v7
 
 # Re-evaluate T3 using latest cached version (no API call):
-python rerun_one_config.py T3 --evaluate
+python rerun_one_config.py T3 --model llama-3.3-70b-versatile --prompt dream_v7 --evaluate
 
 # Re-evaluate specific version:
-python rerun_one_config.py T3 --evaluate --version 2
+python rerun_one_config.py T3 --model llama-3.3-70b-versatile --prompt dream_v7 --evaluate --version 2
 
 # List all versions of a config:
-python rerun_one_config.py T3 --list-versions
+python rerun_one_config.py T3 --model llama-3.3-70b-versatile --prompt dream_v7 --list-versions
 
 ARCHITECTURE:
 -------------
@@ -39,12 +39,12 @@ ARCHITECTURE:
 - Cache format matches run_cleanups_api.py for consistency
 - Auto-detects next version number (T3.json → T3_v2.json → T3_v3.json)
 
-VERSION NAMING:
----------------
-- First run: T3.json
-- Second run: T3_v2.json
-- Third run: T3_v3.json
-- Etc.
+CACHE STRUCTURE:
+----------------
+cache/prompt_{prompt_name}/{transcription_id}_{model_name}/
+  - T3.json (first run)
+  - T3_v2.json (second run)
+  - T3_v3.json (third run)
 
 Latest version = highest version number or base file (T3.json) if no versions exist
 """
@@ -69,10 +69,24 @@ load_dotenv(project_root / ".env")
 
 # Configuration
 TRANSCRIPTION_ID = "5beeaea1-967a-4569-9c84-eccad8797b95"
-CACHE_DIR = Path(__file__).parent / "cache" / TRANSCRIPTION_ID
 API_BASE_URL = "http://localhost:8000/api/v1"
 POLL_INTERVAL = 2  # seconds
 MAX_POLL_TIME = 120  # seconds
+
+
+def get_cache_dir(prompt_name: str, model_name: str) -> Path:
+    """
+    Get prompt-specific, model-specific cache directory.
+
+    Format: cache/prompt_{prompt_name}/{transcription_id}_{sanitized_model_name}/
+    Example: cache/prompt_dream_v7/5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
+    """
+    base_dir = Path(__file__).parent / "cache" / f"prompt_{prompt_name}"
+    # Sanitize model name for directory (replace / and : with -)
+    safe_model_name = model_name.replace("/", "-").replace(":", "-")
+    cache_dir = base_dir / f"{TRANSCRIPTION_ID}_{safe_model_name}"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
 
 # Test configurations (same as run_cleanups_api.py)
 TEMP_CONFIGS = [
@@ -122,7 +136,7 @@ def get_cache_filename(config_name: str, version: Optional[int] = None) -> str:
     return f"{config_name}_v{version}.json"
 
 
-def find_all_versions(config_name: str) -> List[int]:
+def find_all_versions(config_name: str, cache_dir: Path) -> List[int]:
     """
     Find all existing versions of a config.
 
@@ -132,14 +146,14 @@ def find_all_versions(config_name: str) -> List[int]:
     versions = []
 
     # Check base file (version 1)
-    base_file = CACHE_DIR / f"{config_name}.json"
+    base_file = cache_dir / f"{config_name}.json"
     if base_file.exists():
         versions.append(1)
 
     # Check versioned files (v2, v3, ...)
     version_num = 2
     while True:
-        version_file = CACHE_DIR / f"{config_name}_v{version_num}.json"
+        version_file = cache_dir / f"{config_name}_v{version_num}.json"
         if version_file.exists():
             versions.append(version_num)
             version_num += 1
@@ -149,20 +163,21 @@ def find_all_versions(config_name: str) -> List[int]:
     return sorted(versions)
 
 
-def get_next_version(config_name: str) -> int:
+def get_next_version(config_name: str, cache_dir: Path) -> int:
     """Get next available version number for a config."""
-    versions = find_all_versions(config_name)
+    versions = find_all_versions(config_name, cache_dir)
     if not versions:
         return 1
     return max(versions) + 1
 
 
-def load_cached_result(config_name: str, version: Optional[int] = None) -> Optional[Dict[str, Any]]:
+def load_cached_result(config_name: str, cache_dir: Path, version: Optional[int] = None) -> Optional[Dict[str, Any]]:
     """
     Load cached result for a config.
 
     Args:
         config_name: Config name (e.g., "T3")
+        cache_dir: Cache directory path
         version: Specific version to load, or None for latest
 
     Returns:
@@ -170,13 +185,13 @@ def load_cached_result(config_name: str, version: Optional[int] = None) -> Optio
     """
     if version is None:
         # Load latest version
-        versions = find_all_versions(config_name)
+        versions = find_all_versions(config_name, cache_dir)
         if not versions:
             return None
         version = max(versions)
 
     filename = get_cache_filename(config_name, version)
-    cache_file = CACHE_DIR / filename
+    cache_file = cache_dir / filename
 
     if cache_file.exists():
         with open(cache_file, 'r', encoding='utf-8') as f:
@@ -184,7 +199,7 @@ def load_cached_result(config_name: str, version: Optional[int] = None) -> Optio
     return None
 
 
-def save_to_cache(config_name: str, result: Dict[str, Any], version: int) -> Path:
+def save_to_cache(config_name: str, result: Dict[str, Any], version: int, cache_dir: Path) -> Path:
     """
     Save result to cache with version number.
 
@@ -192,7 +207,7 @@ def save_to_cache(config_name: str, result: Dict[str, Any], version: int) -> Pat
         Path to saved cache file
     """
     filename = get_cache_filename(config_name, version)
-    cache_file = CACHE_DIR / filename
+    cache_file = cache_dir / filename
 
     # Add version metadata to result
     result["cache_version"] = version
@@ -224,6 +239,7 @@ async def trigger_cleanup_via_api(
     client: httpx.AsyncClient,
     transcription_id: str,
     config: Dict[str, Any],
+    model_name: str,
     token: str
 ) -> str:
     """
@@ -236,10 +252,10 @@ async def trigger_cleanup_via_api(
     temperature = config["temperature"]
     top_p = config["top_p"]
 
-    print(f"🚀 Triggering {config_name} via API (temp={temperature}, top_p={top_p})...")
+    print(f"🚀 Triggering {config_name} via API (model={model_name}, temp={temperature}, top_p={top_p})...")
 
     # Build request body
-    request_body = {}
+    request_body = {"model": model_name}
     if temperature is not None:
         request_body["temperature"] = temperature
     if top_p is not None:
@@ -322,6 +338,7 @@ async def poll_cleanup_status(
 async def execute_cleanup(
     config_name: str,
     config: Dict[str, Any],
+    model_name: str,
     client: httpx.AsyncClient,
     token: str
 ) -> Dict[str, Any]:
@@ -339,7 +356,7 @@ async def execute_cleanup(
 
     try:
         # Trigger cleanup
-        cleanup_id = await trigger_cleanup_via_api(client, TRANSCRIPTION_ID, config, token)
+        cleanup_id = await trigger_cleanup_via_api(client, TRANSCRIPTION_ID, config, model_name, token)
 
         # Poll for completion
         result = await poll_cleanup_status(client, cleanup_id, token, config_name)
@@ -448,19 +465,30 @@ async def main():
         epilog="""
 Examples:
   # Re-execute T3 (fresh API call, creates new version):
-  python rerun_one_config.py T3
+  python rerun_one_config.py T3 --model llama-3.3-70b-versatile --prompt dream_v7
 
   # Re-evaluate T3 using latest cached version (no API call):
-  python rerun_one_config.py T3 --evaluate
+  python rerun_one_config.py T3 --model llama-3.3-70b-versatile --prompt dream_v7 --evaluate
 
   # Re-evaluate specific version:
-  python rerun_one_config.py T3 --evaluate --version 2
+  python rerun_one_config.py T3 --model llama-3.3-70b-versatile --prompt dream_v7 --evaluate --version 2
 
   # List all versions:
-  python rerun_one_config.py T3 --list-versions
+  python rerun_one_config.py T3 --model llama-3.3-70b-versatile --prompt dream_v7 --list-versions
         """
     )
     parser.add_argument("config_name", help="Config name (e.g., T3, P2, B1)")
+    parser.add_argument(
+        "model",
+        type=str,
+        help="LLM model name (required). Examples: llama-3.3-70b-versatile, openai/gpt-oss-120b"
+    )
+    parser.add_argument(
+        "--prompt", "-p",
+        type=str,
+        required=True,
+        help="Prompt version name (required). Examples: dream_v5, dream_v7"
+    )
     parser.add_argument(
         "--evaluate",
         action="store_true",
@@ -479,10 +507,18 @@ Examples:
 
     args = parser.parse_args()
     config_name = args.config_name.upper()
+    model_name = args.model
+    prompt_name = args.prompt
+
+    # Get cache directory for this prompt and model
+    cache_dir = get_cache_dir(prompt_name, model_name)
 
     print("="*80)
     print("Re-run One Config - Parameter Optimization Testing")
     print("="*80)
+    print(f"Model: {model_name}")
+    print(f"Prompt: {prompt_name}")
+    print(f"Cache directory: {cache_dir}")
 
     # Find config
     config = find_config(config_name)
@@ -493,15 +529,14 @@ Examples:
 
     # List versions mode
     if args.list_versions:
-        versions = find_all_versions(config_name)
+        versions = find_all_versions(config_name, cache_dir)
         if not versions:
             print(f"\n📋 No versions found for {config_name}")
         else:
             print(f"\n📋 Versions found for {config_name}:")
             for v in versions:
                 filename = get_cache_filename(config_name, v)
-                filepath = CACHE_DIR / filename
-                result = load_cached_result(config_name, v)
+                result = load_cached_result(config_name, cache_dir, v)
                 timestamp = result.get('timestamp', 'unknown') if result else 'unknown'
                 status = result.get('status', 'unknown') if result else 'unknown'
                 print(f"   v{v}: {filename} (timestamp: {timestamp}, status: {status})")
@@ -513,7 +548,7 @@ Examples:
         print(f"   Temperature: {config.get('temperature')}")
         print(f"   Top-p: {config.get('top_p')}")
 
-        result = load_cached_result(config_name, args.version)
+        result = load_cached_result(config_name, cache_dir, args.version)
         if not result:
             if args.version:
                 print(f"\n❌ Error: No cached result found for {config_name} version {args.version}")
@@ -522,7 +557,7 @@ Examples:
             print(f"   Run without --evaluate to execute fresh API call")
             return
 
-        version = args.version if args.version else max(find_all_versions(config_name))
+        version = args.version if args.version else max(find_all_versions(config_name, cache_dir))
         print(f"   ✅ Loaded version {version}")
         print_result_for_evaluation(config_name, result, version)
         return
@@ -532,7 +567,7 @@ Examples:
     print(f"   Temperature: {config.get('temperature')}")
     print(f"   Top-p: {config.get('top_p')}")
 
-    next_version = get_next_version(config_name)
+    next_version = get_next_version(config_name, cache_dir)
     print(f"   Will save as version {next_version}")
 
     # Load credentials
@@ -561,10 +596,10 @@ Examples:
             return
 
         # Execute cleanup
-        result = await execute_cleanup(config_name, config, client, token)
+        result = await execute_cleanup(config_name, config, model_name, client, token)
 
         # Save to cache with version
-        cache_file = save_to_cache(config_name, result, next_version)
+        cache_file = save_to_cache(config_name, result, next_version, cache_dir)
         print(f"\n💾 Saved to cache: {cache_file.name}")
         print(f"   💽 Also saved to database (cleanup_id: {result.get('cleanup_id', 'N/A')})")
 
