@@ -1,7 +1,17 @@
 """
 Execute dream cleanup tests with Groq API and cache results.
+
+Usage:
+    python run_cleanups.py --prompt <prompt_name>
+
+Examples:
+    python run_cleanups.py --prompt dream_v7
+    python run_cleanups.py --prompt dream_v5
+
+Cache Structure:
+    cache/prompt_{prompt_name}/{transcription_id}_{model_name}/
 """
-import asyncio
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -21,8 +31,20 @@ from groq import Groq
 
 # Configuration
 TRANSCRIPTION_ID = "5beeaea1-967a-4569-9c84-eccad8797b95"
-CACHE_DIR = Path(__file__).parent / "cache" / TRANSCRIPTION_ID
 GROQ_MODEL = "llama-3.3-70b-versatile"
+
+
+def get_cache_dir(prompt_name: str) -> Path:
+    """
+    Get prompt-specific, model-specific cache directory.
+
+    Format: cache/prompt_{prompt_name}/{transcription_id}_{sanitized_model_name}/
+    """
+    base_dir = Path(__file__).parent / "cache" / f"prompt_{prompt_name}"
+    safe_model_name = GROQ_MODEL.replace("/", "-").replace(":", "-")
+    cache_dir = base_dir / f"{TRANSCRIPTION_ID}_{safe_model_name}"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
 
 # Test configurations
 TEMP_CONFIGS = [
@@ -52,18 +74,18 @@ BOTH_CONFIGS = [
 ]
 
 
-def load_cached_result(config_name: str) -> Optional[Dict[str, Any]]:
+def load_cached_result(config_name: str, cache_dir: Path) -> Optional[Dict[str, Any]]:
     """Load cached result if it exists."""
-    cache_file = CACHE_DIR / f"{config_name}.json"
+    cache_file = cache_dir / f"{config_name}.json"
     if cache_file.exists():
         with open(cache_file, 'r', encoding='utf-8') as f:
             return json.load(f)
     return None
 
 
-def save_to_cache(config_name: str, result: Dict[str, Any]) -> None:
+def save_to_cache(config_name: str, result: Dict[str, Any], cache_dir: Path) -> None:
     """Save result to cache."""
-    cache_file = CACHE_DIR / f"{config_name}.json"
+    cache_file = cache_dir / f"{config_name}.json"
     with open(cache_file, 'w', encoding='utf-8') as f:
         json.dump(result, f, indent=2, ensure_ascii=False)
     print(f"   💾 Cached to: {cache_file.name}")
@@ -172,7 +194,8 @@ def run_test_case(
     transcription: str,
     prompt_text: str,
     prompt_id: int,
-    groq_client: Groq
+    groq_client: Groq,
+    cache_dir: Path
 ) -> Dict[str, Dict[str, Any]]:
     """
     Run all configs for a test case, using cache when available.
@@ -189,7 +212,7 @@ def run_test_case(
         config_name = config["name"]
 
         # Check cache first
-        cached = load_cached_result(config_name)
+        cached = load_cached_result(config_name, cache_dir)
         if cached:
             print(f"\n📦 {config_name} - Using cached result from {cached.get('timestamp', 'unknown')}")
             results[config_name] = cached
@@ -199,20 +222,23 @@ def run_test_case(
         result = run_cleanup(transcription, prompt_text, prompt_id, config, groq_client)
 
         # Cache immediately
-        save_to_cache(config_name, result)
+        save_to_cache(config_name, result, cache_dir)
 
         results[config_name] = result
 
     return results
 
 
-def main():
+def main(prompt_name: str):
     """Main execution function."""
     print("Dream Cleanup Testing - Concurrent Batch Execution with Caching")
     print("="*60)
 
-    # Load fetched data
-    data_file = Path(__file__).parent / "cache" / "fetched_data.json"
+    # Get cache directory for this prompt
+    cache_dir = get_cache_dir(prompt_name)
+
+    # Load fetched data from prompt-specific directory
+    data_file = Path(__file__).parent / "cache" / f"prompt_{prompt_name}" / "fetched_data.json"
     if not data_file.exists():
         print(f"❌ Error: {data_file} not found. Run fetch_data.py first!")
         return
@@ -227,7 +253,7 @@ def main():
     print(f"📄 Transcription: {TRANSCRIPTION_ID}")
     print(f"📝 Prompt: {data['prompt']['name']} (v{data['prompt']['version']})")
     print(f"🤖 Model: {GROQ_MODEL}")
-    print(f"📁 Cache directory: {CACHE_DIR}")
+    print(f"📁 Cache directory: {cache_dir}")
 
     # Initialize Groq client
     groq_api_key = os.getenv("GROQ_API_KEY")
@@ -247,7 +273,8 @@ def main():
         transcription_text,
         prompt_text,
         prompt_id,
-        groq_client
+        groq_client,
+        cache_dir
     )
     all_results.update(case1_results)
 
@@ -258,12 +285,13 @@ def main():
     #     transcription_text,
     #     prompt_text,
     #     prompt_id,
-    #     groq_client
+    #     groq_client,
+    #     cache_dir
     # )
     # all_results.update(case2_results)
 
     # Save summary
-    summary_file = CACHE_DIR / "_summary.json"
+    summary_file = cache_dir / "_summary.json"
     with open(summary_file, 'w', encoding='utf-8') as f:
         json.dump({
             "transcription_id": TRANSCRIPTION_ID,
@@ -284,4 +312,21 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(
+        description="Execute dream cleanup tests with Groq API",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+    python run_cleanups.py --prompt dream_v7
+    python run_cleanups.py --prompt dream_v5
+        """
+    )
+    parser.add_argument(
+        "--prompt", "-p",
+        type=str,
+        required=True,
+        help="Prompt version name (required). Examples: dream_v5, dream_v7"
+    )
+
+    args = parser.parse_args()
+    main(args.prompt)

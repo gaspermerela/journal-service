@@ -5,16 +5,16 @@ This version uses the existing API endpoints instead of calling Groq directly,
 which means results are automatically saved to the database and visible in the frontend.
 
 Usage:
-    python run_cleanups_api.py <model> [--case <1|2|3|all>]
+    python run_cleanups_api.py <model> --prompt <prompt_name> [--case <1|2|3|all>]
 
 Examples:
-    python run_cleanups_api.py llama-3.3-70b-versatile --case 1   # Temperature only
-    python run_cleanups_api.py gpt-oss-120b --case 2              # Top-p only
-    python run_cleanups_api.py gpt-oss-120b --case all            # All cases
+    python run_cleanups_api.py llama-3.3-70b-versatile --prompt dream_v7 --case 1
+    python run_cleanups_api.py gpt-oss-120b --prompt dream_v5 --case 2
+    python run_cleanups_api.py gpt-oss-120b --prompt dream_v7 --case all
 
 Cache Structure:
-    cache/{transcription_id}_{model_name}/
-    Example: cache/5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
+    cache/prompt_{prompt_name}/{transcription_id}_{model_name}/
+    Example: cache/prompt_dream_v7/5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
 """
 import asyncio
 import json
@@ -69,14 +69,14 @@ BOTH_CONFIGS = [
 ]
 
 
-def get_cache_dir(model_name: str) -> Path:
+def get_cache_dir(model_name: str, prompt_name: str) -> Path:
     """
-    Get model-specific cache directory.
+    Get model-specific cache directory within prompt version directory.
 
-    Format: cache/{transcription_id}_{sanitized_model_name}/
-    Example: cache/5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
+    Format: cache/prompt_{prompt_name}/{transcription_id}_{sanitized_model_name}/
+    Example: cache/prompt_dream_v7/5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
     """
-    base_dir = Path(__file__).parent / "cache"
+    base_dir = Path(__file__).parent / "cache" / f"prompt_{prompt_name}"
     # Sanitize model name for directory (replace / and : with -)
     safe_model_name = model_name.replace("/", "-").replace(":", "-")
     cache_dir = base_dir / f"{TRANSCRIPTION_ID}_{safe_model_name}"
@@ -335,7 +335,7 @@ async def run_test_case(
     return results
 
 
-async def main(model_name: str, case: str):
+async def main(model_name: str, prompt_name: str, case: str):
     """Main execution function."""
     print("Dream Cleanup Testing - API Integration with Database Persistence")
     print("="*60)
@@ -351,10 +351,11 @@ async def main(model_name: str, case: str):
         print("   TEST_USER_PASSWORD=your-password")
         return
 
-    cache_dir = get_cache_dir(model_name)
+    cache_dir = get_cache_dir(model_name, prompt_name)
 
     print(f"Transcription: {TRANSCRIPTION_ID}")
     print(f"API Base URL: {API_BASE_URL}")
+    print(f"Prompt: {prompt_name}")
     print(f"Model: {model_name}")
     print(f"Cache directory: {cache_dir}")
     print(f"Test case: {case}")
@@ -444,15 +445,21 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python run_cleanups_api.py llama-3.3-70b-versatile --case 1   # Temperature only
-    python run_cleanups_api.py gpt-oss-120b --case 2              # Top-p only
-    python run_cleanups_api.py gpt-oss-120b --case all            # All cases
+    python run_cleanups_api.py llama-3.3-70b-versatile --prompt dream_v7 --case 1
+    python run_cleanups_api.py gpt-oss-120b --prompt dream_v5 --case 2
+    python run_cleanups_api.py gpt-oss-120b --prompt dream_v7 --case all
         """
     )
     parser.add_argument(
         "model",
         type=str,
         help="LLM model name (required). Examples: llama-3.3-70b-versatile, gpt-oss-120b"
+    )
+    parser.add_argument(
+        "--prompt", "-p",
+        type=str,
+        required=True,
+        help="Prompt version name (required). Examples: dream_v5, dream_v7"
     )
     parser.add_argument(
         "--case", "-c",
@@ -462,4 +469,4 @@ Examples:
     )
 
     args = parser.parse_args()
-    asyncio.run(main(args.model, args.case))
+    asyncio.run(main(args.model, args.prompt, args.case))
