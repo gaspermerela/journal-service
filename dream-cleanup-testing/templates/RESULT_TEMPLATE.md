@@ -15,22 +15,15 @@
 
 ---
 
-## Raw Transcription
+## Test Configuration
+
+**Transcription ID:** [transcription_id]
 **Source:** Whisper large-v3
 **Whisper Temperature:** [value]
 **Language:** sl
-```
-[Raw transcription text from database]
-```
 
----
-
-## Prompt v[X] (Active: [Yes/No])
-**Prompt ID:** [from database]
-**Created:** [date]
-```
-[Full prompt text fetched from database]
-```
+**Prompt:** v[X] (ID: [from database], Active: [Yes/No])
+**Prompt Created:** [date]
 
 ### Test Results for Prompt v[X]
 
@@ -58,10 +51,15 @@
 **Notes:**
 [Specific observations about this cleanup]
 
-**Cleanup Text:**
-```
-[The actual cleaned text]
-```
+**Length Ratio:** [cleaned_length / raw_length = X%]
+
+**Key Issues:**
+- [Issue 1]
+- [Issue 2]
+
+**Strengths:**
+- [Strength 1]
+- [Strength 2]
 
 ---
 
