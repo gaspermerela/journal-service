@@ -84,8 +84,9 @@ You are optimizing Slovenian dream transcription cleanup. You have database acce
 
 All testing will be performed on this specific transcription for consistency.
 
-**Raw Transcription Location:** `cache/fetched_data.json`
+**Raw Transcription Location:** `cache/prompt_{prompt_name}/fetched_data.json`
 - Contains the raw Whisper transcription text and prompt used for this test
+- Example: `cache/prompt_dream_v7/fetched_data.json`
 - **CRITICAL:** Always score cleanup results by comparing against THIS raw transcription
 - The reference example (`reference/reference-cleanup-example.md`) is for understanding what good cleanup quality looks like, but do NOT make hard comparisons against it
 
@@ -100,7 +101,7 @@ All testing will be performed on this specific transcription for consistency.
 
 2. **Caching Strategy (Resume Capability):**
    - **Cache every cleanup result immediately** after receiving from Groq API
-   - Store as JSON files in **model-specific directories**: `cache/{transcription_id}_{model_name}/{config_name}.json`
+   - Store as JSON files in **prompt-specific, model-specific directories**: `cache/prompt_{prompt_name}/{transcription_id}_{model_name}/{config_name}.json`
    - If Claude Code session ends, **resume from cached results**
    - Skip already-completed cleanups when resuming
    - **Protects expensive Groq API calls** from being lost
@@ -108,17 +109,21 @@ All testing will be performed on this specific transcription for consistency.
    **Cache Directory Structure:**
    ```
    cache/
-   ├── fetched_data.json                                          # Raw transcription + prompt
-   ├── 5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
-   │   ├── T1.json, T2.json, ... T7.json                         # Temperature tests
-   │   ├── P1.json, P2.json, ... P6.json                         # Top-p tests
-   │   ├── B1.json, T1_v2.json, T3_v2.json, ...                  # Both params + re-runs
-   │   └── _summary.json                                          # Batch metadata
-   ├── 5beeaea1-967a-4569-9c84-eccad8797b95_gpt-oss-120b/        # New model tests
-   │   ├── T1.json, T2.json, ...
-   │   └── _summary.json
-   └── 5beeaea1-967a-4569-9c84-eccad8797b95_kimi-k2-instruct/    # Future model tests
-       └── ...
+   ├── prompt_dream_v5/                                            # Prompt version directory
+   │   ├── fetched_data.json                                       # Raw transcription + v5 prompt
+   │   ├── 5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
+   │   │   ├── T1.json, T2.json, ... T7.json                      # Temperature tests
+   │   │   ├── P1.json, P2.json, ... P6.json                      # Top-p tests
+   │   │   ├── B1.json, T1_v2.json, T3_v2.json, ...               # Both params + re-runs
+   │   │   └── _summary.json                                       # Batch metadata
+   │   ├── 5beeaea1-967a-4569-9c84-eccad8797b95_openai-gpt-oss-120b/
+   │   │   └── ...
+   │   └── 5beeaea1-967a-4569-9c84-eccad8797b95_moonshotai-kimi-k2-instruct/
+   │       └── ...
+   └── prompt_dream_v7/                                            # New prompt version
+       ├── fetched_data.json                                       # Raw transcription + v7 prompt
+       └── 5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
+           └── ...
    ```
 
    **Cache File Structure:**
@@ -148,8 +153,8 @@ All testing will be performed on this specific transcription for consistency.
 1. **Setup:**
    - Fetch transcription `5beeaea1-967a-4569-9c84-eccad8797b95` from DB (or use cached `fetched_data.json`)
    - Fetch current active cleanup prompt from DB
-   - Specify model to test (required argument)
-   - Cache directory auto-created: `cache/{transcription_id}_{model_name}/`
+   - Specify model AND prompt version to test (both required arguments)
+   - Cache directory auto-created: `cache/prompt_{prompt_name}/{transcription_id}_{model_name}/`
    - Check for existing cached results (resume if found)
 
 2. **Case 1 - Temperature Only (top_p = null):**

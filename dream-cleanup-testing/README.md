@@ -28,11 +28,11 @@ With this approach I hope to understand how different prompts and parameters beh
 ## Quick Start
 
 ```bash
-# 1. Fetch transcription + prompt from database
+# 1. Fetch transcription + prompt from database (saves to cache/prompt_{prompt_name}/)
 python fetch_data.py
 
 # 2. Run parameter tests (saves to DB + cache)
-python run_cleanups_api.py
+python run_cleanups_api.py llama-3.3-70b-versatile --prompt dream_v7 --case 1
 
 # 3. Score results manually using criteria in CLAUDE_CODE_INSTRUCTIONS.md
 # Results saved to: results/cleanup_{transcription_id}_{date}.md
@@ -58,7 +58,7 @@ python run_cleanups_api.py
 
 **Transcription ID:** `5beeaea1-967a-4569-9c84-eccad8797b95`
 
-All tests use this single transcription for consistency. Raw text cached in `cache/fetched_data.json`.
+All tests use this single transcription for consistency. Raw text cached in `cache/prompt_{prompt_name}/etched_data.json`.
 
 ## Scoring (0-40 total)
 
@@ -86,17 +86,20 @@ Full criteria: `CLAUDE_CODE_INSTRUCTIONS.md`
 
 ## Cache Strategy
 
-**Why cache?** Protects expensive Groq API calls from being lost if session ends.
+**Why cache?** Protects Groq API calls from being lost if claude session ends.
 
 **Structure:**
 ```
 cache/
-├── fetched_data.json              # Raw transcription + prompt
-└── 5beeaea1-967a-4569-9c84.../
-    ├── T1.json                    # First run
-    ├── T3.json                    # Original T3 run
-    ├── T3_v2.json                 # Re-run (preserves history)
-    └── _summary.json              # Batch test metadata
+├── prompt_dream_v5/                           # Prompt version directory
+│   ├── fetched_data.json                      # Raw transcription + v5 prompt
+│   └── 5beeaea1-967a-4569-9c84..._llama.../
+│       ├── T1.json, T2.json, ...              # Temperature tests
+│       └── _summary.json                      # Batch test metadata
+├── prompt_dream_v7/                           # New prompt version
+│   ├── fetched_data.json                      # Raw transcription + v7 prompt
+│   └── 5beeaea1-967a-4569-9c84..._llama.../
+│       └── ...
 ```
 
 **Versioning:** Re-running a config creates new version (T3_v2.json), never overwrites.
