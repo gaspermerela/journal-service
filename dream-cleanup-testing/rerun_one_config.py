@@ -329,10 +329,13 @@ async def execute_cleanup(
     Execute cleanup via API and return result.
 
     Returns:
-        Result dict in cache format
+        Result dict in cache format.
+        Always includes cleanup_id and raw_response when available (even for failures).
     """
     temperature = config["temperature"]
     top_p = config["top_p"]
+    cleanup_id = None
+    raw_response = None
 
     try:
         # Trigger cleanup
@@ -340,6 +343,12 @@ async def execute_cleanup(
 
         # Poll for completion
         result = await poll_cleanup_status(client, cleanup_id, token, config_name)
+
+        # Capture raw response (available for both success and failure)
+        raw_response = result.get("llm_raw_response", "")
+
+        # Safely extract analysis fields (handle None values)
+        analysis = result.get("analysis") or {}
 
         # Transform API response to cache format
         cached_result = {
@@ -354,11 +363,11 @@ async def execute_cleanup(
             "prompt_name": result.get("prompt_name"),
             "transcription_id": TRANSCRIPTION_ID,
             "cleaned_text": result.get("cleaned_text", ""),
-            "themes": result.get("analysis", {}).get("themes", []),
-            "emotions": result.get("analysis", {}).get("emotions", []),
-            "characters": result.get("analysis", {}).get("characters", []),
-            "locations": result.get("analysis", {}).get("locations", []),
-            "raw_response": result.get("llm_raw_response", ""),
+            "themes": analysis.get("themes", []),
+            "emotions": analysis.get("emotions", []),
+            "characters": analysis.get("characters", []),
+            "locations": analysis.get("locations", []),
+            "raw_response": raw_response,
             "status": "success" if result["status"] == "completed" else "failed",
             "error": result.get("error_message")
         }
@@ -369,10 +378,12 @@ async def execute_cleanup(
         print(f"   ❌ Error: {str(e)}")
         return {
             "config": config_name,
+            "cleanup_id": cleanup_id,  # Will be None if trigger failed, otherwise contains the ID
             "temperature": temperature,
             "top_p": top_p,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "transcription_id": TRANSCRIPTION_ID,
+            "raw_response": raw_response,  # Will be None if polling failed before getting response
             "status": "failed",
             "error": str(e)
         }
