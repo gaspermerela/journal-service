@@ -95,10 +95,7 @@ TOPP_CONFIGS = [
 ]
 
 BOTH_CONFIGS = [
-    {"name": "B1", "temperature": 0.3, "top_p": 0.9},
-    {"name": "B2", "temperature": 0.5, "top_p": 0.5},
-    {"name": "B3", "temperature": 0.5, "top_p": 0.9},
-    {"name": "B4", "temperature": 0.8, "top_p": 0.5},
+    {"name": "B1", "temperature": 0.0, "top_p": 0.3},  # Best from T1 + Best from P2
 ]
 
 ALL_CONFIGS = TEMP_CONFIGS + TOPP_CONFIGS + BOTH_CONFIGS
