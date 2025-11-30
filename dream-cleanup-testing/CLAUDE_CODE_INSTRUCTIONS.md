@@ -82,6 +82,11 @@ You are optimizing Slovenian dream transcription cleanup. You have database acce
 
 All testing will be performed on this specific transcription for consistency.
 
+**Raw Transcription Location:** `cache/fetched_data.json`
+- Contains the raw Whisper transcription text and prompt used for this test
+- **CRITICAL:** Always score cleanup results by comparing against THIS raw transcription
+- The reference example (`reference/reference-cleanup-example.md`) is for understanding what good cleanup quality looks like, but do NOT make hard comparisons against it
+
 ### Phase 1: Parameter Optimization
 
 **IMPORTANT - Optimization Strategies:**
@@ -173,21 +178,129 @@ All testing will be performed on this specific transcription for consistency.
 ## Evaluation Criteria
 
 ### Scoring (0-10 each, 40 total)
-| Criterion | What to Check |
-|-----------|---------------|
-| **Content Accuracy** | Subject preserved, timing preserved, details intact |
-| **Artifact Removal** | No "Hvala", no YouTube intro, no filler |
-| **Grammar Quality** | Correct Slovenian, no English, coherent sentences |
-| **Readability** | Natural flow, appropriate paragraphs, authentic voice |
 
-### Red Flags (Automatic -2 points per flag)
-- Subject changed (jaz → oni/ženske)
-- Timing changed (preden → ko/potem)
-- Specific terms altered (centrifugacija krvi → centrifugacijska sila)
-- English words present
-- Content duplicated
-- Content hallucinated/added
-- "Hvala" artifacts remaining (Note: "Zdravstveno" is not penalized if in original transcription)
+#### 1. Content Accuracy (0-10)
+**What it measures:** Whether the dream's actual content is preserved correctly
+
+**Check for:**
+- ✅ Subject preserved (1st person "jaz" throughout)
+- ✅ Timeline preserved (temporal markers: "preden", "ko", "potem")
+- ✅ Details intact (specific terms, objects, people, places)
+- ✅ No hallucinations (nothing added that wasn't in original)
+- ✅ No over-summarization (all scenes/events present)
+
+**NOT content accuracy:**
+- ❌ Grammar errors in transcription (e.g., "polnica" vs "bolnica")
+- ❌ Misspellings from STT (e.g., "ronotežje" vs "ravnotežje")
+- ❌ Artifacts like "Hvala" (these are Artifact Removal)
+
+**Examples:**
+- **10/10:** All details preserved, no hallucinations, proper length (70-95%)
+- **9/10:** All details preserved, minor detail lost
+- **7/10:** One red flag (e.g., hallucination) = base 9 minus 2
+- **5/10:** Multiple red flags (hallucination + subject change) = base 9 minus 4
+- **3/10:** Severe content loss or multiple hallucinations
+
+#### 2. Artifact Removal (0-10)
+**What it measures:** STT-specific artifacts that shouldn't exist in final text
+
+**Artifacts (must be removed):**
+- "Hvala" (repeated throughout transcription)
+- "Zdravstveno, da ste pripravljeni" (YouTube intro - BONUS if removed, not penalized if kept)
+- Excessive filler: repetitive "torej", "v bistvu", "a ne", etc.
+
+**NOT artifacts:**
+- ❌ Grammar errors: "polnica", "ronotežje", "prublev" (these are Grammar Quality)
+- ❌ Garbled phrases: "ta ljena vzgor" (Grammar Quality)
+- ❌ Wrong words: "pretličju" vs "pritličju" (Grammar Quality)
+
+**Examples:**
+- **10/10:** All "Hvala" removed, "Zdravstveno" removed, minimal filler
+- **9/10:** All "Hvala" removed, "Zdravstveno" kept (acceptable)
+- **7/10:** One "Hvala" remains
+- **2/10:** Multiple "Hvala" remain throughout (e.g., T3 duplication case)
+
+**IMPORTANT:** Do NOT deduct artifact points for unfixed grammar errors! Those go in Grammar Quality.
+
+#### 3. Grammar Quality (0-10)
+**What it measures:** Correct Slovenian grammar, spelling, and word choice
+
+**Check for:**
+- ✅ Correct spelling: "bolnica" not "polnica", "ravnotežje" not "ronotežje"
+- ✅ Correct verb forms: "rekel" (masculine) not "rekla" (feminine) if subject is male
+- ✅ Correct case/number agreement
+- ✅ Clean phrases: "nadaljujem hojo" not "nadelujem hojo"
+- ✅ No garbled phrases: remove "ta ljena vzgor", "prublev čimprej"
+- ✅ No English words
+- ✅ Proper sentence structure
+
+**Examples:**
+- **10/10:** Perfect grammar, all transcription errors fixed
+- **9/10:** One minor error (e.g., "polnica" not fixed)
+- **7/10:** Several errors ("polnica" + "ronotežje" + garbled phrases)
+- **6/10:** Multiple errors across different categories
+- **3/10:** Many errors, barely readable
+
+#### 4. Readability (0-10)
+**What it measures:** Natural flow, paragraphing, and authentic voice
+
+**Check for:**
+- ✅ Appropriate paragraph breaks (scene changes, new topics)
+- ✅ Natural sentence flow
+- ✅ Authentic personal voice preserved
+- ✅ Not overly formal or robotic
+- ✅ Coherent narrative structure
+
+**Deduct points for:**
+- ❌ Wall of text (missing paragraph breaks)
+- ❌ Choppy or disjointed flow
+- ❌ Overly formal/academic tone
+- ❌ Lost personal voice
+
+**Examples:**
+- **10/10:** Perfect paragraph structure, natural flow, authentic voice
+- **9/10:** Good structure, very minor flow issues
+- **7/10:** Some paragraph issues or slightly stiff tone
+- **5/10:** Poor paragraphing (e.g., P3 wall of text)
+- **3/10:** Nearly unreadable due to structure issues
+
+---
+
+### Red Flags (Automatic -2 points EACH, applied to relevant criterion)
+
+**How to apply:**
+1. Start with base score for criterion (usually 9-10)
+2. Apply -2 for EACH red flag in that category
+3. Red flags affect specific criteria, not total score directly
+
+**Red Flags List:**
+
+| Red Flag | Affects Criterion | Example | Penalty |
+|----------|------------------|---------|---------|
+| Subject changed (jaz → oni/ženske) | Content Accuracy | "Oni so hodili..." instead of "Jaz sem hodil..." | -2 |
+| Timing changed (preden → ko) | Content Accuracy | Changed "preden so prišli" to "ko so prišli" | -2 |
+| Specific terms altered | Content Accuracy | "centrifugacijska sila" instead of "centrifugacija krvi" | -2 |
+| Content hallucinated/added | Content Accuracy | Added ending not in original (P4, P6) | -2 |
+| Content duplicated | Content Accuracy | Repeated dream 4x (T3) | -2 |
+| English words present | Grammar Quality | "and", "the", "building" in Slovenian text | -2 |
+| "Hvala" artifacts remaining | Artifact Removal | "Hvala" appears in cleaned text | -2 each |
+
+**Example Scoring with Red Flags:**
+
+**P4 (hallucinated ending):**
+- Base Content Accuracy: 9/10 (details preserved)
+- Red flag (hallucination): -2
+- **Final Content Accuracy: 7/10**
+
+**P6 (hallucination + gender error):**
+- Base Content Accuracy: 9/10
+- Red flag (hallucination): -2
+- **Final Content Accuracy: 7/10**
+- Base Grammar Quality: 9/10
+- Red flag (gender error): -2
+- **Final Grammar Quality: 7/10**
+
+**Consistent Penalty:** Each red flag = exactly -2 points, no more, no less.
 
 ### Green Flags (Confirm these are present)
 - First person preserved throughout
@@ -201,12 +314,89 @@ All testing will be performed on this specific transcription for consistency.
 
 ## Automated Checks (Before Scoring)
 
-Verify these before assigning scores:
+Run these checks BEFORE assigning scores to catch obvious issues:
 
-1. **Artifact Search:** Does cleanup contain "Hvala"? (Note: "Zdravstveno" may appear in transcription itself - removing it is a bonus but keeping it is not penalized)
-2. **English Detection:** Any English words (and, the, but, with, for)?
-3. **Length Ratio:** Is cleanup 70-95% of original length?
-4. **Person Consistency:** Is first-person (jaz/sem) preserved?
+### 1. Artifact Search
+**Command:** Search cleaned text for "Hvala"
+
+**Result:**
+- ✅ None found → Artifact Removal likely 9-10/10
+- ⚠️ 1-2 found → Artifact Removal 7-8/10, apply red flag (-2 each)
+- ❌ Multiple found → Artifact Removal 2-5/10, severe issue
+
+**Note:** "Zdravstveno" in transcription - removing is BONUS, keeping is acceptable (no penalty)
+
+### 2. English Detection
+**Command:** Search for common English words (and, the, but, with, for, building, etc.)
+
+**Result:**
+- ✅ None found → Grammar Quality likely high
+- ❌ Any found → Grammar Quality red flag (-2 per occurrence)
+
+### 3. Length Ratio Check
+**Formula:** `cleaned_length / raw_length = ratio%`
+
+**Expected:** 70-95% (cleanup should be 3500-4800 chars for 5051 raw)
+
+**Result:**
+- ✅ 70-95% → Appropriate cleanup
+- ⚠️ 95-110% → Possible duplication (check for repeated content)
+- ⚠️ 50-70% → Possible over-summarization (check for lost details)
+- ❌ >110% → Severe duplication (e.g., T3 at 143%)
+- ❌ <50% → Severe content loss (e.g., T6 at 52%)
+
+**Impact on scoring:**
+- Too long (>110%) → Content Accuracy -3 to -5 (duplication)
+- Too short (<70%) → Content Accuracy -2 to -4 (summarization)
+
+### 4. Person Consistency
+**Command:** Check for first-person markers (jaz, sem) vs third-person (oni, ona)
+
+**Result:**
+- ✅ Consistent 1st person → No issues
+- ❌ Shifted to 3rd person → Content Accuracy red flag (-2)
+
+### 5. Timeline Markers Check
+**Command:** Verify temporal sequence preserved
+
+**Look for:**
+- "preden" (before) should not become "ko" (when) or "potem" (after)
+- Event order should match original
+
+**Result:**
+- ✅ Timeline preserved → No issues
+- ❌ Timeline changed → Content Accuracy red flag (-2)
+
+---
+
+## Scoring Workflow (Step-by-Step)
+
+1. **Run Automated Checks** (above) - note any red flags
+2. **Read cleaned text** vs raw transcription side-by-side
+3. **Score each criterion** (0-10) using guidelines above
+4. **Apply red flag penalties** (-2 each) to relevant criterion
+5. **Calculate total** (sum of 4 criteria, max 40)
+6. **Document issues** in notes section
+
+**Example:**
+
+```
+Automated Checks:
+- ✅ No "Hvala" found
+- ✅ No English words
+- ⚠️ Length: 52% (too short!)
+- ✅ First person preserved
+- ✅ Timeline preserved
+
+Scoring:
+- Content Accuracy: 9/10 base, -3 for over-summarization = 6/10
+- Artifact Removal: 10/10 (all artifacts removed)
+- Grammar Quality: 9/10 ("polnica" not fixed) = 9/10
+- Readability: 8/10 (good flow despite being short)
+- TOTAL: 33/40 (82.5%)
+
+Red Flags: Over-summarization (length 52%)
+```
 
 ---
 
