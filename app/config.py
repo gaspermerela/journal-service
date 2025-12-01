@@ -231,30 +231,30 @@ OUTPUT_SCHEMAS = {
     "dream": {
         "description": "Analysis schema for dream journal entries",
         "fields": {
-            "themes": {
-                "type": "array",
-                "item_type": "string",
-                "description": "Main themes and motifs of the dream",
-                "required": False
-            },
-            "emotions": {
-                "type": "array",
-                "item_type": "string",
-                "description": "Emotions experienced in the dream",
-                "required": False
-            },
-            "characters": {
-                "type": "array",
-                "item_type": "string",
-                "description": "People, creatures, or entities in the dream",
-                "required": False
-            },
-            "locations": {
-                "type": "array",
-                "item_type": "string",
-                "description": "Places and settings in the dream",
-                "required": False
-            }
+            # "themes": {
+            #     "type": "array",
+            #     "item_type": "string",
+            #     "description": "Main themes and motifs of the dream",
+            #     "required": False
+            # },
+            # "emotions": {
+            #     "type": "array",
+            #     "item_type": "string",
+            #     "description": "Emotions experienced in the dream",
+            #     "required": False
+            # },
+            # "characters": {
+            #     "type": "array",
+            #     "item_type": "string",
+            #     "description": "People, creatures, or entities in the dream",
+            #     "required": False
+            # },
+            # "locations": {
+            #     "type": "array",
+            #     "item_type": "string",
+            #     "description": "Places and settings in the dream",
+            #     "required": False
+            # }
         }
     },
     "therapy": {
