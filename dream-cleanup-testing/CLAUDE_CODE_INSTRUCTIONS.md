@@ -454,17 +454,38 @@ Red Flags: Over-summarization (length 52%)
 
 ## Output Requirements
 
-For each transcription/prompt, create/update a results file using the template: `dream-cleanup-testing/templates/RESULT_TEMPLATE.md`.
+For each transcription/prompt, create/update results using the multi-file directory structure documented in `templates/RESULT_TEMPLATE.md`.
 
-### File Naming
-`results/cleanup_[transcription_id]_[date].md`
+### Directory Structure
+```
+results/{transcription_id}/
+├── README.md                    # Main index + best result summary (~500 tokens)
+├── source-data.md               # Transcription metadata + scoring criteria
+├── prompt_{name}/               # One directory per prompt version
+│   ├── README.md                # Prompt summary + model comparison table
+│   └── {model-slug}.md          # Detailed per-model results (T1-T7 scores, analysis)
+```
+
+### Why Multi-File?
+- Single-file results grew to 35k+ tokens, exceeding Claude Code's 25k read limit
+- Each file now stays under ~4k tokens for efficient updates
+- Only update affected files (e.g., add new model → add one .md file)
 
 ### Content Requirements
-- Include raw transcription
-- Include each cleanup attempt with full metadata
-- Include scores and issues for each attempt
-- Summarize best result at top
-- Record prompt text used (fetched from DB)
+- **Main README.md:** Best result summary, prompt comparison table, quick links
+- **source-data.md:** Raw transcription metadata, artifacts list, scoring criteria
+- **prompt_{name}/README.md:** Prompt changes, model comparison for this prompt
+- **{model-slug}.md:** Full T1-T7/P1-P6 results, automated checks, config analysis
+
+### Model Slug Naming
+- `llama-3.3-70b-versatile` → `llama-3.3-70b-versatile.md`
+- `openai/gpt-oss-120b` → `openai-gpt-oss-120b.md`
+- `meta-llama/llama-4-maverick-17b-128e-instruct` → `meta-llama-llama-4-maverick.md`
+
+### Navigation
+Every file must have navigation links (using relative paths):
+- `← [Back to Index](../README.md)` at top
+- Cross-links in tables to related files
 
 ---
 
