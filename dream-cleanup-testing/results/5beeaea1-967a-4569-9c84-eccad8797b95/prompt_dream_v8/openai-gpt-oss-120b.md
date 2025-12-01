@@ -101,6 +101,64 @@
 
 ---
 
+## CASE 2: Top-p Only (temperature = null)
+
+**Winner:** P1, P2, P3, P6 (tied) - 35/40
+
+### Critical Issue Persists
+
+**ALL P* configs also over-summarize.** Length ratio 50-56% (threshold: 70%).
+
+### Summary Tables
+
+#### Automated Checks
+
+| Config | top_p | Length | Ratio | "Hvala" | "Zdravstveno" | Processing |
+|--------|-------|--------|-------|---------|---------------|------------|
+| P1 | 0.1 | 2650 | 52.5% ❌ | ✅ Removed | ✅ Removed | 6.86s |
+| P2 | 0.3 | 2774 | 54.9% ❌ | ✅ Removed | ✅ Removed | 4.80s |
+| P3 | 0.5 | 2841 | 56.3% ❌ | ✅ Removed | ✅ Removed | 11.59s |
+| P4 | 0.7 | 2532 | 50.1% ❌ | ✅ Removed | ❌ Kept | 18.36s |
+| P5 | 0.9 | 2602 | 51.5% ❌ | ✅ Removed | ❌ Kept | 18.10s |
+| P6 | 1.0 | 2730 | 54.1% ❌ | ✅ Removed | ✅ Removed | 13.16s |
+
+#### Detailed Scores
+
+| Config | top_p | Content | Artifacts | Grammar | Readability | **TOTAL** |
+|--------|-------|---------|-----------|---------|-------------|-----------|
+| **P1** | 0.1 | 7/10 | 10/10 | 9/10 | 9/10 | **35/40** ⭐ |
+| **P2** | 0.3 | 7/10 | 10/10 | 9/10 | 9/10 | **35/40** ⭐ |
+| **P3** | 0.5 | 7/10 | 10/10 | 9/10 | 9/10 | **35/40** ⭐ |
+| P4 | 0.7 | 7/10 | 8/10 | 9/10 | 9/10 | **33/40** |
+| P5 | 0.9 | 7/10 | 8/10 | 9/10 | 9/10 | **33/40** |
+| **P6** | 1.0 | 7/10 | 10/10 | 9/10 | 9/10 | **35/40** ⭐ |
+
+### P* Config Analysis
+
+#### P1-P3 (top_p=0.1-0.5) - 35/40 ⭐
+- **Length:** 52-56% ❌ Over-summarized
+- **Content:** Missing details (-3)
+- **Artifacts:** All removed
+- **Grammar:** Excellent Slovenian
+
+#### P4-P5 (top_p=0.7-0.9) - 33/40
+- **Length:** 50-52% ❌ Over-summarized
+- **Artifacts:** Kept "Zdravstveno, da sem pripravljen" (-2)
+- **Grammar:** Excellent
+
+#### P6 (top_p=1.0) - 35/40 ⭐
+- **Length:** 2730 chars (54.1%) ❌ Over-summarized
+- **Content:** Missing details (-3)
+- **Artifacts:** All removed
+- **Grammar:** Excellent
+
+### P* Key Finding
+
+**No improvement from P* tests.** Best P* score (35/40) equals best T* score.
+Over-summarization is fundamental model behavior, not parameter tunable.
+
+---
+
 ## Key Findings
 
 1. **ALL configs over-summarize** - length ratio 46-58% (threshold: 70%)

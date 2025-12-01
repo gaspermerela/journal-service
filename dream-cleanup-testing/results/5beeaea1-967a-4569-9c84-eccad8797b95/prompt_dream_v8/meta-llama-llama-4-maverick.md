@@ -82,13 +82,74 @@
 
 ---
 
+## CASE 2: Top-p Only (temperature = null)
+
+**Winner:** P5 (top_p=0.9) - **37/40** ⭐
+
+### Summary Tables
+
+#### Automated Checks
+
+| Config | top_p | Length | Ratio | "Hvala" | Foreign Words | Processing |
+|--------|-------|--------|-------|---------|---------------|------------|
+| P1 | 0.1 | 4146 | 82.1% ✅ | ✅ None | ❌ "приходят" (Russian) | 4.49s |
+| P2 | 0.3 | 4030 | 79.8% ✅ | ✅ None | ❌ "приходят" (Russian) | 3.36s |
+| P3 | 0.5 | 4055 | 80.3% ✅ | ✅ None | ❌ "приходят" (Russian) | 16.41s |
+| P4 | 0.7 | 2667 | 52.8% ❌ | ✅ None | ❌ "приходят" (Russian) | 19.58s |
+| **P5** | 0.9 | 3860 | 76.4% ✅ | ✅ None | ✅ None | 21.98s |
+| P6 | 1.0 | 3724 | 73.7% ✅ | ✅ None | ✅ None | 21.82s |
+
+#### Detailed Scores
+
+| Config | top_p | Content | Artifacts | Grammar | Readability | **TOTAL** |
+|--------|-------|---------|-----------|---------|-------------|-----------|
+| P1 | 0.1 | 9/10 | 10/10 | 5/10 | 8/10 | **32/40** |
+| P2 | 0.3 | 9/10 | 10/10 | 5/10 | 8/10 | **32/40** |
+| P3 | 0.5 | 9/10 | 10/10 | 5/10 | 8/10 | **32/40** |
+| P4 | 0.7 | 6/10 | 10/10 | 5/10 | 7/10 | **28/40** |
+| **P5** | 0.9 | 9/10 | 10/10 | 9/10 | 9/10 | **37/40** ⭐ |
+| P6 | 1.0 | 9/10 | 10/10 | 7/10 | 9/10 | **35/40** |
+
+### P* Config Analysis
+
+#### P1-P3 (top_p=0.1-0.5) - 32/40
+- **Content:** Good preservation (79-82% ratio)
+- **Grammar:** ❌ Russian word "приходят" bug (same as T1-T2)
+- **"polnica"** not fixed
+
+#### P4 (top_p=0.7) - 28/40
+- **Length:** 2667 chars (52.8%) ❌ Over-summarized
+- **Grammar:** ❌ Russian word bug + over-summarization penalty
+
+#### P5 (top_p=0.9) - 37/40 ⭐ WINNER
+- **Length:** 3860 chars (76.4%) ✅
+- **Content:** All details preserved
+- **Grammar:** ✅ **"bolnica" FIXED!** ✅ No Russian words
+- **Readability:** Excellent flow
+
+#### P6 (top_p=1.0) - 35/40
+- **Length:** 3724 chars (73.7%) ✅
+- **Grammar:** ✅ No Russian words, but "polnica" NOT fixed
+
+### P* Key Finding
+
+**Russian word bug pattern confirmed:** Appears at top_p ≤ 0.7 (same as temp ≤ 0.3)
+
+| Parameter | Bug Threshold | Safe Values |
+|-----------|---------------|-------------|
+| Temperature | temp ≤ 0.3 | temp ≥ 0.5 |
+| Top-p | top_p ≤ 0.7 | top_p ≥ 0.9 |
+
+---
+
 ## Key Findings
 
-1. **Winner: T5 (temp=1.0)** - 38/40 (95%) ✅ **EXCEEDS THRESHOLD**
-2. **T5 is the ONLY config that fixed "polnica" → "bolnica"**
-3. **Russian word bug appears at temp=0.0 and temp=0.3**
-4. **High temperatures (1.5, 2.0) cause severe over-summarization**
-5. **Temp=1.0 is the sweet spot** - best grammar, best content preservation
+1. **Overall Winner: T5 (temp=1.0) = 38/40** ⭐⭐⭐ - best score across all tests
+2. **P5 (top_p=0.9) = 37/40** - second best, also fixes "bolnica"
+3. **"bolnica" fix requires high randomness:** T5 (temp=1.0) or P5 (top_p=0.9)
+4. **Russian word bug pattern:** Appears at low values (temp≤0.3 OR top_p≤0.7)
+5. **High values cause over-summarization:** temp≥1.5 OR (top_p=0.7 with temp=null)
+6. **Sweet spot:** temp=1.0 with top_p=null (T5 config)
 
 ---
 
