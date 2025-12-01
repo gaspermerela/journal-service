@@ -1,5 +1,13 @@
 """
 Fetch transcription and prompt data from database for cleanup testing.
+
+HOW TO RUN:
+    From the dream-cleanup-testing directory, source .env first to export environment variables:
+
+    cd dream-cleanup-testing
+    set -a && source ../.env && set +a && python fetch_data.py
+
+    This exports DATABASE_PASSWORD, JWT_SECRET_KEY, and other required env vars before running.
 """
 import asyncio
 import sys

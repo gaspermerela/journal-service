@@ -222,7 +222,8 @@ async def run_cleanup_via_api(
     transcription_id: str,
     config: Dict[str, Any],
     token: str,
-    model_name: str
+    model_name: str,
+    raw_length: int
 ) -> Dict[str, Any]:
     """
     Execute a single cleanup via API and wait for completion.
@@ -251,6 +252,11 @@ async def run_cleanup_via_api(
         # Safely extract analysis fields (handle None values)
         analysis = result.get("analysis") or {}
 
+        # Calculate length metrics
+        cleaned_text = result.get("cleaned_text", "")
+        cleaned_length = len(cleaned_text)
+        cleaned_raw_ratio = round(cleaned_length / raw_length, 4) if raw_length > 0 else 0
+
         # Transform API response to match our cache format
         cached_result = {
             "config": config_name,
@@ -263,7 +269,10 @@ async def run_cleanup_via_api(
             "prompt_id": result.get("prompt_template_id"),
             "prompt_name": result.get("prompt_name"),
             "transcription_id": transcription_id,
-            "cleaned_text": result.get("cleaned_text", ""),
+            "raw_length": raw_length,
+            "cleaned_length": cleaned_length,
+            "cleaned_raw_ratio": cleaned_raw_ratio,
+            "cleaned_text": cleaned_text,
             "themes": analysis.get("themes", []),
             "emotions": analysis.get("emotions", []),
             "characters": analysis.get("characters", []),
@@ -285,6 +294,9 @@ async def run_cleanup_via_api(
             "top_p": top_p,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "transcription_id": transcription_id,
+            "raw_length": raw_length,
+            "cleaned_length": 0,
+            "cleaned_raw_ratio": 0,
             "raw_response": raw_response,  # Will be None if polling failed before getting response
             "status": "failed",
             "error": str(e)
@@ -298,7 +310,8 @@ async def run_test_case(
     client: httpx.AsyncClient,
     token: str,
     cache_dir: Path,
-    model_name: str
+    model_name: str,
+    raw_length: int
 ) -> Dict[str, Dict[str, Any]]:
     """
     Run all configs for a test case, using cache when available.
@@ -324,7 +337,7 @@ async def run_test_case(
 
         # Execute cleanup via API
         result = await run_cleanup_via_api(
-            client, transcription_id, config, token, model_name
+            client, transcription_id, config, token, model_name, raw_length
         )
 
         # Cache immediately
@@ -353,6 +366,16 @@ async def main(model_name: str, prompt_name: str, case: str):
 
     cache_dir = get_cache_dir(model_name, prompt_name)
 
+    # Load fetched data to get raw transcription length
+    data_file = Path(__file__).parent / "cache" / f"prompt_{prompt_name}" / "fetched_data.json"
+    if not data_file.exists():
+        print(f"[ERROR] {data_file} not found. Run fetch_data.py first!")
+        return
+
+    with open(data_file, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    raw_length = len(data["transcription"]["text"])
+
     print(f"Transcription: {TRANSCRIPTION_ID}")
     print(f"API Base URL: {API_BASE_URL}")
     print(f"Prompt: {prompt_name}")
@@ -360,6 +383,7 @@ async def main(model_name: str, prompt_name: str, case: str):
     print(f"Cache directory: {cache_dir}")
     print(f"Test case: {case}")
     print(f"User: {email}")
+    print(f"Raw transcription length: {raw_length} chars")
 
     # Create async HTTP client
     async with httpx.AsyncClient(timeout=300.0) as client:
@@ -384,7 +408,8 @@ async def main(model_name: str, prompt_name: str, case: str):
                 client,
                 token,
                 cache_dir,
-                model_name
+                model_name,
+                raw_length
             )
             all_results.update(case1_results)
 
@@ -397,7 +422,8 @@ async def main(model_name: str, prompt_name: str, case: str):
                 client,
                 token,
                 cache_dir,
-                model_name
+                model_name,
+                raw_length
             )
             all_results.update(case2_results)
 
@@ -410,7 +436,8 @@ async def main(model_name: str, prompt_name: str, case: str):
                 client,
                 token,
                 cache_dir,
-                model_name
+                model_name,
+                raw_length
             )
             all_results.update(case3_results)
 

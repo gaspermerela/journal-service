@@ -153,7 +153,12 @@ def run_cleanup(
         parsed = json.loads(raw_response)
         cleaned_text = parsed.get("cleaned_text", "")
 
-        print(f"   ✅ Success! ({processing_time:.2f}s, {len(cleaned_text)} chars)")
+        # Calculate length metrics
+        raw_length = len(transcription)
+        cleaned_length = len(cleaned_text)
+        cleaned_raw_ratio = round(cleaned_length / raw_length, 4) if raw_length > 0 else 0
+
+        print(f"   ✅ Success! ({processing_time:.2f}s, {cleaned_length} chars, {cleaned_raw_ratio*100:.1f}%)")
 
         return {
             "config": config_name,
@@ -164,6 +169,9 @@ def run_cleanup(
             "processing_time_seconds": processing_time,
             "prompt_id": prompt_id,
             "transcription_id": TRANSCRIPTION_ID,
+            "raw_length": raw_length,
+            "cleaned_length": cleaned_length,
+            "cleaned_raw_ratio": cleaned_raw_ratio,
             "cleaned_text": cleaned_text,
             "themes": parsed.get("themes", []),
             "emotions": parsed.get("emotions", []),
@@ -183,6 +191,9 @@ def run_cleanup(
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "prompt_id": prompt_id,
             "transcription_id": TRANSCRIPTION_ID,
+            "raw_length": len(transcription),
+            "cleaned_length": 0,
+            "cleaned_raw_ratio": 0,
             "status": "failed",
             "error": str(e)
         }

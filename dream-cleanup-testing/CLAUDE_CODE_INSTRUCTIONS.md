@@ -137,16 +137,24 @@ All testing will be performed on this specific transcription for consistency.
      "processing_time_seconds": 4.09,
      "prompt_id": 378,
      "prompt_name": "dream_v5",
+     "transcription_id": "5beeaea1-967a-4569-9c84-eccad8797b95",
+     "raw_length": 5051,
+     "cleaned_length": 4234,
+     "cleaned_raw_ratio": 0.8382,
      "cleaned_text": "...",
      "themes": [...],
      "emotions": [...],
      "characters": [...],
      "locations": [...],
      "raw_response": "...",
-     "transcription_id": "5beeaea1-967a-4569-9c84-eccad8797b95",
      "status": "success"
    }
    ```
+
+   **Length Metrics:**
+   - `raw_length`: Character count of the original raw transcription
+   - `cleaned_length`: Character count of the cleaned text output
+   - `cleaned_raw_ratio`: Ratio as 4-decimal float (e.g., 0.8382 = 83.82%)
 
 **Workflow:**
 
