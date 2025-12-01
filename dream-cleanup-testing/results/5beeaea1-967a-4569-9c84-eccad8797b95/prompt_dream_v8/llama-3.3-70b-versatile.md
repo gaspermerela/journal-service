@@ -4,7 +4,7 @@
 
 ---
 
-**Status:** ✅ Complete | **Best Score:** 35/40
+**Status:** ✅ Complete | **Best Score:** 36/40 (P4)
 **Cache:** `cache/prompt_dream_v8/5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/`
 
 **Test Date:** 2025-12-01
@@ -97,14 +97,70 @@
 
 ---
 
+## CASE 2: Top-p Only (temperature = null)
+
+**Winner:** P4 (top_p=0.7) - **36/40** ⭐ **MEETS THRESHOLD**
+
+### Summary Tables
+
+#### Automated Checks
+
+| Config | top_p | Length | Ratio | "Hvala" | "Zdravstveno" | Processing |
+|--------|-------|--------|-------|---------|---------------|------------|
+| P1 | 0.1 | 3847 | 76.2% ✅ | ✅ Removed | ✅ Removed | 3.80s |
+| P2 | 0.3 | 3950 | 78.2% ✅ | ✅ Removed | ✅ Removed | 3.43s |
+| P3 | 0.5 | 4436 | 87.8% ✅ | ✅ Removed | ✅ Removed | 3.74s |
+| **P4** | 0.7 | 4130 | 81.8% ✅ | ✅ Removed | ✅ Removed | 4.00s |
+| P5 | 0.9 | 3743 | 74.1% ✅ | ✅ Removed | ✅ Removed | 8.76s |
+| P6 | 1.0 | 3517 | 69.6% ❌ | ✅ Removed | ✅ Removed | 12.73s |
+
+#### Detailed Scores
+
+| Config | top_p | Content | Artifacts | Grammar | Readability | **TOTAL** |
+|--------|-------|---------|-----------|---------|-------------|-----------|
+| P1 | 0.1 | 9/10 | 10/10 | 6/10 | 8/10 | **33/40** |
+| P2 | 0.3 | 9/10 | 10/10 | 6/10 | 8/10 | **33/40** |
+| P3 | 0.5 | 9/10 | 9/10 | 6/10 | 9/10 | **33/40** |
+| **P4** | 0.7 | 9/10 | 10/10 | 8/10 | 9/10 | **36/40** ⭐ |
+| P5 | 0.9 | 9/10 | 10/10 | 6/10 | 8/10 | **33/40** |
+| P6 | 1.0 | 8/10 | 10/10 | 6/10 | 8/10 | **32/40** |
+
+### P* Config Analysis
+
+#### P1-P3 (top_p=0.1-0.5) - 33/40
+- **Content:** Good preservation (76-88% ratio)
+- **Grammar:** "polnica" not fixed, garbled phrases remain
+- **P3 artifact:** "Sem pripravljen" intro
+
+#### P4 (top_p=0.7) - 36/40 ⭐ WINNER
+- **Length:** 4130 chars (81.8%) ✅
+- **Content:** All details preserved
+- **Grammar:** ✅ **"bolnica" FIXED!** (first time for this model)
+- **Readability:** Excellent flow, natural voice
+
+#### P5-P6 (top_p=0.9-1.0) - 32-33/40
+- **Grammar:** "polnica" NOT fixed (surprisingly)
+- **P6:** Slightly below length threshold (69.6%)
+
+### P* Key Finding
+
+**P4 (top_p=0.7) is the ONLY config for llama-3.3-70b that fixes "bolnica"!**
+
+This is significant because:
+- No T* config fixed "bolnica" (max score was 35/40)
+- P4 achieves 36/40, meeting the threshold
+- The fix happens at a specific top_p value (0.7)
+
+---
+
 ## Key Findings
 
-1. **Best score: 35/40** - does NOT meet 36/40 threshold
-2. **Three-way tie:** T1, T2, T5 all scored 35/40
-3. **"polnica" NOT fixed** in any config (unlike maverick at temp=1.0)
-4. **T3, T5 artifact:** "Sem pripravljen" intro (model responding to prompt)
+1. **Best overall: P4 (top_p=0.7) = 36/40** ⭐ - MEETS threshold!
+2. **Best T*: T1/T2/T5 = 35/40** - below threshold
+3. **"bolnica" fix:** Only P4 (top_p=0.7) fixes it - unique behavior vs maverick
+4. **T3, T5, P3 artifact:** "Sem pripravljen" intro (model responding to prompt)
 5. **High temps degrade quality:** T6, T7 severely over-summarize
-6. **Faster processing:** ~4s for T1-T4 vs ~11-31s for T5-T7
+6. **Fast processing:** ~4s for most configs
 
 ---
 
@@ -113,22 +169,28 @@
 | Model | Best Score | Best Config | "bolnica" Fixed | Key Issue |
 |-------|------------|-------------|-----------------|-----------|
 | **maverick** | **38/40** ⭐ | T5 (temp=1.0) | ✅ Yes | Russian bug at temp≤0.3 |
-| llama-3.3-70b | 35/40 | T1/T2/T5 | ❌ No | Grammar fixes lacking |
+| llama-3.3-70b | **36/40** | P4 (top_p=0.7) | ✅ Yes | Unique top_p behavior |
 
-**Verdict:** maverick with dream_v8 remains the best configuration.
+**Verdict:** maverick with dream_v8 remains the best configuration (38/40 vs 36/40).
 
 ---
 
 ## Production Recommendation
 
-**Do NOT use llama-3.3-70b-versatile with dream_v8 prompt.**
+**llama-3.3-70b-versatile CAN be used with dream_v8 prompt (meets threshold).**
 
-- Best score (35/40) is below 36/40 threshold
-- Does not fix "polnica" → "bolnica" typo
-- maverick achieves 38/40 with same prompt
+- Best score: **36/40** with P4 (top_p=0.7) - meets 36/40 threshold ✅
+- Only P4 fixes "polnica" → "bolnica" typo
+- maverick still achieves better score (38/40)
 
-If llama-3.3-70b must be used:
-- **Temperature:** 0.0 or 0.3 (fastest, most consistent)
+If llama-3.3-70b is preferred:
+- **Temperature:** null (unset)
+- **Top-p:** 0.7 (P4 config)
+- **Expected Score:** 36/40 (90%)
+- **Processing Time:** ~4s
+
+If fastest config needed (with slight quality tradeoff):
+- **Temperature:** 0.0 or 0.3
 - **Top-p:** null
 - **Expected Score:** 35/40 (87.5%)
-- **Processing Time:** ~4s
+- **Processing Time:** ~3.5s
