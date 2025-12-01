@@ -6,7 +6,7 @@
 
 **Prompt Version:** dream_v8 (version 1, prompt_id: 390)
 **Prompt Type:** Single-task (cleaned_text ONLY - no theme extraction)
-**Models Tested:** 1 (maverick)
+**Models Tested:** 3 (maverick, llama-3.3-70b, gpt-oss-120b)
 **Testing Date:** 2025-12-01
 
 ---
@@ -25,6 +25,8 @@ This is a **single-task prompt** vs multi-task prompts (v5, v7).
 | Model | Best Score | Best Config | Ratio | Key Achievement |
 |-------|------------|-------------|-------|-----------------|
 | [meta-llama/llama-4-maverick](./meta-llama-llama-4-maverick.md) | **38/40** ⭐⭐⭐ | T5 (temp=1.0) | 81.29% ✅ | **Fixed "bolnica"**, no Russian words |
+| [llama-3.3-70b-versatile](./llama-3.3-70b-versatile.md) | 35/40 | T1/T2/T5 | 78-88% ✅ | Fast (~4s), but "polnica" not fixed |
+| [openai/gpt-oss-120b](./openai-gpt-oss-120b.md) | 35/40 | T2/T3/T4/T6 | 46-58% ❌ | Best grammar, but over-summarizes |
 
 ---
 
