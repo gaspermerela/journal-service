@@ -121,15 +121,23 @@ python rerun_one_config.py T3 --list-versions
 
 ## Results
 
-**Location:** `results/cleanup_{transcription_id}_{date}.md`
+**Location:** `results/{transcription_id}/` (multi-file directory structure)
 
-**Format:** Uses template from `templates/RESULT_TEMPLATE.md`
+**Format:** Uses templates from `templates/RESULT_TEMPLATE.md`
 
-**Contents:**
-- Raw transcription
-- Prompt version used
-- Each cleanup attempt with scores, issues, cleaned text
-- Best result summary at top
+**Structure:**
+```
+results/{transcription_id}/
+├── README.md                    # Main index + best result summary
+├── source-data.md               # Transcription metadata + scoring criteria
+├── prompt_dream_v5/             # Results per prompt version
+│   ├── README.md                # Prompt summary + model comparison
+│   └── {model-slug}.md          # Detailed per-model results
+├── prompt_dream_v7/
+└── prompt_dream_v8/
+```
+
+**Why multi-file?** Single-file results grew to 35k+ tokens, exceeding Claude Code's read limits. Each file now stays under ~4k tokens.
 
 **Reference:** `reference/reference-cleanup-example.md` shows target quality level.
 
