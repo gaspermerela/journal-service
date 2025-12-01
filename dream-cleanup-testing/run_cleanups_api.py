@@ -84,21 +84,80 @@ def get_cache_dir(model_name: str, prompt_name: str) -> Path:
     return cache_dir
 
 
-def load_cached_result(cache_dir: Path, config_name: str) -> Optional[Dict[str, Any]]:
-    """Load cached result if it exists."""
-    cache_file = cache_dir / f"{config_name}.json"
-    if cache_file.exists():
-        with open(cache_file, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return None
+def find_all_versions(config_name: str, cache_dir: Path) -> list[int]:
+    """
+    Find all existing versions of a config.
+
+    Returns:
+        List of version numbers (1 for base file, 2+ for versioned files)
+    """
+    versions = []
+
+    # Check base file (version 1)
+    base_file = cache_dir / f"{config_name}.json"
+    if base_file.exists():
+        versions.append(1)
+
+    # Check versioned files (v2, v3, ...)
+    version_num = 2
+    while True:
+        version_file = cache_dir / f"{config_name}_v{version_num}.json"
+        if version_file.exists():
+            versions.append(version_num)
+            version_num += 1
+        else:
+            break
+
+    return sorted(versions)
 
 
-def save_to_cache(cache_dir: Path, config_name: str, result: Dict[str, Any]) -> None:
-    """Save result to cache."""
-    cache_file = cache_dir / f"{config_name}.json"
+def get_next_version(config_name: str, cache_dir: Path) -> int:
+    """Get next available version number for a config."""
+    versions = find_all_versions(config_name, cache_dir)
+    if not versions:
+        return 1
+    return max(versions) + 1
+
+
+def get_cache_filename(config_name: str, version: int) -> str:
+    """
+    Get cache filename for a config and version.
+
+    Examples:
+        get_cache_filename("T3", 1) -> "T3.json"
+        get_cache_filename("T3", 2) -> "T3_v2.json"
+    """
+    if version == 1:
+        return f"{config_name}.json"
+    return f"{config_name}_v{version}.json"
+
+
+def save_to_cache(cache_dir: Path, config_name: str, result: Dict[str, Any]) -> Path:
+    """
+    Save result to cache with automatic versioning.
+
+    If config already exists, creates new version (T1_v2.json, T1_v3.json, etc.)
+
+    Returns:
+        Path to saved cache file
+    """
+    version = get_next_version(config_name, cache_dir)
+    filename = get_cache_filename(config_name, version)
+    cache_file = cache_dir / filename
+
+    # Add version metadata to result
+    result["cache_version"] = version
+    result["cache_filename"] = filename
+
     with open(cache_file, 'w', encoding='utf-8') as f:
         json.dump(result, f, indent=2, ensure_ascii=False)
-    print(f"   Cached to: {cache_file.name}")
+
+    if version > 1:
+        print(f"   Cached to: {filename} (new version)")
+    else:
+        print(f"   Cached to: {filename}")
+
+    return cache_file
 
 
 async def authenticate(client: httpx.AsyncClient, email: str, password: str) -> str:
@@ -314,7 +373,10 @@ async def run_test_case(
     raw_length: int
 ) -> Dict[str, Dict[str, Any]]:
     """
-    Run all configs for a test case, using cache when available.
+    Run all configs for a test case with automatic versioning.
+
+    Always executes fresh API calls. If previous versions exist,
+    creates new versioned files (T1_v2.json, T1_v3.json, etc.)
 
     Returns: dict mapping config_name -> result
     """
@@ -328,19 +390,18 @@ async def run_test_case(
     for config in configs:
         config_name = config["name"]
 
-        # Check cache first
-        cached = load_cached_result(cache_dir, config_name)
-        if cached:
-            print(f"\n[CACHE] {config_name} - Using cached result from {cached.get('timestamp', 'unknown')}")
-            results[config_name] = cached
-            continue
+        # Show version info
+        existing_versions = find_all_versions(config_name, cache_dir)
+        next_version = get_next_version(config_name, cache_dir)
+        if existing_versions:
+            print(f"\n[VERSION] {config_name} - Existing versions: {existing_versions}, will create v{next_version}")
 
         # Execute cleanup via API
         result = await run_cleanup_via_api(
             client, transcription_id, config, token, model_name, raw_length
         )
 
-        # Cache immediately
+        # Cache with auto-versioning
         save_to_cache(cache_dir, config_name, result)
 
         results[config_name] = result
