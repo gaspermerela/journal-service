@@ -229,32 +229,14 @@ LLM_PROVIDER_PARAMETERS = {
 # TODO: schemas and their LLM instructions will probably change multiple times in the future.
 OUTPUT_SCHEMAS = {
     "dream": {
-        "description": "Analysis schema for dream journal entries",
+        "description": "Schema for dream journal entries with paragraph-based output",
         "fields": {
-            # "themes": {
-            #     "type": "array",
-            #     "item_type": "string",
-            #     "description": "Main themes and motifs of the dream",
-            #     "required": False
-            # },
-            # "emotions": {
-            #     "type": "array",
-            #     "item_type": "string",
-            #     "description": "Emotions experienced in the dream",
-            #     "required": False
-            # },
-            # "characters": {
-            #     "type": "array",
-            #     "item_type": "string",
-            #     "description": "People, creatures, or entities in the dream",
-            #     "required": False
-            # },
-            # "locations": {
-            #     "type": "array",
-            #     "item_type": "string",
-            #     "description": "Places and settings in the dream",
-            #     "required": False
-            # }
+            "paragraphs": {
+                "type": "array",
+                "item_type": "string",
+                "description": "List of paragraphs, each representing one scene or moment in the dream",
+                "required": True
+            }
         }
     },
     "therapy": {
@@ -320,24 +302,41 @@ def generate_json_schema_instruction(entry_type: str) -> str:
     Returns:
         Multi-line string with JSON schema instruction
 
-    Example output:
+    Example output for dream:
+        '''
+        Respond ONLY with valid JSON in this exact format:
+        {{
+          "paragraphs": ["First scene...", "Second scene...", "..."]
+        }}
+        '''
+
+    Example output for therapy:
         '''
         Respond ONLY with valid JSON in this exact format:
         {{
           "cleaned_text": "The cleaned text here",
-          "themes": ["theme1", "theme2"],
-          "emotions": ["emotion1"],
+          "topics": ["topic1", "topic2"],
           ...
         }}
         '''
     """
     schema = get_output_schema(entry_type)
 
-    # Build example JSON structure
+    # Build example JSON structure based on schema fields
     example_fields = []
-    example_fields.append('  "cleaned_text": "The cleaned and formatted text here"')
 
+    # Check if schema has 'paragraphs' field (new paragraph-based output)
+    if "paragraphs" in schema["fields"]:
+        # Paragraph-based output: paragraphs array replaces cleaned_text
+        example_fields.append('  "paragraphs": ["First scene or moment...", "Second scene...", "..."]')
+    else:
+        # Traditional output: cleaned_text as primary field
+        example_fields.append('  "cleaned_text": "The cleaned and formatted text here"')
+
+    # Add remaining fields from schema (excluding paragraphs if already added)
     for field_name, field_config in schema["fields"].items():
+        if field_name == "paragraphs":
+            continue  # Already handled above
         if field_config["type"] == "array":
             example_fields.append(f'  "{field_name}": ["{field_config["description"]}"]')
         else:
