@@ -342,6 +342,13 @@ class GroqLLMCleanupService(LLMCleanupService):
         """
         Parse and validate LLM JSON response using OUTPUT_SCHEMAS.
 
+        Supports two output formats:
+        1. Paragraph-based: {"paragraphs": ["para1", "para2", ...]}
+           - Joins paragraphs with \\n\\n for cleaned_text
+           - Stores original array in analysis.paragraphs
+        2. Traditional: {"cleaned_text": "...", ...}
+           - Uses cleaned_text directly
+
         Args:
             response_text: Raw response from LLM
             entry_type: Entry type for schema lookup
@@ -351,7 +358,7 @@ class GroqLLMCleanupService(LLMCleanupService):
 
         Raises:
             ValueError: If response is not valid JSON
-            KeyError: If cleaned_text is missing
+            KeyError: If neither cleaned_text nor paragraphs is present
         """
         logger.debug(
             "Parsing LLM response",
@@ -377,10 +384,6 @@ class GroqLLMCleanupService(LLMCleanupService):
             logger.error("Failed to parse LLM response as JSON", error=str(e))
             raise ValueError(f"LLM response is not valid JSON: {e}")
 
-        # Validate required field
-        if "cleaned_text" not in parsed:
-            raise KeyError("LLM response missing required 'cleaned_text' field")
-
         # Get schema for this entry_type
         try:
             schema = get_output_schema(entry_type)
@@ -391,14 +394,56 @@ class GroqLLMCleanupService(LLMCleanupService):
             )
             schema = get_output_schema("dream")
 
-        # Parse analysis fields with graceful degradation
-        analysis = {}
+        # Determine output format based on schema and response
+        has_paragraphs_schema = "paragraphs" in schema["fields"]
+        has_paragraphs_response = "paragraphs" in parsed and isinstance(parsed["paragraphs"], list)
+        has_cleaned_text = "cleaned_text" in parsed
+
+        # Handle paragraph-based output (new format)
+        if has_paragraphs_schema and has_paragraphs_response:
+            paragraphs = parsed["paragraphs"]
+            # Validate paragraphs array
+            if not paragraphs:
+                raise KeyError("LLM response has empty 'paragraphs' array")
+            if not all(isinstance(p, str) for p in paragraphs):
+                raise ValueError("All items in 'paragraphs' array must be strings")
+
+            # Join paragraphs with double newline for cleaned_text (backwards compatibility)
+            cleaned_text = "\n\n".join(paragraphs)
+
+            logger.info(
+                f"Parsed paragraph-based response: {len(paragraphs)} paragraphs, "
+                f"{len(cleaned_text)} chars total"
+            )
+
+            # Store paragraphs in analysis for frontend access
+            analysis = {"paragraphs": paragraphs}
+
+        # Handle traditional output (cleaned_text directly)
+        elif has_cleaned_text:
+            cleaned_text = parsed["cleaned_text"]
+            analysis = {}
+
+            logger.info(
+                f"Parsed traditional response: {len(cleaned_text)} chars"
+            )
+
+        else:
+            # Neither format found
+            raise KeyError(
+                "LLM response missing required field: expected 'paragraphs' array "
+                f"(for entry_type='{entry_type}') or 'cleaned_text' string"
+            )
+
+        # Parse additional analysis fields from schema (excluding paragraphs if already handled)
         for field_name in schema["fields"].keys():
+            if field_name == "paragraphs":
+                continue  # Already handled above
             # Use .get() with default - tolerates missing fields
             analysis[field_name] = parsed.get(field_name, [])
 
         return {
-            "cleaned_text": parsed["cleaned_text"],
+            "cleaned_text": cleaned_text,
             "analysis": analysis
         }
 
