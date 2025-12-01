@@ -340,7 +340,8 @@ async def execute_cleanup(
     config: Dict[str, Any],
     model_name: str,
     client: httpx.AsyncClient,
-    token: str
+    token: str,
+    raw_length: int
 ) -> Dict[str, Any]:
     """
     Execute cleanup via API and return result.
@@ -367,6 +368,11 @@ async def execute_cleanup(
         # Safely extract analysis fields (handle None values)
         analysis = result.get("analysis") or {}
 
+        # Calculate length metrics
+        cleaned_text = result.get("cleaned_text", "")
+        cleaned_length = len(cleaned_text)
+        cleaned_raw_ratio = round(cleaned_length / raw_length, 4) if raw_length > 0 else 0
+
         # Transform API response to cache format
         cached_result = {
             "config": config_name,
@@ -379,7 +385,10 @@ async def execute_cleanup(
             "prompt_id": result.get("prompt_template_id"),
             "prompt_name": result.get("prompt_name"),
             "transcription_id": TRANSCRIPTION_ID,
-            "cleaned_text": result.get("cleaned_text", ""),
+            "raw_length": raw_length,
+            "cleaned_length": cleaned_length,
+            "cleaned_raw_ratio": cleaned_raw_ratio,
+            "cleaned_text": cleaned_text,
             "themes": analysis.get("themes", []),
             "emotions": analysis.get("emotions", []),
             "characters": analysis.get("characters", []),
@@ -400,6 +409,9 @@ async def execute_cleanup(
             "top_p": top_p,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "transcription_id": TRANSCRIPTION_ID,
+            "raw_length": raw_length,
+            "cleaned_length": 0,
+            "cleaned_raw_ratio": 0,
             "raw_response": raw_response,  # Will be None if polling failed before getting response
             "status": "failed",
             "error": str(e)
@@ -570,6 +582,17 @@ Examples:
     next_version = get_next_version(config_name, cache_dir)
     print(f"   Will save as version {next_version}")
 
+    # Load fetched data to get raw transcription length
+    data_file = Path(__file__).parent / "cache" / f"prompt_{prompt_name}" / "fetched_data.json"
+    if not data_file.exists():
+        print(f"\n❌ Error: {data_file} not found. Run fetch_data.py first!")
+        return
+
+    with open(data_file, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    raw_length = len(data["transcription"]["text"])
+    print(f"   Raw transcription length: {raw_length} chars")
+
     # Load credentials
     email = os.getenv("TEST_USER_EMAIL")
     password = os.getenv("TEST_USER_PASSWORD")
@@ -596,7 +619,7 @@ Examples:
             return
 
         # Execute cleanup
-        result = await execute_cleanup(config_name, config, model_name, client, token)
+        result = await execute_cleanup(config_name, config, model_name, client, token, raw_length)
 
         # Save to cache with version
         cache_file = save_to_cache(config_name, result, next_version, cache_dir)
