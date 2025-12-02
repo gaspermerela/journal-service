@@ -74,4 +74,4 @@ The winning configuration uses **dream_v8**, a simplified prompt that **removes 
 | [dream_v5](./prompt_dream_v5/README.md) | 5 | 36/40 ⭐ | llama-3.3-70b-versatile | Multi-task (themes + emotions) |
 | [dream_v7](./prompt_dream_v7/README.md) | 5 | 35/40 | Multiple (tied) | Multi-task, shorter prompt |
 | [dream_v8](./prompt_dream_v8/README.md) ⭐ | 1 | **38/40** ⭐⭐⭐ | **maverick** | **Single-task (cleaned_text only)** |
-| [dream_v8_paragraphs](./prompt_dream_v8_paragraphs/README.md) | 1 | 35/40 | maverick | **Paragraphs schema** (guaranteed structure) |
+| [dream_v8_paragraphs](./prompt_dream_v8_paragraphs/README.md) | 1 | ~~35~~ **32/40** (T3/T4) | maverick | ⚠️ Content loss at T5 - use T3/T4 or dream_v8 |
