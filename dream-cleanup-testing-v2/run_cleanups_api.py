@@ -13,8 +13,8 @@ Examples:
     python run_cleanups_api.py gpt-oss-120b --prompt dream_v7 --case all
 
 Cache Structure:
-    cache/prompt_{prompt_name}/{transcription_id}_{model_name}/
-    Example: cache/prompt_dream_v7/5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
+    cache/{transcription_id}/{prompt_name}/{model_name}/
+    Example: cache/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v7/llama-3.3-70b-versatile/
 """
 import asyncio
 import json
@@ -71,15 +71,14 @@ BOTH_CONFIGS = [
 
 def get_cache_dir(model_name: str, prompt_name: str) -> Path:
     """
-    Get model-specific cache directory within prompt version directory.
+    Get cache directory for a specific transcription, prompt, and model.
 
-    Format: cache/prompt_{prompt_name}/{transcription_id}_{sanitized_model_name}/
-    Example: cache/prompt_dream_v7/5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
+    Format: cache/{transcription_id}/{prompt_name}/{sanitized_model_name}/
+    Example: cache/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v7/llama-3.3-70b-versatile/
     """
-    base_dir = Path(__file__).parent / "cache" / f"prompt_{prompt_name}"
     # Sanitize model name for directory (replace / and : with -)
     safe_model_name = model_name.replace("/", "-").replace(":", "-")
-    cache_dir = base_dir / f"{TRANSCRIPTION_ID}_{safe_model_name}"
+    cache_dir = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / prompt_name / safe_model_name
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
 
@@ -428,7 +427,7 @@ async def main(model_name: str, prompt_name: str, case: str):
     cache_dir = get_cache_dir(model_name, prompt_name)
 
     # Load fetched data to get raw transcription length
-    data_file = Path(__file__).parent / "cache" / f"prompt_{prompt_name}" / "fetched_data.json"
+    data_file = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / "fetched_data.json"
     if not data_file.exists():
         print(f"[ERROR] {data_file} not found. Run fetch_data.py first!")
         return
