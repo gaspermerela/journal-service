@@ -100,10 +100,10 @@ if __name__ == "__main__":
     data = asyncio.run(fetch_transcription_data())
 
     if data:
-        # Save to prompt-version-specific directory
-        # Structure: cache/prompt_dream_v{version}/fetched_data.json
-        prompt_name = data["prompt"]["name"]  # e.g., "dream_v7"
-        cache_dir = Path(__file__).parent / "cache" / f"prompt_{prompt_name}"
+        # Save to transcription-specific directory
+        # Structure: cache/{transcription_id}/fetched_data.json
+        transcription_id = data["transcription"]["id"]
+        cache_dir = Path(__file__).parent / "cache" / transcription_id
         cache_dir.mkdir(parents=True, exist_ok=True)
         output_file = cache_dir / "fetched_data.json"
 

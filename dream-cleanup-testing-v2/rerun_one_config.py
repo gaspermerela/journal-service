@@ -41,10 +41,12 @@ ARCHITECTURE:
 
 CACHE STRUCTURE:
 ----------------
-cache/prompt_{prompt_name}/{transcription_id}_{model_name}/
+cache/{transcription_id}/{prompt_name}/{model_name}/
   - T3.json (first run)
   - T3_v2.json (second run)
   - T3_v3.json (third run)
+
+Example: cache/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v7/llama-3.3-70b-versatile/
 
 Latest version = highest version number or base file (T3.json) if no versions exist
 """
@@ -76,15 +78,14 @@ MAX_POLL_TIME = 120  # seconds
 
 def get_cache_dir(prompt_name: str, model_name: str) -> Path:
     """
-    Get prompt-specific, model-specific cache directory.
+    Get cache directory for a specific transcription, prompt, and model.
 
-    Format: cache/prompt_{prompt_name}/{transcription_id}_{sanitized_model_name}/
-    Example: cache/prompt_dream_v7/5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
+    Format: cache/{transcription_id}/{prompt_name}/{sanitized_model_name}/
+    Example: cache/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v7/llama-3.3-70b-versatile/
     """
-    base_dir = Path(__file__).parent / "cache" / f"prompt_{prompt_name}"
     # Sanitize model name for directory (replace / and : with -)
     safe_model_name = model_name.replace("/", "-").replace(":", "-")
-    cache_dir = base_dir / f"{TRANSCRIPTION_ID}_{safe_model_name}"
+    cache_dir = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / prompt_name / safe_model_name
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
 
@@ -453,7 +454,7 @@ def print_result_for_evaluation(config_name: str, result: Dict[str, Any], versio
     print(f"   Locations: {result.get('locations', [])}")
 
     # Load raw transcription for comparison
-    data_file = Path(__file__).parent / "cache" / "fetched_data.json"
+    data_file = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / "fetched_data.json"
     if data_file.exists():
         with open(data_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -583,7 +584,7 @@ Examples:
     print(f"   Will save as version {next_version}")
 
     # Load fetched data to get raw transcription length
-    data_file = Path(__file__).parent / "cache" / f"prompt_{prompt_name}" / "fetched_data.json"
+    data_file = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / "fetched_data.json"
     if not data_file.exists():
         print(f"\n❌ Error: {data_file} not found. Run fetch_data.py first!")
         return
