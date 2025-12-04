@@ -1,2 +1,4 @@
 # Private criteria files (contain actual dream content)
 criteria/
+cache/
+reference/

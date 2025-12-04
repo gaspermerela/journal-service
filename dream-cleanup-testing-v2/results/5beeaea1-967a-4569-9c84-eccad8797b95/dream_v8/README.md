@@ -7,6 +7,37 @@
 
 ---
 
+## Prompt Text
+
+<details>
+<summary>Click to expand full prompt text</summary>
+
+```
+Clean this Slovenian dream transcription for a personal journal.
+
+RULES:
+1. Fix grammar, spelling, punctuation. Use "knjižna slovenščina".
+2. Write in present tense, first person ("jaz").
+3. Break into short paragraphs (one scene/moment each).
+4. Remove only STT artifacts: filler words ("v bistvu", "torej"), false starts, repeated words, audio junk ("Hvala").
+5. KEEP EVERY specific detail - actions, objects, descriptions, sensory details, feelings. Unusual or strange details are ESPECIALLY important to preserve exactly as stated.
+6. Do NOT summarize. Do NOT shorten. Do NOT invent or explain anything not in the original.
+7. Fix obvious mishearings
+
+OUTPUT FORMAT:
+Respond ONLY with valid JSON in this exact format (no markdown, no extra text):
+{{
+  "cleaned_text": "The cleaned version here"
+}}',
+
+TRANSCRIPTION:
+"{transcription_text}"
+```
+
+</details>
+
+---
+
 ## Best Result
 
 | Model | Config | Score | Status |

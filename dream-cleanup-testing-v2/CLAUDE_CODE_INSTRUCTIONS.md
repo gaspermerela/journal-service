@@ -14,7 +14,6 @@ You are optimizing Slovenian dream transcription cleanup. This guide explains th
 
 All testing uses this single transcription for consistency.
 
-**Raw transcription:** `cache/{transcription_id}/fetched_data.json`
 **Scoring criteria:** `criteria/{transcription_id}.md` (gitignored - contains dream content)
 
 ---
@@ -23,8 +22,8 @@ All testing uses this single transcription for consistency.
 
 ```
 cache/{transcription_id}/
-├── fetched_data.json                    # Raw transcription + current prompt
 └── {prompt_name}/
+    ├── fetched_data.json                    # Raw transcription + prompt text for THIS version
     └── {model_name}/
         ├── T1.json, T2.json, ... T7.json    # Temperature configs
         ├── P1.json, P2.json, ... P6.json    # Top-p configs
@@ -33,6 +32,15 @@ cache/{transcription_id}/
 ```
 
 **Example:** `cache/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v8/llama-3.3-70b-versatile/T1.json`
+
+### Why fetched_data.json is per-prompt
+
+The `fetched_data.json` is stored per prompt version (not per transcription) because:
+1. Different prompt versions have different prompt text
+2. Results depend on the exact prompt used
+3. Each prompt version's README should reference its actual prompt text
+
+**To fetch:** `python fetch_data.py --prompt dream_v8`
 
 ---
 
@@ -290,7 +298,7 @@ Location: `results/{transcription_id}/README.md`
 
 ### Phase 1: Parameter Optimization
 
-1. **Setup:** Run `fetch_data.py` to get transcription + active prompt
+1. **Setup:** Run `python fetch_data.py --prompt {prompt}` to get transcription + prompt
 2. **Test Case 1:** `run_cleanups_api.py {model} --prompt {prompt} --case 1`
 3. **Score T1-T7:** Use criteria file checklist
 4. **Test Case 2:** `run_cleanups_api.py {model} --prompt {prompt} --case 2`
