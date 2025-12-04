@@ -133,14 +133,6 @@ Readability: Subjective 0-10 based on R1-R4
 TOTAL: G + C + A + R (max 40)
 ```
 
-### Thresholds
-
-| Score | Status | Action |
-|-------|--------|--------|
-| ≥38/40 | **PASS** | Production ready |
-| 36-37/40 | **REVIEW** | Check specific failures, consider fixes |
-| <36/40 | **ITERATE** | Modify prompt, re-test |
-
 ---
 
 ## Results Format
@@ -152,7 +144,7 @@ Location: `results/{transcription_id}/{prompt_name}/{model}.md`
 ```markdown
 # {model} on {prompt}
 
-**Best:** T1 | Score: 36/40 | Status: REVIEW
+**Best:** T1 | Score: 36/40
 
 ## All Configs
 
@@ -177,9 +169,9 @@ Location: `results/{transcription_id}/README.md`
 
 ## Best Result
 
-| Prompt | Model | Config | Score | Status |
-|--------|-------|--------|-------|--------|
-| dream_v8 | maverick | T5 | 38/40 | PASS |
+| Prompt | Model | Config | Score |
+|--------|-------|--------|-------|
+| dream_v8 | maverick | T5 | 38/40 |
 
 ## Prompt Comparison
 
@@ -201,7 +193,6 @@ Location: `results/{transcription_id}/README.md`
 4. **Test Case 2:** `run_cleanups_api.py {model} --prompt {prompt} --case 2` for models specified by the user.
 5. **Score P1-P6:** Use criteria file checklist
 6. **Compare:** Identify best config (highest score) and compare models
-7. **Stop if:** Score ≥36/40
 
 ### Phase 2: Prompt Optimization
 
@@ -283,10 +274,6 @@ Content (C1-C44):    9/10  | Failed: C3
 Artifacts (A1-A3):   10/10 | Failed: -
 Readability (R1-R4): 9/10  | Failed: -
 ─────────────────────────────
-TOTAL:               36/40 | Status: REVIEW
+TOTAL:               36/40
 ```
 
-### Stopping Criteria
-
-**Parameter testing:** ≥36/40
-**Final prompt:** ≥38/40 with no meta-check violations (C+, C++, C+++)
