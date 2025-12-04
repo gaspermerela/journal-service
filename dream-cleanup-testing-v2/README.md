@@ -164,6 +164,15 @@ GROQ_API_KEY=gsk_xxxxx
 
 | File | Purpose |
 |------|---------|
-| `CLAUDE_CODE_INSTRUCTIONS.md` | Complete testing guide |
+| [CLAUDE_CODE_INSTRUCTIONS.md](./CLAUDE_CODE_INSTRUCTIONS.md) | Complete testing guide |
 | `criteria/{id}.md` | Per-transcription scoring checklist (gitignored) |
 | `reference/reference-cleanup-example.md` | Example of target quality |
+
+---
+
+## Results
+
+| Transcription | Best Prompt | Best Model | Score | Status |
+|---------------|-------------|------------|-------|--------|
+| [5beeaea1...](./results/5beeaea1-967a-4569-9c84-eccad8797b95/) | [dream_v8](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v8/) | maverick T5 / llama P4 | 87/100 | PASS |
+| | [dream_v9_slo](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v9_slo/) | llama-3.3-70b T3 | 86/100 | PASS |

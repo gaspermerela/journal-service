@@ -79,55 +79,30 @@ Output is garbled Slovenian, completely unusable. Score: 0/100
 
 ---
 
-## Grammar Failures
+## Failures Summary (P4 - Best Config)
 
-**Consistently UNFIXED (all configs):**
+### Grammar (G) - 8 failures = 18/25
+- **G1:** "polnica" → "bolnica" ✅ FIXED in P4 (unique!)
+- **G3:** "uspodbudo" NOT fixed to "spodbudo"
+- **G17:** "mogo" NOT fixed to "moral"
+- **G21:** "obhodnikov" NOT fixed to "hodnikov"
+- **G23:** "prubel čimprej" garbled phrase remains
+- **G25:** "hodi ta ženska vzgor" garbled remains (singular instead of plural)
+- **G27:** "nadreval" NOT fixed to "nadaljeval"
+- **G28:** "notakrat" NOT fixed to "nato"
 
-| ID | Raw → Expected | Status |
-|----|----------------|--------|
-| G1 | polnica → bolnica | ✅ Fixed in P4! ❌ Unfixed in others |
-| G3 | uspodbudo → spodbudo | ❌ Never fixed |
-| G13 | nazdolj → navzdol | ⚠️ Inconsistent |
-| G16 | kmalo → kmalu | ❌ Rarely fixed |
-| G17 | mogo → moral | ❌ Never fixed |
-| G23 | prublev čimprej | ❌ Never fixed |
-| G25 | hori ta ljena vzgor | ❌ Never fixed |
-| G27 | nadreval → nadaljeval | ❌ Never fixed |
-| G28 | notakrat → nato | ❌ Never fixed |
+### Content (C) - 2 failures = 43/45
+- **C34:** "deset metrov široke" (10m width) - MISSING
+- **C35:** Two women walking up - uses singular "ta ženska" instead of "dve ženski"
 
-**Language checks:** No G+ or G++ violations in any config.
+### Hallucinations (H) - 0 failures = 10/10
+- None detected in P4
 
----
-
-## Content Failures
-
-### P4 (Best - 82%, C=43)
-
-**Failed (2 checkpoints):**
-
-| ID | Detail | Issue |
-|----|--------|-------|
-| C34 | "deset metrov široke" (10m width) | ❌ MISSING - no width mentioned at all |
-| C35 | Two women walking UP | ⚠️ "hodi ta ženska vzgor" - uses singular instead of both |
-
----
-
-## Readability Analysis
-
-| Check | Score | Notes |
-|-------|-------|-------|
-| R1: Paragraphs | 0 | Wall of text in ALL configs |
-| R2: Flow | 1 | Sentences connect well |
-| R3: Voice | 1 | "jaz" preserved |
-| R4: Coherence | 1 | Dream logic maintained |
-
-**R_score: 3/4** (consistently loses 3.75 points)
-
----
-
-## Hallucinations
-
-**None detected** in any config (except T7 which is gibberish).
+### Readability (R) - 1 failure = 11/15
+- **R1:** No paragraph breaks - wall of text
+- **R2:** Sentence flow good (PASS)
+- **R3:** Personal voice "jaz" preserved (PASS)
+- **R4:** Dream coherence maintained (PASS)
 
 ---
 
