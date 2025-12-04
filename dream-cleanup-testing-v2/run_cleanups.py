@@ -249,14 +249,24 @@ def main(prompt_name: str):
     # Get cache directory for this prompt
     cache_dir = get_cache_dir(prompt_name)
 
-    # Load fetched data from transcription directory
-    data_file = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / "fetched_data.json"
+    # Load fetched data from prompt-specific directory
+    # Structure: cache/{transcription_id}/{prompt_name}/fetched_data.json
+    data_file = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / prompt_name / "fetched_data.json"
     if not data_file.exists():
-        print(f"❌ Error: {data_file} not found. Run fetch_data.py first!")
+        print(f"❌ Error: {data_file} not found.")
+        print(f"\n📝 Run fetch_data.py first:")
+        print(f"   python fetch_data.py --prompt {prompt_name}")
         return
 
     with open(data_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
+
+    # Verify the fetched prompt matches the requested prompt
+    fetched_prompt_name = data["prompt"]["name"]
+    if fetched_prompt_name != prompt_name:
+        print(f"⚠️  Warning: fetched_data.json contains prompt '{fetched_prompt_name}' but you requested '{prompt_name}'")
+        print(f"   Re-run: python fetch_data.py --prompt {prompt_name}")
+        return
 
     transcription_text = data["transcription"]["text"]
     prompt_text = data["prompt"]["text"]
