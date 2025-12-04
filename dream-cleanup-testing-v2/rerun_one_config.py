@@ -256,7 +256,7 @@ async def trigger_cleanup_via_api(
     print(f"🚀 Triggering {config_name} via API (model={model_name}, temp={temperature}, top_p={top_p})...")
 
     # Build request body
-    request_body = {"model": model_name}
+    request_body = {"llm_model": model_name}
     if temperature is not None:
         request_body["temperature"] = temperature
     if top_p is not None:
@@ -584,7 +584,7 @@ Examples:
     print(f"   Will save as version {next_version}")
 
     # Load fetched data to get raw transcription length
-    data_file = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / "fetched_data.json"
+    data_file = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / prompt_name / "fetched_data.json"
     if not data_file.exists():
         print(f"\n❌ Error: {data_file} not found. Run fetch_data.py first!")
         return
