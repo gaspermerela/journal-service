@@ -4,7 +4,7 @@ SQLAlchemy model for voice entries table.
 import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
-from sqlalchemy import String, Text, DateTime, Float, Index, ForeignKey
+from sqlalchemy import String, Text, DateTime, Float, Index, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
@@ -81,6 +81,21 @@ class VoiceEntry(Base):
         nullable=False,
         default=0.0,
         server_default="0.0"
+    )
+
+    # Encryption metadata
+    is_encrypted: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        doc="Whether the audio file is encrypted at rest"
+    )
+
+    encryption_version: Mapped[Optional[str]] = mapped_column(
+        String(50),
+        nullable=True,
+        doc="Encryption provider version (e.g., 'local-v1')"
     )
 
     # Timestamps

@@ -17,6 +17,7 @@ from sqlalchemy import (
     Integer,
     Boolean,
     Float,
+    LargeBinary,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -99,6 +100,25 @@ class CleanedEntry(Base):
 
     # Primary cleanup flag (one per voice_entry enforced by DB constraint)
     is_primary = Column(Boolean, nullable=False, default=False, index=True)
+
+    # Encryption metadata
+    cleaned_text_encrypted = Column(
+        LargeBinary,
+        nullable=True,
+        doc="Encrypted cleaned text (BYTEA)"
+    )
+    analysis_encrypted = Column(
+        LargeBinary,
+        nullable=True,
+        doc="Encrypted analysis JSON (BYTEA)"
+    )
+    is_encrypted = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        doc="Whether the cleaned text and analysis are encrypted"
+    )
 
     # Timestamps
     processing_started_at = Column(DateTime, nullable=True)

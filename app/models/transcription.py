@@ -3,7 +3,7 @@ SQLAlchemy model for transcriptions table.
 """
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, DateTime, Boolean, Integer, Float, ForeignKey, Index
+from sqlalchemy import String, Text, DateTime, Boolean, Integer, Float, ForeignKey, Index, LargeBinary
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
@@ -101,6 +101,21 @@ class Transcription(Base):
     error_message: Mapped[str | None] = mapped_column(
         Text,
         nullable=True
+    )
+
+    # Encryption metadata
+    transcribed_text_encrypted: Mapped[bytes | None] = mapped_column(
+        LargeBinary,
+        nullable=True,
+        doc="Encrypted transcription text (BYTEA)"
+    )
+
+    is_encrypted: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        doc="Whether the transcription text is encrypted"
     )
 
     # Primary transcription flag

@@ -89,6 +89,15 @@ class Settings(BaseSettings):
     # Can be overridden with dedicated ENCRYPTION_KEY for better security
     ENCRYPTION_KEY: Optional[str] = None  # Optional - falls back to JWT_SECRET_KEY
 
+    # Envelope Encryption Configuration
+    ENCRYPTION_PROVIDER: str = "local"  # Options: local (future: aws-kms, gcp-kms)
+    ENCRYPTION_ENABLED_DREAMS: bool = False  # Opt-in encryption for dream entries
+    ENCRYPTION_ENABLED_THERAPY: bool = True  # Mandatory encryption for therapy (when implemented)
+    ENCRYPT_AUDIO_FILES: bool = True  # Encrypt audio files at rest
+    ENCRYPT_TRANSCRIPTIONS: bool = True  # Encrypt transcription text in DB
+    ENCRYPT_CLEANED_ENTRIES: bool = True  # Encrypt cleaned text in DB
+    ENCRYPTION_KEEP_ORIGINAL_FILES: bool = True  # Keep .wav alongside .enc (dev only, set False in prod)
+
     # Test Configuration (Optional - only used in E2E tests)
     NOTION_TEST_API_KEY: Optional[str] = None
     NOTION_TEST_DATABASE_ID: Optional[str] = None
