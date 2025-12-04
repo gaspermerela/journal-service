@@ -28,7 +28,7 @@ OUTPUT FORMAT:
 Respond ONLY with valid JSON in this exact format (no markdown, no extra text):
 {{
   "cleaned_text": "The cleaned version here"
-}}',
+}}
 
 TRANSCRIPTION:
 "{transcription_text}"
