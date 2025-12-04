@@ -72,65 +72,163 @@ cache/{transcription_id}/
 
 ---
 
-## Scoring System
+## Scoring System (100 Points)
 
-### Criteria File Structure
+### Point Distribution
 
-Each transcription has a criteria file: `criteria/{transcription_id}.md`
+| Criterion | Points | What It Measures |
+|-----------|--------|------------------|
+| **Content** | 45 | Scene details preserved (C1-Cn) |
+| **Grammar** | 25 | Spelling/transcription fixes (G1-Gn) |
+| **Readability** | 15 | Paragraphs, flow, coherence (R1-R4) |
+| **Hallucinations** | 10 | Invented/incorrect content (none = 10) |
+| **Length** | 5 | Compression ratio (70-95% optimal) |
 
-**DO NOT COMMIT** - Contains actual dream content for scoring reference.
+**Artifacts (A1-A3):** Pass/fail gate, not scored. Flag if "Hvala" remains.
 
-The criteria file defines:
-- **G1-G28** - Grammar checkpoints (specific spelling errors to fix)
-- **C1-C44** - Content checkpoints (specific details to preserve)
-- **A1-A3** - Artifact checkpoints ("Hvala", intro, fillers)
-- **R1-R4** - Readability checkpoints (paragraphs, flow, voice)
+### Scoring Formulas
 
-### How to Score
+#### Content (45 points)
 
-**Step 1: Run automated checks**
 ```
-[ ] No "Hvala" in output
-[ ] No English words (and, the, but, with)
+Content = 45 × (C_preserved / C_total) - voice_penalty
+
+Where:
+- C_preserved = C_total - C_failures
+- voice_penalty:
+  - Correct (1st person + present tense): 0
+  - Minor issues (occasional shifts): -3
+  - Major issues (wrong throughout): -7
+
+Minimum: 0
+```
+
+#### Grammar (25 points)
+
+```
+Grammar = 25 × (G_passed / G_total) - language_penalties
+
+Where:
+- G_passed = G_total - G_failures
+- language_penalties:
+  - G+ (English words present): -3
+  - G++ (Russian/Cyrillic present): -5
+
+Minimum: 0
+```
+
+#### Readability (15 points)
+
+```
+Readability = 15 × (R_score / 4)
+
+Where R_score (0-4) is sum of:
+- R1: Paragraph breaks at scene changes (0 or 1)
+- R2: Sentences flow logically (0 or 1)
+- R3: Personal voice preserved (0 or 1)
+- R4: Dream coherence maintained (0 or 1)
+```
+
+#### Hallucinations (10 points)
+
+```
+Hallucinations = max(0, 10 - (H_count × 2))
+
+Where H_count = number of hallucinated/invented details
+- 0 hallucinations: 10 points
+- 1 hallucination: 8 points
+- 2 hallucinations: 6 points
+- 5+ hallucinations: 0 points
+
+Record each hallucination found:
+- H1: [what was added/changed]
+- H2: [what was added/changed]
+```
+
+#### Length (5 points)
+
+```
+Based on: cleaned_length / raw_length
+
+| Ratio | Points | Status |
+|-------|--------|--------|
+| 70-95% | 5 | Optimal |
+| 60-69% or 96-100% | 3 | Minor issue |
+| 50-59% or 101-110% | 1 | Problematic |
+| <50% or >110% | 0 | Severe |
+```
+
+#### Artifacts (Pass/Fail Gate)
+
+```
+NOT scored, but noted:
+- A1: "Hvala" removed? (required - flag if any remain)
+- A2: Intro artifacts removed? (optional)
+- A3: Fillers reduced? (optional)
+```
+
+---
+
+## How to Score
+
+### Step 1: Automated Checks
+
+```
+[ ] No "Hvala" in output (A1 - flag if present)
+[ ] No English words (and, the, but, with, for)
 [ ] No Russian/Cyrillic words
-[ ] Length ratio 70-95%
+[ ] Length ratio calculated
 [ ] First person (jaz/sem) preserved
 [ ] Present tense (sedanjik) used
 ```
 
-**Step 2: Check Grammar (G1-G28)**
-- Open criteria file, check each G checkpoint against cleaned text
-- Count failures: `G1❌, G5❌` = 2 failures
-- Score: `10 - (failures × 0.5)` (minimum 0)
-- Language violations (G+, G++) = -2 each
+### Step 2: Count Grammar Failures (G1-Gn)
 
-**Step 3: Check Content (C1-C44)**
+- Open criteria file, check each G checkpoint
+- Count failures: `G1❌, G5❌, G12❌` = 3 failures
+- Note language violations: G+ (English), G++ (Russian)
+
+### Step 3: Count Content Failures (C1-Cn)
+
 - Check each scene's checkpoints against cleaned text
 - Count failures: `C3❌, C17❌, C22❌` = 3 failures
-- Score: `10 - (failures × 0.25)` (minimum 0)
-- Meta-check violations (C+, C++, C+++) = -2 each
+- Assess narrative voice (C+): minor or major issues?
 
-**Step 4: Check Artifacts (A1-A3)**
-- A1: All "Hvala" removed? (-0.5 per remaining)
-- A2: "Zdravstveno..." removed? (no penalty if kept)
-- A3: Fillers reduced? (-1 if excessive)
+### Step 4: Count Hallucinations (H)
 
-**Step 5: Check Readability (R1-R4)**
-- R1: Paragraph breaks at scene changes?
-- R2: Sentences flow logically?
-- R3: Personal "jaz" voice preserved?
-- R4: Dream logic maintained?
-- Score: 10 (excellent) → 5 (wall of text) → 0 (unreadable)
+- Read cleaned text carefully
+- List any invented/changed content not in original
+- Record: `H1: added "polna svetlobe" (original was dark)`
 
-### Scoring Formula
+### Step 5: Score Readability (R1-R4)
+
+- R1: Are there paragraph breaks? (0 or 1)
+- R2: Do sentences flow? (0 or 1)
+- R3: Is "jaz" voice preserved? (0 or 1)
+- R4: Is dream logic coherent? (0 or 1)
+
+### Step 6: Calculate Total
 
 ```
-Grammar:     10 - (G_failures × 0.5) - (G+/G++ × 2)
-Content:     10 - (C_failures × 0.25) - (C+/++/+++ × 2)
-Artifacts:   10 - (A1_remaining × 0.5) - (A3_penalty)
-Readability: Subjective 0-10 based on R1-R4
+Content:       45 × (passed/total) - voice_penalty = ___
+Grammar:       25 × (passed/total) - lang_penalty  = ___
+Readability:   15 × (R_score/4)                    = ___
+Hallucinations: 10 - (H_count × 2)                 = ___
+Length:        [table lookup]                      = ___
+─────────────────────────────────────────────────────────
+TOTAL:                                             ___/100
+```
 
-TOTAL: G + C + A + R (max 40)
+---
+
+## Thresholds
+
+```
+≥90: EXCELLENT - Production ready, minimal issues
+≥80: PASS      - Acceptable for production
+70-79: REVIEW  - Usable with manual review
+60-69: ITERATE - Needs prompt improvements
+<60: FAIL      - Not usable
 ```
 
 ---
@@ -144,20 +242,26 @@ Location: `results/{transcription_id}/{prompt_name}/{model}.md`
 ```markdown
 # {model} on {prompt}
 
-**Best:** T1 | Score: 36/40
+**Best:** T1 | Score: 85/100 | Status: PASS
 
 ## All Configs
 
-| Config | Params | Len% | G | C | A | R | Total | Failed |
-|--------|--------|------|---|---|---|---|-------|--------|
-| T1 | t=0.0 | 82% | 8 | 9 | 10 | 9 | 36 | G1, G5 |
-| T2 | t=0.3 | 85% | 7 | 9 | 10 | 9 | 35 | G1, G5, G12 |
-| ... | ... | ... | ... | ... | ... | ... | ... | ... |
+| Config | Params | Len% | G | C | R | H | L | Total | Status |
+|--------|--------|------|---|---|---|---|---|-------|--------|
+| T1 | t=0.0 | 82% | 21 | 38 | 11 | 10 | 5 | 85 | PASS |
+| T2 | t=0.3 | 85% | 19 | 37 | 11 | 10 | 5 | 82 | PASS |
 
-## Key Findings
+## Failures Summary
 
-- G1 (polnica→bolnica) not fixed in any config
-- T6+ severely over-summarizes (<60% ratio)
+### Grammar (G)
+- G1: polnica→bolnica (failed in all configs)
+- G5: stapo→stavbo (failed in T3, T4)
+
+### Content (C)
+- C34: 10m width missing (failed in T2, T3)
+
+### Hallucinations (H)
+- T7: H1 "added morning light description"
 ```
 
 ### Main Index File
@@ -169,16 +273,15 @@ Location: `results/{transcription_id}/README.md`
 
 ## Best Result
 
-| Prompt | Model | Config | Score |
-|--------|-------|--------|-------|
-| dream_v8 | maverick | T5 | 38/40 |
+| Prompt | Model | Config | Score | Status |
+|--------|-------|--------|-------|--------|
+| dream_v8 | maverick | T5 | 88/100 | PASS |
 
 ## Prompt Comparison
 
-| Prompt | Best Model | Best Config | Score | Key Failures |
-|--------|------------|-------------|-------|--------------|
-| dream_v8 | maverick | T5 | 38/40 | G1 |
-| dream_v7 | llama-3.3 | T1 | 36/40 | G1, G5, C3 |
+| Prompt | Best Model | Config | Score | G | C | R | H | L |
+|--------|------------|--------|-------|---|---|---|---|---|
+| dream_v8 | maverick | T5 | 88/100 | 21 | 41 | 11 | 10 | 5 |
 ```
 
 ---
@@ -188,16 +291,16 @@ Location: `results/{transcription_id}/README.md`
 ### Phase 1: Parameter Optimization
 
 1. **Setup:** Run `fetch_data.py` to get transcription + active prompt
-2. **Test Case 1:** `run_cleanups_api.py {model} --prompt {prompt} --case 1` for models specified by the user.
+2. **Test Case 1:** `run_cleanups_api.py {model} --prompt {prompt} --case 1`
 3. **Score T1-T7:** Use criteria file checklist
-4. **Test Case 2:** `run_cleanups_api.py {model} --prompt {prompt} --case 2` for models specified by the user.
+4. **Test Case 2:** `run_cleanups_api.py {model} --prompt {prompt} --case 2`
 5. **Score P1-P6:** Use criteria file checklist
-6. **Compare:** Identify best config (highest score) and compare models
+6. **Compare:** Identify best config (highest score)
 
 ### Phase 2: Prompt Optimization
 
 1. **Analyze failures:** Which checkpoints consistently fail?
-2. **Identify patterns:** Same G checkpoints failing across configs?
+2. **Identify patterns:** Same G/C checkpoints failing across configs?
 3. **Modify prompt:** Address specific issues
 4. **WAIT for user to manually insert the new prompt**
 5. **Re-test:** Use user instructions on what to re-test
@@ -211,7 +314,7 @@ Location: `results/{transcription_id}/README.md`
 | Model ID | Why Test |
 |----------|----------|
 | `llama-3.3-70b-versatile` | Baseline, general purpose |
-| `meta-llama/llama-4-maverick-17b-128e-instruct` | Best so far (38/40) |
+| `meta-llama/llama-4-maverick-17b-128e-instruct` | Best so far |
 | `openai/gpt-oss-120b` | Largest, best grammar potential |
 
 ### Tier 2 - Secondary
@@ -229,51 +332,45 @@ Location: `results/{transcription_id}/README.md`
 
 ---
 
-## Database Operations
-
-### Fetch Transcription + Prompt
-
-```python
-# Use fetch_data.py - saves to cache/{transcription_id}/fetched_data.json
-python fetch_data.py
-```
-
----
-
 ## Quick Reference
-
-### Automated Checks (before scoring)
-
-```bash
-# Check for Hvala
-grep -i "hvala" cleaned_text
-
-# Check for English
-grep -iE "\b(and|the|but|with|for|building)\b" cleaned_text
-
-# Check length ratio
-echo "scale=2; cleaned_len / 5051 * 100" | bc
-```
 
 ### Scoring Template
 
 ```
 Config: T1 | Model: llama-3.3-70b | Prompt: dream_v8
 
-AUTOMATED:
-[x] No "Hvala"
-[x] No English
-[x] No Russian
+AUTOMATED CHECKS:
+[x] No "Hvala" (A1)
+[x] No English (G+)
+[x] No Russian (G++)
 [x] Length: 82%
-[x] First person
-[x] Present tense
 
-SCORES:
-Grammar (G1-G28):    8/10  | Failed: G1, G5
-Content (C1-C44):    9/10  | Failed: C3
-Artifacts (A1-A3):   10/10 | Failed: -
-Readability (R1-R4): 9/10  | Failed: -
-─────────────────────────────
-TOTAL:               36/40
+CRITERIA COUNTS:
+G_total: 28 | G_failed: 4 | G_passed: 24
+C_total: 44 | C_failed: 4 | C_passed: 40
+H_count: 0
+R_score: 3/4 (R1 failed - no paragraphs)
+Voice: OK (no penalty)
+Language: OK (no penalty)
+
+CALCULATION:
+Content:       45 × (40/44) - 0 = 40.9
+Grammar:       25 × (24/28) - 0 = 21.4
+Readability:   15 × (3/4)       = 11.25
+Hallucinations: 10 - (0 × 2)    = 10
+Length:        5 (82% optimal)  = 5
+─────────────────────────────────────
+TOTAL:                          88.55 → 89/100
+
+STATUS: PASS
 ```
 
+### Penalty Reference
+
+| Penalty | Points | Applied To |
+|---------|--------|------------|
+| G+ (English words) | -3 | Grammar |
+| G++ (Russian/Cyrillic) | -5 | Grammar |
+| Voice minor (occasional shifts) | -3 | Content |
+| Voice major (wrong throughout) | -7 | Content |
+| Each hallucination | -2 | Hallucinations |

@@ -11,17 +11,17 @@
 
 | Model | Config | Score | Status |
 |-------|--------|-------|--------|
-| meta-llama/llama-4-maverick-17b-128e-instruct | T5 | 32/40 | ITERATE |
+| meta-llama/llama-4-maverick-17b-128e-instruct | T5 | 87/100 | PASS |
 
 ---
 
 ## Model Comparison
 
-| Model | Best Config | Score | G | C | A | R | Status | Key Failures |
-|-------|-------------|-------|---|---|---|---|--------|--------------|
-| [maverick](./meta-llama-llama-4-maverick-17b-128e-instruct.md) | T5 | 32/40 | 6.5 | 8.5 | 10 | 7 | ITERATE | G1, G13, G16, G17; R1 partial |
-| [llama-3.3-70b](./llama-3.3-70b-versatile.md) | P4 | 30.5/40 | 6 | 8.5 | 10 | 6 | ITERATE | G1, G3, G13, G16, G17, G23, G27, G28; R1 |
-| [gpt-oss-120b](./openai-gpt-oss-120b.md) | P1 | 30/40 | 7 | 5 | 10 | 8 | ITERATE | C+++ (over-summarized 52%); many C failures |
+| Model | Best Config | Score | G/25 | C/45 | R/15 | H/10 | L/5 | Status | Key Failures |
+|-------|-------------|-------|------|------|------|------|-----|--------|--------------|
+| [maverick](./meta-llama-llama-4-maverick-17b-128e-instruct.md) | T5 | 87/100 | 20 | 41 | 11 | 10 | 5 | PASS | G1 never fixed; R1 partial; Russian leak in T1/T2/P1 |
+| [llama-3.3-70b](./llama-3.3-70b-versatile.md) | P4 | 85/100 | 18 | 41 | 11 | 10 | 5 | PASS | G1, G25, G27, G28 never fixed; R1 none |
+| [gpt-oss-120b](./openai-gpt-oss-120b.md) | P1 | 73/100 | 20 | 27 | 15 | 10 | 1 | REVIEW | Over-summarized (52%); Best R1/paragraphs; Only fixes G1 |
 
 ---
 
@@ -32,20 +32,8 @@
 | Model | T1-T7 | P1-P6 | B1-B4 | Total Configs |
 |-------|-------|-------|-------|---------------|
 | llama-3.3-70b-versatile | ✅ 7/7 | ✅ 6/6 | ❌ 0/4 | 13 |
-| maverick-17b | ✅ 7/7 | ⚠️ 1/6 | ❌ 0/4 | 8 |
-| gpt-oss-120b | ⚠️ 3/7 | ⚠️ 1/6 | ❌ 0/4 | 4 |
-
-### Score Distribution
-
-| Score Range | Count | Configs |
-|-------------|-------|---------|
-| ≥38 (PASS) | 0 | - |
-| 36-37 (REVIEW) | 0 | - |
-| 30-35 (ITERATE) | 5 | maverick T3/T5, llama P4, gpt P1 |
-| <30 (ITERATE) | Many | Most configs |
-| Unusable | 2 | llama T7 (gibberish), maverick T7 (degraded) |
-
----
+| maverick-17b | ✅ 7/7 | ✅ 6/6 | ❌ 0/4 | 13 |
+| gpt-oss-120b | ✅ 7/7 | ✅ 6/6 | ❌ 0/4 | 13 |
 
 ## Key Findings
 
@@ -53,8 +41,8 @@
 
 | Checkpoint | llama-3.3 | maverick | gpt-oss | Notes |
 |------------|-----------|----------|---------|-------|
-| G1 (polnica→bolnica) | ❌ Never | ❌ Never | ✅ Fixed | Critical - only gpt-oss fixes |
-| G++ (Russian leak) | ✅ Clean | ⚠️ T1,T2,P1 | ✅ Clean | maverick has "приходят" |
+| G1 (polnica→bolnica) | ❌ Never | ✅ P5 only | ✅ Fixed | maverick P5 and gpt-oss fix |
+| G++ (Russian leak) | ✅ Clean | ⚠️ T1,T2,P1-P4 | ✅ Clean | maverick has "приходят" at low top_p |
 | G25 (garbled phrase) | ❌ Never | ✅ Often | ✅ Often | maverick/gpt better |
 | G27, G28 | ❌ Never | ⚠️ Sometimes | ✅ Often | llama worst |
 
@@ -89,28 +77,31 @@
 
 ### Best Model for dream_v8
 
-**Winner: maverick T3 or T5**
+**Winner: maverick T5** (87/100 PASS)
+- Best overall score
 - Best balance of grammar, content, and structure
-- Avoid T1, T2, P1 due to Russian contamination
-- Score: 32/40
+- Avoid T1, T2, P1 due to Russian contamination (G++ -5 penalty)
 
 ### Model-Specific Notes
 
-1. **llama-3.3-70b-versatile**
+1. **maverick-17b** (Best: T5 @ 87/100)
+   - Use T3 or T5 only
+   - Highest overall score
+   - Watch for Russian leak at low temperatures
+   - G1 never fixed, R1 partial paragraphs
+
+2. **llama-3.3-70b-versatile** (Best: P4 @ 85/100)
    - Use P4 (best config)
    - Never fixes G1, G25, G27, G28
-   - No paragraph structure
+   - No paragraph structure (R1=0)
+   - Very consistent across configs
 
-2. **maverick-17b**
-   - Use T3 or T5 only
-   - Best overall score
-   - Watch for Russian leak at low temperatures
-
-3. **gpt-oss-120b**
-   - NOT recommended
-   - Over-summarizes (loses 40-50% content)
-   - Has hallucinations
-   - Best paragraph structure if that's the only concern
+3. **gpt-oss-120b** (Best: P1 @ 73/100)
+   - NOT recommended for production
+   - Severe over-summarization (loses 40-50% content)
+   - Best paragraph structure (R1=1, only model with full paragraphs)
+   - Only model to fix G1 (polnica→bolnica)
+   - Useful for studying paragraph formatting
 
 ### Prompt v9 Suggestions
 
