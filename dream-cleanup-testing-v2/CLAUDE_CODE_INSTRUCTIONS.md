@@ -254,22 +254,37 @@ Location: `results/{transcription_id}/{prompt_name}/{model}.md`
 
 ## All Configs
 
-| Config | Params | Len% | G | C | R | H | L | Total | Status |
-|--------|--------|------|---|---|---|---|---|-------|--------|
+| Config | Params | Len% | G/25 | C/45 | R/15 | H/10 | L/5 | Total | Status |
+|--------|--------|------|------|------|------|------|-----|-------|--------|
 | T1 | t=0.0 | 82% | 21 | 38 | 11 | 10 | 5 | 85 | PASS |
 | T2 | t=0.3 | 85% | 19 | 37 | 11 | 10 | 5 | 82 | PASS |
 
-## Failures Summary
+## Failures Summary (Best Config Only)
 
-### Grammar (G)
-- G1: polnica→bolnica (failed in all configs)
-- G5: stapo→stavbo (failed in T3, T4)
+**IMPORTANT:** Analyze failures for the BEST configuration only.
 
-### Content (C)
-- C34: 10m width missing (failed in T2, T3)
+**RULES:**
+1. List EVERY specific checkpoint ID that failed (C8, C23, etc.)
+2. The number of listed failures MUST match the failure count in the header
+3. NEVER say "all preserved" or "minor loss" - be specific about what failed
+4. For each failure, explain what was MISSING or WRONG
 
-### Hallucinations (H)
-- T7: H1 "added morning light description"
+### Grammar (G) - Specific G* failures in best config
+- G1: polnica NOT fixed to bolnica
+- G5: stapo NOT fixed to stavbo
+
+### Content (C) - Specific C* failures in best config
+- C8: "hodim naprej in naprej" repetition - MISSING (just "hodim naprej" once)
+- C23: Flat areas + corridors mixed with stairs - MISSING (only describes stair variation)
+- C30: "hodnik levo-desno" at landing - MISSING
+  - Original: "je bil tudi hodnik, levo-desno"
+  - Output: [what model produced instead]
+
+### Hallucinations (H) - Invented details in best config
+- None detected (or list specific H1, H2, etc.)
+
+### Readability (R) - Specific R* failures in best config
+- R1: No paragraph breaks
 ```
 
 ### Main Index File
@@ -382,3 +397,29 @@ STATUS: PASS
 | Voice minor (occasional shifts) | -3 | Content |
 | Voice major (wrong throughout) | -7 | Content |
 | Each hallucination | -2 | Hallucinations |
+
+---
+
+## Avoiding Double-Counts (Grammar vs Content)
+
+**IMPORTANT:** Do NOT count the same error in both Grammar (G) and Content (C).
+
+### Rule: Spelling/STT errors = Grammar ONLY
+
+If a word is misspelled due to speech-to-text error (e.g., "polnica" instead of "bolnica"):
+- **Grammar (G):** Count as failure if NOT fixed
+- **Content (C):** Do NOT count - the meaning/content IS present (just misspelled)
+
+### Examples
+
+| Error | Category | Reasoning |
+|-------|----------|-----------|
+| "polnica" not fixed to "bolnica" | **G only** | Meaning "hospital" is preserved, just wrong spelling |
+| "stavo" not fixed to "stavbo" | **G only** | Meaning "building" is preserved |
+| "10m width detail" missing entirely | **C only** | Content/detail is lost, not a spelling issue |
+| "hodnik levo-desno" simplified away | **C only** | Specific detail is lost |
+
+### Test: Ask "Is the meaning/detail preserved?"
+
+- **YES** (just misspelled) → Grammar only
+- **NO** (detail is lost/changed) → Content only

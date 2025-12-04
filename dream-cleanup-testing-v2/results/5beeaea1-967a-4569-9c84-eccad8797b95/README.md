@@ -8,8 +8,8 @@
 
 | Prompt | Model | Config | Score | Status |
 |--------|-------|--------|-------|--------|
-| dream_v8 | meta-llama/llama-4-maverick-17b-128e-instruct | T5 | 87/100 | PASS |
-| dream_v8 | llama-3.3-70b-versatile | P4 | 87/100 | PASS |
+| [dream_v8](./dream_v8/README.md) | maverick-17b | T5 | 87/100 | PASS |
+| [dream_v8](./dream_v8/README.md) | llama-3.3-70b | P4 | 87/100 | PASS |
 
 ---
 
@@ -17,7 +17,8 @@
 
 | Prompt | Best Model | Best Config | Score | G/25 | C/45 | R/15 | H/10 | L/5 | Key Failures |
 |--------|------------|-------------|-------|------|------|------|------|-----|--------------|
-| [dream_v8](./dream_v8/) | maverick T5 / llama P4 | tied | 87/100 | 18-20 | 41-43 | 11 | 10 | 5 | R1 partial/none; Russian risk in maverick |
+| [dream_v8](./dream_v8/README.md) | maverick T5 / llama P4 | tied | 87/100 | 18-20 | 41-43 | 11 | 10 | 5 | R1 partial/none; Russian risk in maverick |
+| [dream_v9_slo](./dream_v9_slo/README.md) | llama-3.3-70b T3 | temp=0.5 | 86/100 | 18 | 42 | 11 | 10 | 5 | G1 (polnica); garbled phrases |
 
 ---
 
@@ -29,10 +30,10 @@
 
 | Rank | Prompt | Model | Config | Score | Status | Notes |
 |------|--------|-------|--------|-------|--------|-------|
-| 1 | dream_v8 | maverick T5 | t=1.0 | 87/100 | PASS | Better grammar (G=20), partial paragraphs |
-| 1 | dream_v8 | llama-3.3 P4 | p=0.7 | 87/100 | PASS | Better content (C=43), fixes G1! |
-| 3 | dream_v8 | maverick T3 | t=0.5 | 82/100 | PASS | Good alternative |
-| 4 | dream_v8 | gpt-oss P1 | p=0.1 | 73/100 | REVIEW | Over-summarizes, best paragraphs |
+| 1 | [dream_v8](./dream_v8/README.md) | maverick T5 | t=1.0 | 87/100 | PASS | Better grammar (G=20), partial paragraphs |
+| 1 | [dream_v8](./dream_v8/README.md) | llama-3.3 P4 | p=0.7 | 87/100 | PASS | Better content (C=43), fixes G1! |
+| 3 | [dream_v9_slo](./dream_v9_slo/README.md) | llama-3.3 T3 | t=0.5 | 86/100 | PASS | Slovenian prompt, best paragraphs |
+| 4 | [dream_v8](./dream_v8/README.md) | maverick T3 | t=0.5 | 82/100 | PASS | Good alternative |
 
 ---
 
@@ -95,4 +96,5 @@ Issues that prevent reaching EXCELLENT:
 
 | Date | Prompt | Models Tested | Configs | Best Score |
 |------|--------|---------------|---------|------------|
-| 2025-12-01 | dream_v8 | llama-3.3, maverick, gpt-oss | 25 total | 87/100 (maverick T5, llama P4 tied) |
+| 2025-12-01 | [dream_v8](./dream_v8/README.md) | llama-3.3, maverick, gpt-oss | 25 total | 87/100 (maverick T5, llama P4 tied) |
+| 2025-12-04 | [dream_v9_slo](./dream_v9_slo/README.md) | llama-3.3, maverick, scout, gpt-oss | 52 total | 86/100 (llama T3) |

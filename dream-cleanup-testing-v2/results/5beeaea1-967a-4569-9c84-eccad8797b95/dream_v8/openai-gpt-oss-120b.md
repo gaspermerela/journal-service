@@ -94,83 +94,34 @@ TOTAL:                          55/100 (FAIL)
 
 ---
 
-## Grammar Analysis
+## Failures Summary (P1 - Best Config)
 
-**Best grammar fixes of all models:**
+### Grammar (G) - 6 failures = 20/25
+- **G1:** "polnica" → "bolnica" ✅ FIXED (only model to consistently fix!)
+- **G2:** "pretličju" NOT fixed to "pritličju"
+- **G+:** No English contamination
+- **G++:** No Russian contamination
 
-| ID | Raw → Expected | Status |
-|----|----------------|--------|
-| G1 | polnica → bolnica | ✅ **FIXED** (only model to fix!) |
-| G13 | nazdolj → navzdol | ✅ Often fixed |
-| G25 | hori ta ljena vzgor | ✅ Often fixed |
-| G27 | nadreval → nadaljeval | ✅ Often fixed |
-| G28 | notakrat → nato | ✅ Often fixed |
+### Content (C) - 18 failures = 27/45
+- **C6:** Spray detail - simplified/lost
+- **C7:** Sound description ("zvok, ki mi vzpodbuja") - reduced
+- **C22:** Stair descriptions - shortened
+- **C23:** Flat areas + corridors between stairs - LOST
+- **C26:** Movement detail ("napol tek") - reduced
+- **C34:** "deset metrov široke" (10m width) - sometimes kept, sometimes lost
+- **C+:** Severe over-summarization (52% length, ~48% content lost)
 
-**Still problematic:**
+### Hallucinations (H) - 0 failures = 10/10
+- None detected in P1 (clean output)
 
-| ID | Raw → Expected | Status |
-|----|----------------|--------|
-| G2 | pretličju → pritličju | ⚠️ Sometimes kept |
+### Readability (R) - 0 failures = 15/15
+- **R1:** Excellent paragraph structure (PASS) - best of all models!
+- **R2:** Sentence flow good (PASS)
+- **R3:** Personal voice preserved (PASS)
+- **R4:** Dream coherence maintained (PASS)
 
-**Language checks:** No G+ or G++ violations.
-
----
-
-## Content Analysis
-
-**CRITICAL ISSUE: Severe Over-summarization**
-
-| Config | Length | Ratio | Content Lost |
-|--------|--------|-------|--------------|
-| T1 | 2925 | 58% | ~42% |
-| T3 | 2466 | 49% | ~51% |
-| P1 | 2650 | 52% | ~48% |
-| T7 | 2940 | 58% | ~42% |
-
-All configs fail the 70-95% length requirement.
-
-**Details commonly lost:**
-- C6: Spray detail simplified
-- C7: Sound description reduced
-- C22: Stair descriptions shortened
-- C23: Flat areas + corridors detail lost
-- C26: Movement detail reduced
-- C34: 10m width sometimes kept, sometimes lost
-
----
-
-## Hallucinations Detected
-
-| Config | H_count | Details |
-|--------|---------|---------|
-| T1 | 2 | H1: "Zdravstveno..." added; H2: changed details |
-| T2 | 0 | Clean but shortened |
-| T3 | 0 | Clean but shortened |
-| T4 | 0 | Clean but shortened |
-| T5 | 1 | H1: "Zdravstveno, da sem pripravljen" added at start |
-| T6 | 0 | Clean but shortened |
-| T7 | 3 | Multiple invented phrases |
-| P1 | 0 | Clean but shortened |
-| P2 | 0 | Clean but shortened |
-| P3 | 0 | Clean but shortened |
-| P4 | 1 | H1: "Zdravstveno, da sem pripravljen" added at start |
-| P5 | 1 | H1: "Zdravstveno sem pripravljen" added at start |
-| P6 | 0 | Clean but shortened |
-
----
-
-## Readability Analysis
-
-**Best paragraph structure of all models!**
-
-| Check | T1 | T3 | P1 | T7 |
-|-------|----|----|----|----|
-| R1: Paragraphs | ✅ Excellent | ✅ Excellent | ✅ Excellent | ⚠️ Good |
-| R2: Flow | ✅ Good | ✅ Good | ✅ Good | ⚠️ OK |
-| R3: Voice | ⚠️ Sometimes shifts | ✅ Good | ✅ Good | ⚠️ Shifts |
-| R4: Coherence | ✅ Good | ✅ Good | ✅ Good | ⚠️ OK |
-
-**R_score:** 3.5-4/4 (excellent, best of all models)
+### Length (L) - 1/5
+- 52% length is problematic (should be 70-95%)
 
 ---
 

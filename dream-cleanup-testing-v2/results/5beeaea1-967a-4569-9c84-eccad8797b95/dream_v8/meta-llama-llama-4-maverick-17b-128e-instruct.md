@@ -93,77 +93,32 @@ TOTAL:                          61/100 (ITERATE)
 
 ---
 
-## Grammar Failures
+## Failures Summary (T5 - Best Config)
 
-**G1 Status:**
+### Grammar (G) - 6 failures = 20/25
+- **G1:** "polnica" NOT fixed to "bolnica" (only P5 fixes this)
+- **G13:** "nazdolj" NOT consistently fixed to "navzdol"
+- **G16:** "kmalo" NOT fixed to "kmalu"
+- **G17:** "mogo" NOT fixed to "moral"
+- **G++:** No Russian contamination in T5 (clean - unlike T1, T2, P1-P4)
 
-| ID | Raw → Expected | Status |
-|----|----------------|--------|
-| G1 | polnica → bolnica | ✅ Fixed in P5! ❌ Unfixed in others |
-| G13 | nazdolj → navzdol | ⚠️ Sometimes fixed |
-| G16 | kmalo → kmalu | ⚠️ Sometimes fixed |
-| G17 | mogo → moral | ❌ Rarely fixed |
+### Content (C) - 4 failures = 41/45
+- **C3:** "preden" timeline (before work) - present but slightly reworded
+- **C23:** Flat areas + corridors between stairs - simplified to just "stopnice"
+- **C42:** "vljudno nekakšna zemlja" wet ground detail - slightly vague
+- **C+:** Minor rewording of specific details
 
-**Better than llama-3.3:**
+### Hallucinations (H) - 0 failures = 10/10
+- None detected in T5
 
-| ID | Raw → Expected | Status |
-|----|----------------|--------|
-| G25 | hori ta ljena vzgor | ✅ Often fixed to "hodita vzgor" |
-| G27 | nadreval → nadaljeval | ⚠️ Sometimes fixed |
-| G28 | notakrat → nato | ⚠️ Sometimes fixed |
+### Readability (R) - 1 failure = 11/15
+- **R1:** Partial paragraph structure (not full breaks)
+- **R2:** Sentence flow good (PASS)
+- **R3:** Personal voice "jaz" preserved (PASS)
+- **R4:** Dream coherence maintained (PASS)
 
-**Language checks:**
-
-| Config | G+ (English) | G++ (Russian) |
-|--------|--------------|---------------|
-| T1 | Clean | ❌ "приходят" present |
-| T2 | Clean | ❌ "приходят" present |
-| T3 | Clean | ✅ Clean |
-| T4 | Clean | ✅ Clean |
-| T5 | Clean | ✅ Clean |
-| P1 | Clean | ❌ "приходят" present |
-| P2 | Clean | ❌ "приходят" present |
-| P3 | Clean | ❌ "приходят" present |
-| P4 | Clean | ❌ "приходят" present |
-| P5 | Clean | ✅ Clean |
-| P6 | Clean | ✅ Clean |
-
----
-
-## Content Failures
-
-### T5 (Best - 81%, C=41)
-
-**Failed (4 checkpoints):**
-
-| ID | Detail | Issue |
-|----|--------|-------|
-| C3 | "preden" timeline (before work) | Present but slightly reworded |
-| C8 | "hodim naprej in naprej" repetition | Preserved ✅ |
-| C23 | Flat areas + corridors between stairs | Simplified to just "stopnice" |
-| C42 | Wet ground specific detail | "vljudno nekakšna zemlja" slightly vague |
-
----
-
-## Readability Analysis
-
-| Check | T1-T5 | T7 |
-|-------|-------|-----|
-| R1: Paragraphs | ⚠️ Partial | ⚠️ Partial |
-| R2: Flow | ✅ Good | ❌ Broken at end |
-| R3: Voice | ✅ jaz preserved | ⚠️ Shifts |
-| R4: Coherence | ✅ Good | ❌ Incoherent ending |
-
-**R_score:** 3/4 for T1-T5, 2/4 for T7
-
----
-
-## Hallucinations
-
-| Config | H_count | Details |
-|--------|---------|---------|
-| T1-T5 | 0 | None detected |
-| T7 | 1 | Garbled ending constitutes hallucination |
+### Length (L) - 5/5
+- 81% length is optimal
 
 ---
 
