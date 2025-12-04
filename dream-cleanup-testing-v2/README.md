@@ -176,3 +176,27 @@ GROQ_API_KEY=gsk_xxxxx
 |---------------|-------------|------------|-------|--------|
 | [5beeaea1...](./results/5beeaea1-967a-4569-9c84-eccad8797b95/) | [dream_v8](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v8/) | maverick T5 / llama P4 | 87/100 | PASS |
 | | [dream_v9_slo](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v9_slo/) | llama-3.3-70b T3 | 86/100 | PASS |
+| | [dream_v10](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10/) | **maverick T1** | **94/100** | EXCELLENT |
+| | [dream_v10_slo](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10_slo/) | llama T1 / maverick P2 | 82/100 | PASS |
+
+### Latest: dream_v10 (English prompt with Slovenian STT patterns)
+
+| Rank | Model | Config | Score | Notes |
+|------|-------|--------|-------|-------|
+| 1 | **[maverick-17b-128e](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10/meta-llama-llama-4-maverick-17b-128e-instruct.md)** | T1 (temp=0.0) | **94** | Best STT fixes, only model to fix "bolnica" |
+| 2 | [scout-17b-16e](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10/meta-llama-llama-4-scout-17b-16e-instruct.md) | T1 (temp=0.0) | 91 | Best content, minimal cleanup |
+| 3 | [llama-3.3-70b](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10/llama-3.3-70b-versatile.md) | P3 (top_p=0.5) | 84 | Good balance, grammar unfixed |
+| 4 | [gpt-oss-120b](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10/openai-gpt-oss-120b.md) | T1 (temp=0.0) | 64 | Over-summarizes, hallucinations |
+
+**Key Finding:** maverick with temp=0.0 is the best combination for this Slovenian dream cleanup task.
+
+### dream_v10_slo (Slovenian prompt with STT patterns)
+
+| Rank | Model | Config | Score | Notes |
+|------|-------|--------|-------|-------|
+| 1 | [llama-3.3-70b](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10_slo/llama-3.3-70b-versatile.md) | T1 (temp=0.0) | 82 | Best with Slovenian prompt, consistent |
+| 1 | [maverick-17b-128e](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10_slo/meta-llama-llama-4-maverick-17b-128e-instruct.md) | P2 (top_p=0.3) | 82 | Tied, avoids T1 over-processing |
+| 3 | [scout-17b-16e](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10_slo/meta-llama-llama-4-scout-17b-16e-instruct.md) | T4 (temp=0.8) | 73 | Almost no cleanup (94-99% length) |
+| 4 | [gpt-oss-120b](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10_slo/openai-gpt-oss-120b.md) | P4 (top_p=0.7) | 60 | Over-summarizes, hallucinations |
+
+**Key Finding:** English prompt (dream_v10) significantly outperforms Slovenian (dream_v10_slo). Use dream_v10 with maverick T1 for production.
