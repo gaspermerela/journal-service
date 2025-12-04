@@ -9,7 +9,7 @@ from sqlalchemy import String, Boolean, DateTime, Index, Enum as SQLAEnum
 from typing import Optional
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.database import Base
+from app.database import Base, DB_SCHEMA
 
 
 class UserRole(str, Enum):
@@ -157,7 +157,7 @@ class User(Base):
         Index("idx_users_email", "email"),
         Index("idx_users_is_active", "is_active"),
         Index("idx_users_role", "role"),
-        {"schema": "journal"}
+        {"schema": DB_SCHEMA}
     )
 
     def __repr__(self) -> str:

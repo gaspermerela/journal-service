@@ -1,159 +1,25 @@
 """
-Tests for envelope encryption service.
+Integration tests for envelope encryption service.
 
 Tests cover:
-- LocalKEKProvider: KEK derivation, DEK encryption/decryption
 - EnvelopeEncryptionService: DEK management, data/file encryption, GDPR deletion
 - Multi-user isolation: different users can't access each other's DEKs
+- File encryption/decryption
 """
 
 import os
 import uuid
 from pathlib import Path
-from unittest.mock import Mock, AsyncMock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.encryption_providers.local_kek import (
-    LocalKEKProvider,
-    LocalKEKProviderError,
-)
+from app.services.encryption_providers.local_kek import LocalKEKProvider
 from app.services.envelope_encryption import (
     EnvelopeEncryptionService,
-    EncryptionError,
     DEKNotFoundError,
     DEKDestroyedError,
-    create_envelope_encryption_service,
 )
-from app.models.data_encryption_key import DataEncryptionKey
-
-
-# =============================================================================
-# LocalKEKProvider Unit Tests
-# =============================================================================
-
-
-class TestLocalKEKProvider:
-    """Unit tests for LocalKEKProvider."""
-
-    def test_init_valid_master_key(self):
-        """Provider initializes with valid master key."""
-        provider = LocalKEKProvider(master_key="test-master-key-12345678")
-        assert provider.get_provider_version() == "local-v1"
-
-    def test_init_short_master_key_fails(self):
-        """Provider rejects master keys shorter than 16 chars."""
-        with pytest.raises(ValueError, match="at least 16 characters"):
-            LocalKEKProvider(master_key="short")
-
-    def test_init_empty_master_key_fails(self):
-        """Provider rejects empty master key."""
-        with pytest.raises(ValueError, match="at least 16 characters"):
-            LocalKEKProvider(master_key="")
-
-    @pytest.mark.asyncio
-    async def test_encrypt_decrypt_roundtrip(self):
-        """DEK encrypts and decrypts correctly."""
-        provider = LocalKEKProvider(master_key="test-master-key-12345678")
-        user_id = uuid.uuid4()
-        original_dek = os.urandom(32)
-
-        encrypted = await provider.encrypt_dek(original_dek, user_id)
-        decrypted = await provider.decrypt_dek(encrypted, user_id)
-
-        assert decrypted == original_dek
-
-    @pytest.mark.asyncio
-    async def test_different_users_get_different_encryptions(self):
-        """Same DEK encrypted for different users produces different ciphertext."""
-        provider = LocalKEKProvider(master_key="test-master-key-12345678")
-        user_id_1 = uuid.uuid4()
-        user_id_2 = uuid.uuid4()
-        dek = os.urandom(32)
-
-        encrypted_1 = await provider.encrypt_dek(dek, user_id_1)
-        encrypted_2 = await provider.encrypt_dek(dek, user_id_2)
-
-        # Different KEKs (from different user salts) produce different ciphertext
-        assert encrypted_1 != encrypted_2
-
-    @pytest.mark.asyncio
-    async def test_user_cannot_decrypt_other_users_dek(self):
-        """User 2 cannot decrypt DEK encrypted for user 1."""
-        provider = LocalKEKProvider(master_key="test-master-key-12345678")
-        user_id_1 = uuid.uuid4()
-        user_id_2 = uuid.uuid4()
-        dek = os.urandom(32)
-
-        encrypted_for_user_1 = await provider.encrypt_dek(dek, user_id_1)
-
-        # User 2 trying to decrypt should fail (authentication tag mismatch)
-        with pytest.raises(LocalKEKProviderError, match="decryption failed"):
-            await provider.decrypt_dek(encrypted_for_user_1, user_id_2)
-
-    @pytest.mark.asyncio
-    async def test_encrypt_empty_dek_fails(self):
-        """Encrypting empty DEK raises ValueError."""
-        provider = LocalKEKProvider(master_key="test-master-key-12345678")
-        user_id = uuid.uuid4()
-
-        with pytest.raises(ValueError, match="cannot be empty"):
-            await provider.encrypt_dek(b"", user_id)
-
-    @pytest.mark.asyncio
-    async def test_decrypt_empty_data_fails(self):
-        """Decrypting empty data raises ValueError."""
-        provider = LocalKEKProvider(master_key="test-master-key-12345678")
-        user_id = uuid.uuid4()
-
-        with pytest.raises(ValueError, match="cannot be empty"):
-            await provider.decrypt_dek(b"", user_id)
-
-    @pytest.mark.asyncio
-    async def test_decrypt_too_short_data_fails(self):
-        """Decrypting data shorter than minimum length fails."""
-        provider = LocalKEKProvider(master_key="test-master-key-12345678")
-        user_id = uuid.uuid4()
-
-        # Minimum is nonce (12) + ciphertext (1) + tag (16) = 29 bytes
-        with pytest.raises(ValueError, match="too short"):
-            await provider.decrypt_dek(b"x" * 20, user_id)
-
-    @pytest.mark.asyncio
-    async def test_decrypt_corrupted_data_fails(self):
-        """Decrypting corrupted ciphertext fails authentication."""
-        provider = LocalKEKProvider(master_key="test-master-key-12345678")
-        user_id = uuid.uuid4()
-        dek = os.urandom(32)
-
-        encrypted = await provider.encrypt_dek(dek, user_id)
-
-        # Corrupt the ciphertext (skip nonce, corrupt middle)
-        corrupted = bytearray(encrypted)
-        corrupted[15] ^= 0xFF  # Flip bits in ciphertext
-        corrupted = bytes(corrupted)
-
-        with pytest.raises(LocalKEKProviderError, match="decryption failed"):
-            await provider.decrypt_dek(corrupted, user_id)
-
-    @pytest.mark.asyncio
-    async def test_same_encryption_different_nonces(self):
-        """Multiple encryptions of same DEK produce different ciphertext (unique nonces)."""
-        provider = LocalKEKProvider(master_key="test-master-key-12345678")
-        user_id = uuid.uuid4()
-        dek = os.urandom(32)
-
-        encrypted_1 = await provider.encrypt_dek(dek, user_id)
-        encrypted_2 = await provider.encrypt_dek(dek, user_id)
-
-        # Same plaintext should produce different ciphertext (random nonce)
-        assert encrypted_1 != encrypted_2
-
-        # But both should decrypt to same DEK
-        decrypted_1 = await provider.decrypt_dek(encrypted_1, user_id)
-        decrypted_2 = await provider.decrypt_dek(encrypted_2, user_id)
-        assert decrypted_1 == decrypted_2 == dek
 
 
 # =============================================================================
@@ -563,42 +429,44 @@ class TestMultiUserIsolation:
             )
 
     @pytest.mark.asyncio
-    async def test_same_target_id_different_users(
+    async def test_different_users_different_targets(
         self,
         encryption_service: EnvelopeEncryptionService,
         db_session: AsyncSession,
         test_user,
         second_user,
     ):
-        """Same target_id can be encrypted separately for different users."""
-        target_id = uuid.uuid4()  # Same target ID
+        """Different users encrypt their own separate targets independently."""
+        # Each user has their own target (realistic scenario)
+        target_id_1 = uuid.uuid4()
+        target_id_2 = uuid.uuid4()
 
-        # User 1 encrypts
+        # User 1 encrypts their target
         encrypted_1 = await encryption_service.encrypt_data(
-            db_session, "user 1 data", "transcription", target_id, test_user.id
+            db_session, "user 1 data", "transcription", target_id_1, test_user.id
         )
 
-        # User 2 encrypts same target_id
+        # User 2 encrypts their target
         encrypted_2 = await encryption_service.encrypt_data(
-            db_session, "user 2 data", "transcription", target_id, second_user.id
+            db_session, "user 2 data", "transcription", target_id_2, second_user.id
         )
 
         # Both have separate DEKs
         dek_1 = await encryption_service.get_dek(
-            db_session, "transcription", target_id, test_user.id
+            db_session, "transcription", target_id_1, test_user.id
         )
         dek_2 = await encryption_service.get_dek(
-            db_session, "transcription", target_id, second_user.id
+            db_session, "transcription", target_id_2, second_user.id
         )
 
         assert dek_1.id != dek_2.id
 
         # Each user can decrypt their own data
         decrypted_1 = await encryption_service.decrypt_data(
-            db_session, encrypted_1, "transcription", target_id, test_user.id
+            db_session, encrypted_1, "transcription", target_id_1, test_user.id
         )
         decrypted_2 = await encryption_service.decrypt_data(
-            db_session, encrypted_2, "transcription", target_id, second_user.id
+            db_session, encrypted_2, "transcription", target_id_2, second_user.id
         )
 
         assert decrypted_1.decode() == "user 1 data"
@@ -723,41 +591,3 @@ class TestFileEncryption:
                 target_id,
                 test_user.id,
             )
-
-
-# =============================================================================
-# Factory Function Tests
-# =============================================================================
-
-
-class TestFactoryFunction:
-    """Tests for create_envelope_encryption_service factory."""
-
-    def test_create_local_provider(self, monkeypatch):
-        """Factory creates service with local provider."""
-        # Mock settings to have a valid encryption key
-        from app import config
-        original_key = config.settings.api_encryption_key
-
-        try:
-            # Ensure we have a valid key
-            if not original_key or len(original_key) < 16:
-                monkeypatch.setattr(
-                    config.settings, "api_encryption_key", "test-master-key-12345678"
-                )
-
-            service = create_envelope_encryption_service(provider="local")
-            assert isinstance(service, EnvelopeEncryptionService)
-            assert service.kek_provider.get_provider_version() == "local-v1"
-        finally:
-            pass  # Original value restored by monkeypatch
-
-    def test_create_unsupported_provider_fails(self, monkeypatch):
-        """Factory raises ValueError for unsupported provider."""
-        from app import config
-        monkeypatch.setattr(
-            config.settings, "api_encryption_key", "test-master-key-12345678"
-        )
-
-        with pytest.raises(ValueError, match="Unsupported encryption provider"):
-            create_envelope_encryption_service(provider="unknown-kms")

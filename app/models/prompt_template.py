@@ -15,7 +15,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 
-from app.database import Base
+from app.database import Base, DB_SCHEMA
 
 
 class PromptTemplate(Base):
@@ -33,7 +33,7 @@ class PromptTemplate(Base):
             unique=True,
             postgresql_where=Column('is_active') == True
         ),
-        {"schema": "journal"}
+        {"schema": DB_SCHEMA}
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)

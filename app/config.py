@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     DATABASE_NAME: str = "postgres"
     DATABASE_USER: str = "journal_user"
     DATABASE_PASSWORD: str  # Required - no default for security
+    DB_SCHEMA: str = "journal"  # Schema name for all tables (use "journal_test" for tests)
 
     # Application Configuration
     HOST: str = "0.0.0.0"

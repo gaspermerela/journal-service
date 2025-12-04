@@ -19,6 +19,7 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-testing-only-not-fo
 os.environ.setdefault("DATABASE_PASSWORD", "password")  # Matches TEST_DATABASE_URL
 os.environ.setdefault("TRANSCRIPTION_PROVIDER", "groq")  # Use Groq for E2E tests
 os.environ.setdefault("LLM_PROVIDER", "groq")  # Use Groq for E2E tests
+os.environ["DB_SCHEMA"] = "journal_test"  # MUST be set before app imports to use test schema
 
 from app.config import Settings
 from app.database import Base, get_db
