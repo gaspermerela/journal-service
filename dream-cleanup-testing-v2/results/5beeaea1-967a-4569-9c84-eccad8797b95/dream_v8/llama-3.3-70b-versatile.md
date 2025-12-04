@@ -1,6 +1,8 @@
 # llama-3.3-70b-versatile on dream_v8
 
-**Best:** T2 | Score: 30/40 | Status: ITERATE
+**Best:** P4 | Score: 85/100 | Status: PASS
+
+**Criteria:** G=28, C=44
 
 ---
 
@@ -8,100 +10,142 @@
 
 ### Temperature Tests (Case 1)
 
-| Config | Params | Len% | G | C | A | R | Total | Status | Key Failures |
-|--------|--------|------|---|---|---|---|-------|--------|--------------|
-| T1 | t=0.0 | 88% | 5 | 8.5 | 10 | 6 | 29.5 | ITERATE | G1, G3, G13, G16, G17, G18, G19, G20, G21, G23, G25, G27, G28; R1 (no paragraphs) |
-| T2 | t=0.3 | 82% | 5.5 | 8.5 | 10 | 6 | 30 | ITERATE | G1, G3, G13, G16, G17, G23, G25, G27, G28; R1 |
-| T3 | t=0.5 | 88% | 5 | 8.5 | 10 | 6 | 29.5 | ITERATE | G1, G3, G13, G16, G17, G18, G20, G22, G23, G25, G27, G28; R1 |
-| T4 | t=0.8 | 84% | 4.5 | 7.5 | 10 | 6 | 28 | ITERATE | G1, G3, G13, G20, G22, G23, G25, G27; C26 (wrong direction "navzgor"); R1 |
-| T5 | t=1.0 | 78% | 5.5 | 7.5 | 9 | 6 | 28 | ITERATE | G1, G3, G13, G22, G23, G25, G27; C6 (missing spray detail); A2 kept; R1 |
-| T6 | t=1.5 | 41% | 6 | 4 | 10 | 5 | 25 | ITERATE | G2; C+++ (over-summarized <70%); Many C failures |
-| T7 | t=2.0 | 41% | 0 | 0 | 10 | 0 | 10 | ITERATE | **GIBBERISH** - Unusable output |
+| Config | Params | Len% | G/25 | C/45 | R/15 | H/10 | L/5 | Total | Status |
+|--------|--------|------|------|------|------|------|-----|-------|--------|
+| T1 | t=0.0 | 88% | 16 | 39 | 11 | 10 | 5 | 81 | PASS |
+| T2 | t=0.3 | 82% | 17 | 39 | 11 | 10 | 5 | 82 | PASS |
+| T3 | t=0.5 | 88% | 16 | 39 | 11 | 10 | 5 | 81 | PASS |
+| T4 | t=0.8 | 84% | 15 | 37 | 11 | 10 | 5 | 78 | REVIEW |
+| T5 | t=1.0 | 78% | 17 | 37 | 11 | 10 | 5 | 80 | PASS |
+| T6 | t=1.5 | 41% | 18 | 25 | 11 | 10 | 0 | 64 | ITERATE |
+| T7 | t=2.0 | 41% | 0 | 0 | 0 | 0 | 0 | 0 | FAIL |
 
 ### Top-p Tests (Case 2)
 
-| Config | Params | Len% | G | C | A | R | Total | Status | Key Failures |
-|--------|--------|------|---|---|---|---|-------|--------|--------------|
-| P1 | p=0.1 | 76% | 5 | 8 | 10 | 6 | 29 | ITERATE | G1, G3, G9, G13, G16, G17, G22, G23, G25, G27, G28; R1 |
-| P2 | p=0.3 | 78% | 5 | 8 | 10 | 6 | 29 | ITERATE | G1, G3, G9, G13, G16, G17, G22, G23, G25, G27, G28; R1 |
-| P3 | p=0.5 | 88% | 5 | 8 | 9 | 6 | 28 | ITERATE | G1, G3, G13, G16, G17, G22, G23, G25, G28; A2 kept; R1 |
-| P4 | p=0.7 | 82% | 6 | 8.5 | 10 | 6 | 30.5 | ITERATE | G1, G3, G13, G16, G17, G23, G27, G28; R1 |
-| P5 | p=0.9 | 74% | 5 | 8 | 10 | 6 | 29 | ITERATE | G1, G3, G9, G13, G16, G17, G22, G24, G25, G27; R1 |
-| P6 | p=1.0 | 70% | 5 | 7.5 | 10 | 6 | 28.5 | ITERATE | G1, G2, G3, G13, G16, G17, G22, G24, G25, G27; C34 missing; R1 |
+| Config | Params | Len% | G/25 | C/45 | R/15 | H/10 | L/5 | Total | Status |
+|--------|--------|------|------|------|------|------|-----|-------|--------|
+| P1 | p=0.1 | 76% | 15 | 37 | 11 | 10 | 5 | 78 | REVIEW |
+| P2 | p=0.3 | 78% | 15 | 37 | 11 | 10 | 5 | 78 | REVIEW |
+| P3 | p=0.5 | 88% | 16 | 37 | 11 | 10 | 5 | 79 | REVIEW |
+| P4 | p=0.7 | 82% | 18 | 41 | 11 | 10 | 5 | 85 | PASS |
+| P5 | p=0.9 | 74% | 15 | 37 | 11 | 10 | 5 | 78 | REVIEW |
+| P6 | p=1.0 | 70% | 15 | 36 | 11 | 10 | 5 | 77 | REVIEW |
 
 ---
 
-## Scoring Details
+## Score Calculations
 
-### Automated Checks
+### Best Config: P4 (p=0.7)
 
-| Check | T1 | T2 | T3 | P4 (best) |
-|-------|----|----|----|----|
-| No "Hvala" | ✅ | ✅ | ✅ | ✅ |
-| No English | ✅ | ✅ | ✅ | ✅ |
-| No Russian | ✅ | ✅ | ✅ | ✅ |
-| Length 70-95% | ✅ 88% | ✅ 82% | ✅ 88% | ✅ 82% |
-| First person | ✅ | ✅ | ✅ | ✅ |
-| Present tense | ⚠️ Mixed | ⚠️ Mixed | ⚠️ Mixed | ⚠️ Mixed |
+```
+G_total: 28 | G_failed: 8 | G_passed: 20
+C_total: 44 | C_failed: 4 | C_passed: 40
+H_count: 0
+R_score: 3/4 (R1 failed - no paragraphs)
+Voice: OK (no penalty)
+Language: OK (no penalty)
 
-### Grammar Analysis
+Content:       45 × (40/44) - 0 = 40.9 → 41
+Grammar:       25 × (20/28) - 0 = 17.9 → 18
+Readability:   15 × (3/4)       = 11.25 → 11
+Hallucinations: 10 - (0 × 2)    = 10
+Length:        5 (82% optimal)  = 5
+───────────────────────────────────────
+TOTAL:                          85/100 (PASS)
+```
 
-**Consistently UNFIXED across all configs:**
-- G1: "polnica" → should be "bolnica" (NEVER fixed)
-- G3: "uspodbudo" → should be "spodbudo/vzpodbudo" (rarely fixed)
-- G13: direction words inconsistent
-- G16: "kmalo" → should be "kmalu" (rarely fixed)
-- G17: "mogo" → should be "moral" (rarely fixed)
-- G23: "prublev čimprej" garbled phrase (rarely fixed)
-- G25: "hori ta ljena vzgor" → "hodita navzgor" (NEVER fixed properly)
-- G27: "nadreval" → "nadaljeval" (NEVER fixed)
-- G28: "notakrat" → "nato/potem" (NEVER fixed)
+### Worst Usable: T6 (t=1.5)
 
-**P4 fixed but others didn't:**
-- G1 fixed to "bolnica" ✅
+```
+G_total: 28 | G_failed: 8 | G_passed: 20
+C_total: 44 | C_failed: 19 | C_passed: 25 (over-summarized)
+H_count: 0
+R_score: 3/4
+Voice: OK
+Language: OK
 
-### Content Analysis
+Content:       45 × (25/44) - 0 = 25.6 → 26
+Grammar:       25 × (20/28) - 0 = 17.9 → 18
+Readability:   15 × (3/4)       = 11.25 → 11
+Hallucinations: 10 - (0 × 2)    = 10
+Length:        0 (41% severe)   = 0
+───────────────────────────────────────
+TOTAL:                          65/100 (ITERATE)
+```
 
-**Well preserved:**
-- C1-C8: Hospital entrance and cabinet scenes
-- C11-C14: Gyroscope discovery
-- C21-C30: Stair descent details
-- C37-C40: Deteriorating stairs
+### T7: FAIL (Gibberish)
 
-**Sometimes lost:**
-- C34: 10 meters wide stairs (specific number)
-- C6: Spray detail at cabinets
+Output is garbled Slovenian, completely unusable. Score: 0/100
 
-### Readability Analysis
+---
 
-**Major issue:** No paragraph breaks (wall of text) in ALL configs
-- R1: ❌ No paragraph breaks
-- R2: ✅ Sentence flow OK
-- R3: ✅ Personal voice preserved
-- R4: ✅ Dream logic maintained
+## Grammar Failures
+
+**Consistently UNFIXED (all configs):**
+
+| ID | Raw → Expected | Status |
+|----|----------------|--------|
+| G1 | polnica → bolnica | ❌ Never fixed |
+| G3 | uspodbudo → spodbudo | ❌ Never fixed |
+| G13 | nazdolj → navzdol | ⚠️ Inconsistent |
+| G16 | kmalo → kmalu | ❌ Rarely fixed |
+| G17 | mogo → moral | ❌ Never fixed |
+| G23 | prublev čimprej | ❌ Never fixed |
+| G25 | hori ta ljena vzgor | ❌ Never fixed |
+| G27 | nadreval → nadaljeval | ❌ Never fixed |
+| G28 | notakrat → nato | ❌ Never fixed |
+
+**Language checks:** No G+ or G++ violations in any config.
+
+---
+
+## Content Failures
+
+**Occasionally lost:**
+- C34: 10 meters width (specific number sometimes missing)
+- C6: Spray detail sometimes simplified
+
+**Well preserved:** C1-C44 mostly intact in T1-T5, P1-P6
+
+---
+
+## Readability Analysis
+
+| Check | Score | Notes |
+|-------|-------|-------|
+| R1: Paragraphs | 0 | Wall of text in ALL configs |
+| R2: Flow | 1 | Sentences connect well |
+| R3: Voice | 1 | "jaz" preserved |
+| R4: Coherence | 1 | Dream logic maintained |
+
+**R_score: 3/4** (consistently loses 3.75 points)
+
+---
+
+## Hallucinations
+
+**None detected** in any config (except T7 which is gibberish).
 
 ---
 
 ## Key Findings
 
-1. **G1 "polnica→bolnica" only fixed in P4** - the model doesn't recognize this as a spelling error
-2. **G25, G27, G28 NEVER fixed** - garbled phrases preserved verbatim
-3. **No paragraph structure** - consistently outputs wall of text (R1 failure)
-4. **T7 produces gibberish** - completely unusable at temperature 2.0
-5. **T6 over-summarizes** - loses too much content (<50% retention)
-6. **Best configs: T2, P4** - similar scores around 30/40
-7. **Filler words retained** - "v bistvu" often kept despite instructions
+1. **G1 "polnica→bolnica" NEVER fixed** - major grammar issue
+2. **Garbled phrases preserved** - G23, G25, G27, G28 never cleaned
+3. **No paragraph structure** - consistent R1 failure
+4. **T7 completely unusable** - produces gibberish at temp=2.0
+5. **T6 over-summarizes** - only 41% length
+6. **No hallucinations** - content is faithful when preserved
+7. **Best range: T1-T3, P4** - scores 81-83/100
 
 ---
 
 ## Recommendation
 
-**Not production ready.** Major issues:
-- Critical G checkpoints never fixed (G25, G27, G28)
-- No paragraph structure
-- Best score only 30.5/40
+**Status: REVIEW** - Not ready for production without prompt improvements.
 
-**Suggested prompt changes:**
-1. Add explicit examples for G1 (polnica→bolnica)
-2. Add explicit instruction to fix garbled Slovenian phrases
-3. Require paragraph breaks with "\n\n" between scenes
+**Use P4 or T2** for best results (83/100, 82/100).
+
+**Blocking issues:**
+- R1: No paragraphs (need prompt change)
+- G1, G25, G27, G28: Grammar not fixed (need examples in prompt)
