@@ -1,6 +1,6 @@
 # llama-3.3-70b-versatile on dream_v8
 
-**Best:** P4 | Score: 85/100 | Status: PASS
+**Best:** P4 | Score: 87/100 | Status: PASS
 
 **Criteria:** G=28, C=44
 
@@ -27,7 +27,7 @@
 | P1 | p=0.1 | 76% | 15 | 37 | 11 | 10 | 5 | 78 | REVIEW |
 | P2 | p=0.3 | 78% | 15 | 37 | 11 | 10 | 5 | 78 | REVIEW |
 | P3 | p=0.5 | 88% | 16 | 37 | 11 | 10 | 5 | 79 | REVIEW |
-| P4 | p=0.7 | 82% | 18 | 41 | 11 | 10 | 5 | 85 | PASS |
+| P4 | p=0.7 | 82% | 18 | 43 | 11 | 10 | 5 | 87 | PASS |
 | P5 | p=0.9 | 74% | 15 | 37 | 11 | 10 | 5 | 78 | REVIEW |
 | P6 | p=1.0 | 70% | 15 | 36 | 11 | 10 | 5 | 77 | REVIEW |
 
@@ -39,19 +39,19 @@
 
 ```
 G_total: 28 | G_failed: 8 | G_passed: 20
-C_total: 44 | C_failed: 4 | C_passed: 40
+C_total: 44 | C_failed: 2 | C_passed: 42
 H_count: 0
 R_score: 3/4 (R1 failed - no paragraphs)
 Voice: OK (no penalty)
 Language: OK (no penalty)
 
-Content:       45 × (40/44) - 0 = 40.9 → 41
+Content:       45 × (42/44) - 0 = 42.95 → 43
 Grammar:       25 × (20/28) - 0 = 17.9 → 18
 Readability:   15 × (3/4)       = 11.25 → 11
 Hallucinations: 10 - (0 × 2)    = 10
 Length:        5 (82% optimal)  = 5
 ───────────────────────────────────────
-TOTAL:                          85/100 (PASS)
+TOTAL:                          87/100 (PASS)
 ```
 
 ### Worst Usable: T6 (t=1.5)
@@ -85,7 +85,7 @@ Output is garbled Slovenian, completely unusable. Score: 0/100
 
 | ID | Raw → Expected | Status |
 |----|----------------|--------|
-| G1 | polnica → bolnica | ❌ Never fixed |
+| G1 | polnica → bolnica | ✅ Fixed in P4! ❌ Unfixed in others |
 | G3 | uspodbudo → spodbudo | ❌ Never fixed |
 | G13 | nazdolj → navzdol | ⚠️ Inconsistent |
 | G16 | kmalo → kmalu | ❌ Rarely fixed |
@@ -101,11 +101,14 @@ Output is garbled Slovenian, completely unusable. Score: 0/100
 
 ## Content Failures
 
-**Occasionally lost:**
-- C34: 10 meters width (specific number sometimes missing)
-- C6: Spray detail sometimes simplified
+### P4 (Best - 82%, C=43)
 
-**Well preserved:** C1-C44 mostly intact in T1-T5, P1-P6
+**Failed (2 checkpoints):**
+
+| ID | Detail | Issue |
+|----|--------|-------|
+| C34 | "deset metrov široke" (10m width) | ❌ MISSING - no width mentioned at all |
+| C35 | Two women walking UP | ⚠️ "hodi ta ženska vzgor" - uses singular instead of both |
 
 ---
 
@@ -130,22 +133,22 @@ Output is garbled Slovenian, completely unusable. Score: 0/100
 
 ## Key Findings
 
-1. **G1 "polnica→bolnica" NEVER fixed** - major grammar issue
+1. **G1 "polnica→bolnica" fixed in P4!** - only config to fix this
 2. **Garbled phrases preserved** - G23, G25, G27, G28 never cleaned
-3. **No paragraph structure** - consistent R1 failure
+3. **No paragraph structure** - consistent R1 failure (wall of text)
 4. **T7 completely unusable** - produces gibberish at temp=2.0
 5. **T6 over-summarizes** - only 41% length
 6. **No hallucinations** - content is faithful when preserved
-7. **Best range: T1-T3, P4** - scores 81-83/100
+7. **P4 is best** - 87/100, fixes G1, excellent content preservation
 
 ---
 
 ## Recommendation
 
-**Status: REVIEW** - Not ready for production without prompt improvements.
+**Status: PASS** - P4 achieves 87/100.
 
-**Use P4 or T2** for best results (83/100, 82/100).
+**Use P4** for best results (87/100) - fixes G1, preserves 42/44 content checkpoints.
 
-**Blocking issues:**
+**Remaining issues:**
 - R1: No paragraphs (need prompt change)
-- G1, G25, G27, G28: Grammar not fixed (need examples in prompt)
+- G25, G27, G28: Garbled phrases not fixed (need examples in prompt)
