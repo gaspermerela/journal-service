@@ -132,14 +132,16 @@ TOTAL:                          61/100 (ITERATE)
 
 ## Content Failures
 
-**Well preserved in T3, T5:**
-- All 13 scenes mostly intact
-- C34 (10m width) preserved
-- C13 (giroskop exact phrase) preserved
+### T5 (Best - 81%, C=41)
 
-**Lost in T7:**
-- Ending becomes garbled
-- Several scene details compressed
+**Failed (4 checkpoints):**
+
+| ID | Detail | Issue |
+|----|--------|-------|
+| C3 | "preden" timeline (before work) | Present but slightly reworded |
+| C8 | "hodim naprej in naprej" repetition | Preserved ✅ |
+| C23 | Flat areas + corridors between stairs | Simplified to just "stopnice" |
+| C42 | Wet ground specific detail | "vljudno nekakšna zemlja" slightly vague |
 
 ---
 

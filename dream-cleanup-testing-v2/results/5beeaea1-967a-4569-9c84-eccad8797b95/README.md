@@ -4,11 +4,12 @@
 
 ---
 
-## Best Result
+## Best Results (Tied)
 
 | Prompt | Model | Config | Score | Status |
 |--------|-------|--------|-------|--------|
 | dream_v8 | meta-llama/llama-4-maverick-17b-128e-instruct | T5 | 87/100 | PASS |
+| dream_v8 | llama-3.3-70b-versatile | P4 | 87/100 | PASS |
 
 ---
 
@@ -16,20 +17,20 @@
 
 | Prompt | Best Model | Best Config | Score | G/25 | C/45 | R/15 | H/10 | L/5 | Key Failures |
 |--------|------------|-------------|-------|------|------|------|------|-----|--------------|
-| [dream_v8](./dream_v8/) | maverick-17b | T5 | 87/100 | 20 | 41 | 11 | 10 | 5 | G1 never fixed; R1 partial; Russian in T1/T2/P1 |
+| [dream_v8](./dream_v8/) | maverick T5 / llama P4 | tied | 87/100 | 18-20 | 41-43 | 11 | 10 | 5 | R1 partial/none; Russian risk in maverick |
 
 ---
 
 ## Overall Status
 
-**PASS achieved!** maverick T5 scores 87/100.
+**PASS achieved!** Two models tied at 87/100: maverick T5 and llama P4.
 
 ### Current Best Performers
 
 | Rank | Prompt | Model | Config | Score | Status | Notes |
 |------|--------|-------|--------|-------|--------|-------|
-| 1 | dream_v8 | maverick T5 | t=1.0 | 87/100 | PASS | Best overall, good content + grammar |
-| 2 | dream_v8 | llama-3.3 P4 | p=0.7 | 85/100 | PASS | Best llama config, no paragraphs |
+| 1 | dream_v8 | maverick T5 | t=1.0 | 87/100 | PASS | Better grammar (G=20), partial paragraphs |
+| 1 | dream_v8 | llama-3.3 P4 | p=0.7 | 87/100 | PASS | Better content (C=43), fixes G1! |
 | 3 | dream_v8 | maverick T3 | t=0.5 | 82/100 | PASS | Good alternative |
 | 4 | dream_v8 | gpt-oss P1 | p=0.1 | 73/100 | REVIEW | Over-summarizes, best paragraphs |
 
@@ -39,22 +40,17 @@
 
 Issues that prevent reaching EXCELLENT:
 
-### 1. G1 "polnica→bolnica" Not Fixed
-- **Impact:** ~1 point (Grammar)
-- **Models affected:** llama-3.3 (maverick P5 and gpt-oss fix this!)
-- **Solution:** Use maverick P5 or add explicit example in prompt
-
-### 2. Partial/No Paragraph Structure (R1)
+### 1. Partial/No Paragraph Structure (R1)
 - **Impact:** 3-4 points on Readability
 - **Models affected:** llama-3.3 worst (R1=0), maverick partial
 - **Solution:** Add paragraph requirement with \n\n
 
-### 3. Garbled Phrases Not Fixed (G23, G25, G27, G28)
+### 2. Garbled Phrases Not Fixed (G23, G25, G27, G28)
 - **Impact:** ~2 points on Grammar
 - **Models affected:** llama-3.3 worst
 - **Solution:** Add examples of common garbled→fixed pairs
 
-### 4. gpt-oss Over-summarization
+### 3. gpt-oss Over-summarization
 - **Impact:** 14+ points on Content (C=27 vs 41)
 - **Models affected:** gpt-oss-120b only
 - **Solution:** Not fixable via prompt - avoid this model for content
@@ -99,4 +95,4 @@ Issues that prevent reaching EXCELLENT:
 
 | Date | Prompt | Models Tested | Configs | Best Score |
 |------|--------|---------------|---------|------------|
-| 2025-12-01 | dream_v8 | llama-3.3, maverick, gpt-oss | 25 total | 87/100 (maverick T5) |
+| 2025-12-01 | dream_v8 | llama-3.3, maverick, gpt-oss | 25 total | 87/100 (maverick T5, llama P4 tied) |
