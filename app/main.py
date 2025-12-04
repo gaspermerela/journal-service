@@ -12,6 +12,7 @@ from app.routes import upload, health, entries, transcription, auth, cleanup, no
 from app.middleware.logging import RequestLoggingMiddleware
 from app.services.transcription import create_transcription_service
 from app.services.llm_cleanup import create_llm_cleanup_service
+from app.services.envelope_encryption import create_envelope_encryption_service
 from app.utils.logger import get_logger
 
 logger = get_logger("main")
@@ -102,6 +103,23 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize LLM cleanup service: {e}", exc_info=True)
         raise RuntimeError(f"Cannot start application without LLM cleanup service: {e}") from e
 
+    # Initialize envelope encryption service
+    logger.info(f"Initializing encryption service with provider: {settings.ENCRYPTION_PROVIDER}")
+    try:
+        app.state.encryption_service = create_envelope_encryption_service(
+            provider=settings.ENCRYPTION_PROVIDER
+        )
+        logger.info(
+            f"Envelope encryption service initialized: "
+            f"provider={settings.ENCRYPTION_PROVIDER}, "
+            f"dreams={settings.ENCRYPTION_ENABLED_DREAMS}, "
+            f"therapy={settings.ENCRYPTION_ENABLED_THERAPY}"
+        )
+    except Exception as e:
+        # Encryption service is optional - app can start without it
+        logger.warning(f"Encryption service not available: {e}")
+        app.state.encryption_service = None
+
     yield
 
     # Shutdown
@@ -110,6 +128,8 @@ async def lifespan(app: FastAPI):
     logger.info("Transcription service cleaned up")
     app.state.llm_cleanup_service = None
     logger.info("LLM cleanup service cleaned up")
+    app.state.encryption_service = None
+    logger.info("Encryption service cleaned up")
 
 
 # Create FastAPI application

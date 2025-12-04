@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from app.models.cleaned_entry import CleanedEntry
     from app.models.notion_sync import NotionSync
     from app.models.user_preference import UserPreference
+    from app.models.data_encryption_key import DataEncryptionKey
 
 
 class User(Base):
@@ -141,6 +142,13 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
         uselist=False,
+        lazy="selectin"
+    )
+
+    data_encryption_keys: Mapped[list["DataEncryptionKey"]] = relationship(
+        "DataEncryptionKey",
+        back_populates="user",
+        cascade="all, delete-orphan",
         lazy="selectin"
     )
 

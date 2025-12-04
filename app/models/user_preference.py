@@ -4,7 +4,7 @@ SQLAlchemy model for user_preferences table.
 import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
-from sqlalchemy import String, DateTime, ForeignKey, Index
+from sqlalchemy import String, DateTime, ForeignKey, Index, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
@@ -55,6 +55,15 @@ class UserPreference(Base):
         String,
         nullable=True,
         comment="User's preferred LLM model for cleanup"
+    )
+
+    # Encryption preferences
+    encryption_enabled: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        doc="Whether to encrypt dream entries at rest (opt-in)"
     )
 
     # Timestamps
