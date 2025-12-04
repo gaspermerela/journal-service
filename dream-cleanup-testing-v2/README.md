@@ -73,14 +73,6 @@ dream-cleanup-testing-v2/
 2. **After each cleanup:** Check boxes against criteria, count failures
 3. **Record results:** `G: 8 | C: 9 | A: 10 | R: 9 | Total: 36/40 | Failed: G1, G5, C3`
 
-### Rough Thresholds ?
-
-| Score | Status | Meaning |
-|-------|--------|---------|
-| ≥38/40 | **PASS** | Production ready |
-| 36-37/40 | **REVIEW** | Close, check failed items |
-| <36/40 | **ITERATE** | Needs prompt changes |
-
 ## Scripts
 
 | Script | Purpose | DB Persistence |
