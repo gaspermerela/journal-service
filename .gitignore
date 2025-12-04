@@ -59,3 +59,9 @@ Thumbs.db
 
 # Alembic
 alembic/versions/*.pyc
+
+worktree
+
+dream-cleanup-testing-v2/criteria/
+dream-cleanup-testing-v2/cache/
+dream-cleanup-testing-v2/reference/
