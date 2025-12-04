@@ -4,74 +4,73 @@
 
 ---
 
-## Best Results (Tied)
+## Best Result
 
 | Prompt | Model | Config | Score | Status |
 |--------|-------|--------|-------|--------|
-| [dream_v8](./dream_v8/README.md) | maverick-17b | T5 | 87/100 | PASS |
-| [dream_v8](./dream_v8/README.md) | llama-3.3-70b | P4 | 87/100 | PASS |
+| **[dream_v10](./dream_v10/README.md)** | **maverick-17b** | **T1 (temp=0.0)** | **94/100** | **EXCELLENT** |
 
 ---
 
 ## Prompt Comparison
 
-| Prompt | Best Model | Best Config | Score | G/25 | C/45 | R/15 | H/10 | L/5 | Key Failures |
-|--------|------------|-------------|-------|------|------|------|------|-----|--------------|
-| [dream_v8](./dream_v8/README.md) | maverick T5 / llama P4 | tied | 87/100 | 18-20 | 41-43 | 11 | 10 | 5 | R1 partial/none; Russian risk in maverick |
-| [dream_v9_slo](./dream_v9_slo/README.md) | llama-3.3-70b T3 | temp=0.5 | 86/100 | 18 | 42 | 11 | 10 | 5 | G1 (polnica); garbled phrases |
+| Prompt | Best Model | Best Config | Score | G/25 | C/45 | R/15 | H/10 | L/5 | Key Finding |
+|--------|------------|-------------|-------|------|------|------|------|-----|-------------|
+| **[dream_v10](./dream_v10/README.md)** | maverick T1 | temp=0.0 | **94/100** | 21 | 43 | 15 | 10 | 5 | ONLY model to fix G1 (bolnica) |
+| [dream_v10_slo](./dream_v10_slo/README.md) | llama T1 / maverick P2 | tied | 82/100 | 12-21 | 38-40 | 15 | 10 | 5 | Slovenian prompt underperforms |
+| [dream_v9_slo](./dream_v9_slo/README.md) | llama-3.3-70b T3 | temp=0.5 | 86/100 | 18 | 42 | 11 | 10 | 5 | G1 (polnica) unfixed |
+| [dream_v8](./dream_v8/README.md) | maverick T5 / llama P4 | tied | 87/100 | 18-20 | 41-43 | 11 | 10 | 5 | Russian leak risk in maverick |
 
 ---
 
 ## Overall Status
 
-**PASS achieved!** Two models tied at 87/100: maverick T5 and llama P4.
+**EXCELLENT achieved!** maverick T1 with dream_v10 scores 94/100.
 
 ### Current Best Performers
 
 | Rank | Prompt | Model | Config | Score | Status | Notes |
 |------|--------|-------|--------|-------|--------|-------|
-| 1 | [dream_v8](./dream_v8/README.md) | maverick T5 | t=1.0 | 87/100 | PASS | Better grammar (G=20), partial paragraphs |
-| 1 | [dream_v8](./dream_v8/README.md) | llama-3.3 P4 | p=0.7 | 87/100 | PASS | Better content (C=43), fixes G1! |
-| 3 | [dream_v9_slo](./dream_v9_slo/README.md) | llama-3.3 T3 | t=0.5 | 86/100 | PASS | Slovenian prompt, best paragraphs |
-| 4 | [dream_v8](./dream_v8/README.md) | maverick T3 | t=0.5 | 82/100 | PASS | Good alternative |
+| 1 | **[dream_v10](./dream_v10/README.md)** | **maverick T1** | temp=0.0 | **94/100** | EXCELLENT | Best STT fixes, fixes G1! |
+| 2 | [dream_v10](./dream_v10/README.md) | scout T1 | temp=0.0 | 91/100 | EXCELLENT | Best content, C23+C34 preserved |
+| 3 | [dream_v8](./dream_v8/README.md) | maverick T5 | temp=1.0 | 87/100 | PASS | Good grammar |
+| 3 | [dream_v8](./dream_v8/README.md) | llama-3.3 P4 | top_p=0.7 | 87/100 | PASS | Fixes G1 |
+| 5 | [dream_v9_slo](./dream_v9_slo/README.md) | llama-3.3 T3 | temp=0.5 | 86/100 | PASS | Slovenian prompt |
+| 6 | [dream_v10](./dream_v10/README.md) | llama-3.3 P3 | top_p=0.5 | 84/100 | PASS | Good balance |
+| 7 | [dream_v10_slo](./dream_v10_slo/README.md) | llama T1 / maverick P2 | tied | 82/100 | PASS | Slovenian underperforms |
 
 ---
 
-## Blocking Issues for EXCELLENT (≥90)
+## Key Findings
 
-Issues that prevent reaching EXCELLENT:
+### 1. English vs Slovenian Prompts
 
-### 1. Partial/No Paragraph Structure (R1)
-- **Impact:** 3-4 points on Readability
-- **Models affected:** llama-3.3 worst (R1=0), maverick partial
-- **Solution:** Add paragraph requirement with \n\n
+**English prompt (dream_v10) significantly outperforms Slovenian (dream_v10_slo):**
 
-### 2. Garbled Phrases Not Fixed (G23, G25, G27, G28)
-- **Impact:** ~2 points on Grammar
-- **Models affected:** llama-3.3 worst
-- **Solution:** Add examples of common garbled→fixed pairs
+| Model | dream_v10 (English) | dream_v10_slo (Slovenian) |
+|-------|---------------------|---------------------------|
+| maverick | 94/100 (T1) | 82/100 (P2) |
+| scout | 91/100 (T1) | 73/100 (T4) |
+| llama | 84/100 (P3) | 82/100 (T1) |
+| gpt-oss | 64/100 (T1) | 60/100 (P4) |
 
-### 3. gpt-oss Over-summarization
-- **Impact:** 14+ points on Content (C=27 vs 41)
-- **Models affected:** gpt-oss-120b only
-- **Solution:** Not fixable via prompt - avoid this model for content
+### 2. Model Recommendations
 
----
+**Production:** maverick T1 with dream_v10 (94/100)
+- Best grammar (21/25)
+- ONLY model to fix critical "polnica→bolnica" (G1)
+- Good content (43/45)
+- No hallucinations
 
-## Recommended Next Steps
+**Alternative:** scout T1 with dream_v10 (91/100)
+- Best content preservation (43/45)
+- Preserves C23 (flat areas) + C34 (10m width)
+- Requires post-processing for grammar
 
-1. **Create dream_v9 prompt** with:
-   - Russian/Cyrillic prohibition (fixes G++ leak in low top_p)
-   - Paragraph requirement with scene breaks
-   - Garbled phrase examples
-
-2. **Test maverick with dream_v9**
-   - Focus on T5 and P5 configs (both clean, P5 fixes G1!)
-   - Avoid T1, T2, P1-P4 (Russian leak risk with G++ -5 penalty)
-
-3. **Consider new models**
-   - moonshotai/kimi-k2-instruct (multilingual)
-   - qwen/qwen3-32b (100+ languages)
+**Avoid:** gpt-oss-120b
+- Severe over-summarization (40-58% length)
+- Hallucinations detected
+- Loses personal voice
 
 ---
 
@@ -84,17 +83,29 @@ Issues that prevent reaching EXCELLENT:
 - **H**: Hallucinations (10 max) - `10 - (count × 2)`
 - **L**: Length (5 max) - table lookup based on ratio
 
-### Penalties
-- **G+ (English words)**: -3 from Grammar
-- **G++ (Russian/Cyrillic)**: -5 from Grammar
-- **Voice issues (minor)**: -3 from Content
-- **Voice issues (major)**: -7 from Content
+### Status Thresholds
+- **EXCELLENT**: ≥90
+- **PASS**: ≥80
+- **REVIEW**: 70-79
+- **ITERATE**: 60-69
+- **FAIL**: <60
 
 ---
 
 ## Test History
 
-| Date | Prompt | Models Tested | Configs | Best Score |
-|------|--------|---------------|---------|------------|
-| 2025-12-01 | [dream_v8](./dream_v8/README.md) | llama-3.3, maverick, gpt-oss | 25 total | 87/100 (maverick T5, llama P4 tied) |
-| 2025-12-04 | [dream_v9_slo](./dream_v9_slo/README.md) | llama-3.3, maverick, scout, gpt-oss | 52 total | 86/100 (llama T3) |
+| Date | Prompt | Models Tested | Best Score |
+|------|--------|---------------|------------|
+| 2025-12-04 | [dream_v10](./dream_v10/README.md) | maverick, scout, llama, gpt-oss | **94/100** (maverick T1) |
+| 2025-12-04 | [dream_v10_slo](./dream_v10_slo/README.md) | maverick, scout, llama, gpt-oss | 82/100 (llama T1 / maverick P2) |
+| 2025-12-04 | [dream_v9_slo](./dream_v9_slo/README.md) | llama, maverick, scout, gpt-oss | 86/100 (llama T3) |
+| 2025-12-01 | [dream_v8](./dream_v8/README.md) | llama, maverick, gpt-oss | 87/100 (maverick T5 / llama P4) |
+
+---
+
+## Prompt Files
+
+- [dream_v10](./dream_v10/README.md) - English with STT patterns (BEST)
+- [dream_v10_slo](./dream_v10_slo/README.md) - Slovenian with STT patterns
+- [dream_v9_slo](./dream_v9_slo/README.md) - Slovenian prompt
+- [dream_v8](./dream_v8/README.md) - Earlier English prompt
