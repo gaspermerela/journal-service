@@ -15,10 +15,10 @@ The process described below is meant to be done on a regular basis for different
 ## Quick Start
 
 ```bash
-# 1. Fetch transcription + prompt from database
+# 1. Fetch transcription + prompt from database (specify prompt version!)
 cd dream-cleanup-testing-v2
 set -a && source ../.env && set +a
-python fetch_data.py
+python fetch_data.py --prompt dream_v8
 
 # 2. Run parameter tests (results saved to DB + cache)
 python run_cleanups_api.py llama-3.3-70b-versatile --prompt dream_v8 --case 1
@@ -33,8 +33,8 @@ python run_cleanups_api.py llama-3.3-70b-versatile --prompt dream_v8 --case 1
 dream-cleanup-testing-v2/
 ├── cache/                          # Cached API results (gitignored)
 │   └── {transcription_id}/
-│       ├── fetched_data.json       # Raw transcription + prompt
 │       └── {prompt_name}/
+│           ├── fetched_data.json   # Raw transcription + prompt text for this version
 │           └── {model_name}/
 │               ├── T1.json ... T7.json
 │               ├── P1.json ... P6.json
@@ -47,14 +47,22 @@ dream-cleanup-testing-v2/
 │   └── {transcription_id}/
 │       ├── README.md               # Best result summary
 │       └── {prompt_name}/
+│           ├── README.md           # Prompt summary + actual prompt text
 │           └── {model}.md          # Checklist scores per config
 │
-├── fetch_data.py                   # Fetch transcription from DB
+├── fetch_data.py                   # Fetch transcription + prompt from DB
 ├── run_cleanups_api.py             # Run batch tests via API
 ├── run_cleanups.py                 # Run batch tests via Groq (legacy)
 ├── rerun_one_config.py             # Re-run single config
 └── CLAUDE_CODE_INSTRUCTIONS.md     # Full testing guide
 ```
+
+### Cache Structure Rationale
+
+The `fetched_data.json` is stored **per prompt version** (not per transcription) because:
+1. Different prompt versions have different prompt text
+2. Results depend on the exact prompt used
+3. Each prompt version's README should reference its actual prompt text
 
 ## Scoring System
 
@@ -77,7 +85,7 @@ dream-cleanup-testing-v2/
 
 | Script | Purpose | DB Persistence |
 |--------|---------|----------------|
-| `fetch_data.py` | Fetch transcription + prompt | Read-only |
+| `fetch_data.py --prompt <name>` | Fetch transcription + specific prompt | Read-only |
 | `run_cleanups_api.py` | Batch tests via backend API | Yes |
 | `run_cleanups.py` | Batch tests via Groq directly | No |
 | `rerun_one_config.py` | Re-run or re-evaluate single config | Yes |
@@ -85,6 +93,9 @@ dream-cleanup-testing-v2/
 ### Usage Examples
 
 ```bash
+# Fetch prompt data first (required before running tests)
+python fetch_data.py --prompt dream_v8
+
 # Run temperature tests (T1-T7)
 python run_cleanups_api.py llama-3.3-70b-versatile --prompt dream_v8 --case 1
 
