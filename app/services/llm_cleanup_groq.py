@@ -138,7 +138,7 @@ class GroqLLMCleanupService(LLMCleanupService):
         1. Try to load active prompt from database
         2. Fall back to hardcoded constants if DB fails
         3. Replace {output_format} placeholder with JSON schema instruction
-        4. If {output_format} missing, append schema at the end (legacy fallback)
+        4. If {output_format} missing, ignore it
 
         Returns:
             Tuple of (complete_prompt, template_id or None)
@@ -168,16 +168,16 @@ class GroqLLMCleanupService(LLMCleanupService):
             )
             schema_instruction = generate_json_schema_instruction("dream")
 
-        # Replace {output_format} placeholder if present, otherwise append
+        # Replace {output_format} placeholder if present, otherwise ignore it
         if "{output_format}" in prompt_text:
             complete_prompt = prompt_text.replace("{output_format}", schema_instruction)
         else:
             logger.warning(
-                f"Prompt template missing {{output_format}} placeholder, appending at end",
+                f"Prompt template missing {{output_format}} placeholder, ignoring it",
                 entry_type=entry_type,
                 template_id=template_id
             )
-            complete_prompt = f"{prompt_text}\n\n{schema_instruction}"
+            complete_prompt = prompt_text
 
         return (complete_prompt, template_id)
 
