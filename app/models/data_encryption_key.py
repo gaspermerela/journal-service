@@ -18,7 +18,7 @@ from sqlalchemy import String, DateTime, Integer, LargeBinary, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, DB_SCHEMA
 
 
 if TYPE_CHECKING:
@@ -72,7 +72,7 @@ class DataEncryptionKey(Base):
     # Owner relationship
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("journal.users.id", ondelete="CASCADE"),
+        ForeignKey(f"{DB_SCHEMA}.users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -153,7 +153,7 @@ class DataEncryptionKey(Base):
             "target_id",
             postgresql_where=(deleted_at.is_(None)),
         ),
-        {"schema": "journal"},
+        {"schema": DB_SCHEMA},
     )
 
     def __repr__(self) -> str:

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import String, DateTime, ForeignKey, Index, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.database import Base
+from app.database import Base, DB_SCHEMA
 
 if TYPE_CHECKING:
     from app.models.user import User
@@ -37,7 +37,7 @@ class UserPreference(Base):
     # Foreign key to users
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("journal.users.id", ondelete="CASCADE"),
+        ForeignKey(f"{DB_SCHEMA}.users.id", ondelete="CASCADE"),
         nullable=False,
         unique=True
     )
@@ -90,7 +90,7 @@ class UserPreference(Base):
     # Indexes and schema configuration
     __table_args__ = (
         Index("idx_user_preferences_user_id", "user_id", unique=True),
-        {"schema": "journal"}
+        {"schema": DB_SCHEMA}
     )
 
     def __repr__(self) -> str:

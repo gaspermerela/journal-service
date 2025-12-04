@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import String, Text, DateTime, Boolean, Integer, Float, ForeignKey, Index, LargeBinary
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.database import Base
+from app.database import Base, DB_SCHEMA
 
 
 class Transcription(Base):
@@ -46,7 +46,7 @@ class Transcription(Base):
     # Foreign key to voice_entries
     entry_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("journal.voice_entries.id", ondelete="CASCADE"),
+        ForeignKey(f"{DB_SCHEMA}.voice_entries.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
@@ -157,7 +157,7 @@ class Transcription(Base):
         Index("idx_transcriptions_entry_id_is_primary", "entry_id", "is_primary"),
         Index("idx_transcriptions_status", "status"),
         Index("idx_transcriptions_created_at", "created_at"),
-        {"schema": "journal"}
+        {"schema": DB_SCHEMA}
     )
 
     def __repr__(self) -> str:

@@ -22,7 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
-from app.database import Base
+from app.database import Base, DB_SCHEMA
 
 
 class CleanupStatus(str, Enum):
@@ -41,24 +41,24 @@ class CleanedEntry(Base):
     from processing the original transcription through a local LLM.
     """
     __tablename__ = "cleaned_entries"
-    __table_args__ = {"schema": "journal"}
+    __table_args__ = {"schema": DB_SCHEMA}
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     voice_entry_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("journal.voice_entries.id", ondelete="CASCADE"),
+        ForeignKey(f"{DB_SCHEMA}.voice_entries.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
     transcription_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("journal.transcriptions.id", ondelete="CASCADE"),
+        ForeignKey(f"{DB_SCHEMA}.transcriptions.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
     user_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("journal.users.id", ondelete="CASCADE"),
+        ForeignKey(f"{DB_SCHEMA}.users.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
@@ -71,7 +71,7 @@ class CleanedEntry(Base):
     # Processing metadata
     prompt_template_id = Column(
         Integer,
-        ForeignKey("journal.prompt_templates.id", ondelete="SET NULL"),
+        ForeignKey(f"{DB_SCHEMA}.prompt_templates.id", ondelete="SET NULL"),
         nullable=True,
         index=True
     )

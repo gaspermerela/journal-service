@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Optional
 from sqlalchemy import String, Text, DateTime, Integer, Enum as SQLEnum, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.database import Base
+from app.database import Base, DB_SCHEMA
 
 if TYPE_CHECKING:
     from app.models.user import User
@@ -58,21 +58,21 @@ class NotionSync(Base):
     # Foreign keys
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("journal.users.id", ondelete="CASCADE"),
+        ForeignKey(f"{DB_SCHEMA}.users.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
     entry_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("journal.voice_entries.id", ondelete="CASCADE"),
+        ForeignKey(f"{DB_SCHEMA}.voice_entries.id", ondelete="CASCADE"),
         nullable=False,
         index=True
     )
 
     cleaned_entry_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("journal.cleaned_entries.id", ondelete="SET NULL"),
+        ForeignKey(f"{DB_SCHEMA}.cleaned_entries.id", ondelete="SET NULL"),
         nullable=True
     )
 
@@ -166,7 +166,7 @@ class NotionSync(Base):
         Index("idx_notion_syncs_entry_id", "entry_id"),
         Index("idx_notion_syncs_status", "status"),
         Index("idx_notion_syncs_notion_page_id", "notion_page_id"),
-        {"schema": "journal"}
+        {"schema": DB_SCHEMA}
     )
 
     def __repr__(self) -> str:

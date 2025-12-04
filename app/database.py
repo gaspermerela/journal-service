@@ -38,6 +38,10 @@ AsyncSessionLocal = async_sessionmaker(
 # Base class for models
 Base = declarative_base()
 
+# Schema name for all models - can be overridden for testing
+# Import this in models: from app.database import DB_SCHEMA
+DB_SCHEMA = settings.DB_SCHEMA
+
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """

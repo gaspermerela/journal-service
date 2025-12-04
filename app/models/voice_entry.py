@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Optional
 from sqlalchemy import String, Text, DateTime, Float, Index, ForeignKey, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.database import Base
+from app.database import Base, DB_SCHEMA
 
 if TYPE_CHECKING:
     from app.models.transcription import Transcription
@@ -44,7 +44,7 @@ class VoiceEntry(Base):
     # Foreign key to user
     user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("journal.users.id", ondelete="CASCADE"),
+        ForeignKey(f"{DB_SCHEMA}.users.id", ondelete="CASCADE"),
         nullable=True,  # Nullable for backward compatibility
         index=True
     )
@@ -144,7 +144,7 @@ class VoiceEntry(Base):
         Index("idx_voice_entries_uploaded_at", "uploaded_at"),
         Index("idx_voice_entries_entry_type", "entry_type"),
         Index("idx_voice_entries_user_id", "user_id"),
-        {"schema": "journal"}
+        {"schema": DB_SCHEMA}
     )
 
     def __repr__(self) -> str:
