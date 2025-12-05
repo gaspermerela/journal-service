@@ -5,6 +5,7 @@ These helpers simplify the integration of encryption into routes and services
 by providing common patterns for checking encryption status and decrypting data.
 """
 import json
+import uuid
 from pathlib import Path
 from typing import Any, Optional, Tuple
 from uuid import UUID
@@ -21,6 +22,11 @@ logger = get_logger("encryption.helpers")
 db_service = DatabaseService()
 
 
+class EncryptionServiceUnavailableError(Exception):
+    """Raised when encryption is required but the service is unavailable."""
+    pass
+
+
 async def should_encrypt(
     db: AsyncSession,
     user_id: UUID,
@@ -30,8 +36,11 @@ async def should_encrypt(
     Check if data should be encrypted for a user.
 
     Encryption is enabled when:
-    1. The encryption service is available
-    2. The user has encryption_enabled = True in their preferences (enabled by default)
+    1. The user has encryption_enabled = True in their preferences (enabled by default)
+    2. The encryption service is available
+
+    If user has encryption enabled but service is unavailable, raises an error
+    to fail fast rather than silently storing unencrypted data.
 
     Args:
         db: Database session
@@ -39,14 +48,13 @@ async def should_encrypt(
         encryption_service: Encryption service instance (may be None if unavailable)
 
     Returns:
-        True if data should be encrypted, False otherwise
-    """
-    if encryption_service is None:
-        return False
+        True if data should be encrypted, False if user has encryption disabled
 
+    Raises:
+        EncryptionServiceUnavailableError: If user wants encryption but service is unavailable
+    """
     try:
         user_prefs = await db_service.get_user_preferences(db, user_id)
-        return user_prefs.encryption_enabled
     except Exception as e:
         logger.warning(
             "Failed to check user encryption preference, defaulting to False",
@@ -54,6 +62,22 @@ async def should_encrypt(
             error=str(e),
         )
         return False
+
+    # If user doesn't want encryption, we're done
+    if not user_prefs.encryption_enabled:
+        return False
+
+    # User wants encryption - check if service is available
+    if encryption_service is None:
+        logger.error(
+            "Encryption required but service unavailable",
+            user_id=str(user_id),
+        )
+        raise EncryptionServiceUnavailableError(
+            "Encryption service is unavailable. Cannot process request for user with encryption enabled."
+        )
+
+    return True
 
 
 async def decrypt_text_if_encrypted(
@@ -288,10 +312,15 @@ async def decrypt_audio_to_temp(
     """
     encrypted_path = Path(encrypted_file_path)
 
-    # Remove .enc suffix and add .dec suffix
-    # e.g., file.mp3.enc -> file.mp3.dec
+    # Remove .enc suffix to get original filename with audio extension
+    # e.g., file.mp3.enc -> file.mp3
+    # We add a unique suffix to avoid collision with original file
+    # e.g., file.mp3.enc -> file_decrypted_abc123.mp3
     original_name = encrypted_path.name.removesuffix(".enc")
-    decrypted_path = encrypted_path.parent / (original_name + ".dec")
+    stem = Path(original_name).stem
+    suffix = Path(original_name).suffix  # .mp3, .wav, etc.
+    unique_id = uuid.uuid4().hex[:8]
+    decrypted_path = encrypted_path.parent / f"{stem}_decrypted_{unique_id}{suffix}"
 
     await encryption_service.decrypt_file(
         db,

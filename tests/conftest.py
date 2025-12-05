@@ -177,6 +177,10 @@ async def test_user(db_session: AsyncSession) -> User:
     Create a test user for authentication testing.
     Email: testuser@example.com
     Password: TestPassword123!
+
+    Note: Encryption is disabled by default for tests since the encryption
+    service is not available in the test environment. Use separate fixtures
+    for testing encrypted workflows.
     """
     user_data = UserCreate(
         email="testuser@example.com",
@@ -185,6 +189,12 @@ async def test_user(db_session: AsyncSession) -> User:
     user = await db_service.create_user(db_session, user_data)
     await db_session.commit()
     await db_session.refresh(user)
+
+    # Disable encryption for tests (encryption service not available)
+    user_prefs = await db_service.get_user_preferences(db_session, user.id)
+    user_prefs.encryption_enabled = False
+    await db_session.commit()
+
     return user
 
 
@@ -521,3 +531,102 @@ def ollama_available() -> bool:
         return response.status_code == 200
     except Exception:
         return False
+
+
+# ===== Encryption Test Fixtures =====
+
+
+@pytest.fixture
+def encryption_service():
+    """
+    Create encryption service for testing.
+
+    Uses LocalKEKProvider with a test master key.
+    This fixture provides a real encryption service for testing
+    encrypted workflows.
+    """
+    from app.services.encryption_providers.local_kek import LocalKEKProvider
+    from app.services.envelope_encryption import EnvelopeEncryptionService
+
+    provider = LocalKEKProvider(master_key="test-master-key-for-testing-12345678")
+    return EnvelopeEncryptionService(provider)
+
+
+@pytest.fixture
+async def test_user_with_encryption(db_session: AsyncSession) -> User:
+    """
+    Create a test user with encryption enabled.
+
+    Use this fixture when testing encrypted workflows.
+    The user has encryption_enabled=True in their preferences.
+    """
+    user_data = UserCreate(
+        email="encrypted_user@example.com",
+        password="EncryptedPassword123!"
+    )
+    user = await db_service.create_user(db_session, user_data)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    # Enable encryption for this user
+    user_prefs = await db_service.get_user_preferences(db_session, user.id)
+    user_prefs.encryption_enabled = True
+    await db_session.commit()
+
+    return user
+
+
+@pytest.fixture
+async def authenticated_client_with_encryption(
+    db_session: AsyncSession,
+    test_settings: Settings,
+    mock_transcription_service,
+    mock_llm_cleanup_service,
+    encryption_service,
+    test_user_with_encryption: User
+) -> AsyncGenerator[AsyncClient, None]:
+    """
+    Create an authenticated test client with encryption service available.
+
+    This client is authenticated as a user with encryption enabled,
+    and the app has the encryption service available in app.state.
+    """
+    # Override dependencies
+    async def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+
+    # Override settings
+    from app import config
+    config.settings = test_settings
+
+    # Set up services including encryption
+    app.state.transcription_service = mock_transcription_service
+    app.state.llm_cleanup_service = mock_llm_cleanup_service
+    app.state.encryption_service = encryption_service
+
+    # Create client and authenticate
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test"
+    ) as ac:
+        # Login to get token
+        login_response = await ac.post(
+            "/api/v1/auth/login",
+            json={
+                "email": "encrypted_user@example.com",
+                "password": "EncryptedPassword123!"
+            }
+        )
+        assert login_response.status_code == 200
+        tokens = login_response.json()
+        ac.headers["Authorization"] = f"Bearer {tokens['access_token']}"
+
+        yield ac
+
+    # Clear overrides
+    app.dependency_overrides.clear()
+    app.state.transcription_service = None
+    app.state.llm_cleanup_service = None
+    app.state.encryption_service = None

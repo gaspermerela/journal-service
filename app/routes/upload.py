@@ -22,7 +22,11 @@ from app.middleware.jwt import get_current_user
 from app.utils.validators import validate_audio_file
 from app.utils.logger import get_logger
 from app.utils.audio import get_audio_duration
-from app.utils.encryption_helpers import should_encrypt, encrypt_audio_file
+from app.utils.encryption_helpers import (
+    should_encrypt,
+    encrypt_audio_file,
+    EncryptionServiceUnavailableError,
+)
 from app.config import settings
 
 logger = get_logger("upload")
@@ -256,7 +260,15 @@ async def upload_audio(
         await db.flush()  # Get entry.id for encryption
 
         # Step 4: Encrypt audio file if user has encryption enabled
-        if await should_encrypt(db, current_user.id, encryption_service):
+        try:
+            encrypt_file = await should_encrypt(db, current_user.id, encryption_service)
+        except EncryptionServiceUnavailableError:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Encryption service unavailable. Please try again later or disable encryption in your preferences."
+            )
+
+        if encrypt_file:
             encrypted_path, encryption_version = await encrypt_audio_file(
                 encryption_service,
                 db,
@@ -432,7 +444,15 @@ async def upload_and_transcribe(
         await db.flush()  # Get entry.id for encryption
 
         # Step 3.5: Encrypt audio file if user has encryption enabled
-        if await should_encrypt(db, current_user.id, encryption_service):
+        try:
+            encrypt_file = await should_encrypt(db, current_user.id, encryption_service)
+        except EncryptionServiceUnavailableError:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Encryption service unavailable. Please try again later or disable encryption in your preferences."
+            )
+
+        if encrypt_file:
             encrypted_path, encryption_version = await encrypt_audio_file(
                 encryption_service,
                 db,
@@ -661,7 +681,15 @@ async def upload_transcribe_and_cleanup(
         await db.flush()  # Get entry.id for encryption
 
         # Step 3.5: Encrypt audio file if user has encryption enabled
-        if await should_encrypt(db, current_user.id, encryption_service):
+        try:
+            encrypt_file = await should_encrypt(db, current_user.id, encryption_service)
+        except EncryptionServiceUnavailableError:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Encryption service unavailable. Please try again later or disable encryption in your preferences."
+            )
+
+        if encrypt_file:
             encrypted_path, encryption_version = await encrypt_audio_file(
                 encryption_service,
                 db,
