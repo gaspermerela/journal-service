@@ -1,10 +1,14 @@
 # 📘 **Audio Preprocessing & Recording Best Practices Guide**
 
-### *For Whisper / FasterWhisper transcription quality*
+### *For self-hosted Whisper / FasterWhisper transcription quality*
+
+> **Note:** This guide is relevant only when using **self-hosted Whisper** transcription.
+> Third-party transcription services (e.g., Groq, OpenAI) handle preprocessing automatically
+> on their servers - you can skip this guide if using those providers.
 
 This document explains:
 
-1.  **Why audio preprocessing is required**
+1.  **Why audio preprocessing is required** (for self-hosted Whisper)
 2.  **How to preprocess recordings step-by-step**
 3.  **How to fix AAC lossy compression problems**
 4.  **How to configure iPhones to use lossless recording (best
@@ -16,12 +20,18 @@ This document explains:
 > Dream journal recordings must be preprocessed because AAC is lossy and
 > degrades Whisper accuracy. Preprocessing stabilizes transcription, but
 > enabling iPhone LOSSLESS mode is the best long‑term solution.
+>
+> **If using Groq or other cloud transcription providers, preprocessing is handled automatically.**
 
 ------------------------------------------------------------------------
 
 # 🧠 1. Why Preprocessing Is Required
 
-Most mobile devices - including iPhones - record audio in **AAC lossy
+> **Skip this section if using cloud transcription (Groq, OpenAI).** Their APIs handle
+> audio normalization and format conversion automatically.
+
+When running **self-hosted Whisper**, preprocessing is critical because
+most mobile devices - including iPhones - record audio in **AAC lossy
 format** by default:
 
     AAC, 44.1kHz, stereo, ~100kbps

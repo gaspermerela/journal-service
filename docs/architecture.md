@@ -82,14 +82,77 @@ depending on what we are running (local whisper or groq for transcription, local
 - **Idempotent Notion sync** - Re-syncing updates existing Notion page
 - **Immutable AI parameters** - Parameters saved at creation time for auditability
 
+## Security & GDPR Compliance
+
+### Envelope Encryption
+
+The service implements **envelope encryption** for GDPR-compliant data protection:
+
+```
+Master Key → KEK (per-user) → DEK (per-VoiceEntry) → Data
+```
+
+**How it works:**
+- Each VoiceEntry gets a unique **Data Encryption Key (DEK)**
+- The DEK encrypts all related data: audio file, transcriptions, cleaned entries
+- DEKs are encrypted with a **Key Encryption Key (KEK)** derived per-user
+- One DEK per VoiceEntry = fewer key operations, simpler deletion
+
+**GDPR Cryptographic Erasure:**
+- Destroying a DEK makes all associated data permanently unrecoverable
+- No need to find and delete scattered data - destroy the key, data is gone
+- Audit trail maintained (`deleted_at` timestamp on DEK record)
+
+**Current Implementation: Local KEK Provider**
+- KEK derived from master key + user ID using HKDF
+- AES-256-GCM for all encryption
+- Suitable for single-server deployments
+
+**Future: AWS KMS Integration**
+- KEK provider abstraction allows seamless upgrade to AWS KMS
+- Per-user KMS keys for hardware-backed security
+- Key rotation support built into the design
+- `encryption_version` field tracks provider for migration
+
+### Backup Strategy for GDPR Compliance
+
+**Critical:** The `data_encryption_keys` table must be **excluded from regular database backups**.
+
+**Why:**
+- DEKs are the secret that unlocks encrypted data
+- If DEKs are backed up, restoring a backup resurrects deleted data
+- This violates GDPR's "right to erasure" - user data must stay deleted
+
+**Recommended approach:**
+```
+Main Database (PostgreSQL)
+├── All tables EXCEPT data_encryption_keys  →  Regular backups
+└── data_encryption_keys table              →  NO backup, use replication instead
+```
+
+**How to handle DEK durability without backup:**
+1. **PostgreSQL streaming replication** - DEKs replicated to standby in real-time
+2. **Separate DEK storage** - Small table, can use dedicated highly-available storage
+3. **Accept risk for MVP** - Single server, if disk dies, all data is lost anyway
+
+**What happens on restore:**
+- Backup restored → encrypted data exists but no DEKs (or don't restore data with missing DEKs)
+- Encrypted data without DEK = unreadable garbage
+- GDPR deletion is preserved - data cannot be recovered
+
+### Authentication
+
+- **JWT-based** with access and refresh tokens
+- User data isolation enforced at database query level
+- All queries automatically scoped to `user_id`
+
 ## Current Limitations
 
-- No rate limiting
+- No rate limiting per user (handled on server level - nginx)
 - No batch operations (deletion, sync)
 - Single server only (local disk storage)
 - No webhook support for async operation completion
 - No graceful shutdown (background tasks may be killed mid-processing)
-- No data encryption 
 
 ## Tech Stack
 
