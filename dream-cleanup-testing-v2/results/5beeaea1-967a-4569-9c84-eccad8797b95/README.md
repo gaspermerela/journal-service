@@ -17,6 +17,7 @@
 | Prompt | Best Model | Best Config | Score | G/25 | C/45 | R/15 | H/10 | L/5 | Key Finding |
 |--------|------------|-------------|-------|------|------|------|------|-----|-------------|
 | **[dream_v10](./dream_v10/README.md)** | maverick T1 | temp=0.0 | **94/100** | 21 | 43 | 15 | 10 | 5 | ONLY model to fix G1 (bolnica) |
+| [dream_v10_analysis](./dream_v10_analysis/README.md) | maverick T1 | temp=0.0 | 87/100 | 24 | 37 | 15 | 10 | 1 | Analysis hurts cleanup; scout T5=83 |
 | [dream_v10_slo](./dream_v10_slo/README.md) | llama T1 / maverick P2 | tied | 82/100 | 12-21 | 38-40 | 15 | 10 | 5 | Slovenian prompt underperforms |
 | [dream_v9_slo](./dream_v9_slo/README.md) | llama-3.3-70b T3 | temp=0.5 | 86/100 | 18 | 42 | 11 | 10 | 5 | G1 (polnica) unfixed |
 | [dream_v8](./dream_v8/README.md) | maverick T5 / llama P4 | tied | 87/100 | 18-20 | 41-43 | 11 | 10 | 5 | Russian leak risk in maverick |
@@ -96,6 +97,7 @@
 
 | Date | Prompt | Models Tested | Best Score |
 |------|--------|---------------|------------|
+| 2025-12-05 | [dream_v10_analysis](./dream_v10_analysis/README.md) | maverick, scout | 87/100 (maverick T1), 83/100 (scout T5) |
 | 2025-12-04 | [dream_v10](./dream_v10/README.md) | maverick, scout, llama, gpt-oss | **94/100** (maverick T1) |
 | 2025-12-04 | [dream_v10_slo](./dream_v10_slo/README.md) | maverick, scout, llama, gpt-oss | 82/100 (llama T1 / maverick P2) |
 | 2025-12-04 | [dream_v9_slo](./dream_v9_slo/README.md) | llama, maverick, scout, gpt-oss | 86/100 (llama T3) |
@@ -105,6 +107,7 @@
 
 ## Prompt Files
 
+- [dream_v10_analysis](./dream_v10_analysis/README.md) - English with STT patterns + analysis fields
 - [dream_v10](./dream_v10/README.md) - English with STT patterns (BEST)
 - [dream_v10_slo](./dream_v10_slo/README.md) - Slovenian with STT patterns
 - [dream_v9_slo](./dream_v9_slo/README.md) - Slovenian prompt
