@@ -11,6 +11,11 @@ from app.database import get_db
 from app.models.user import User
 from app.services.database import db_service
 from app.services.transcription import TranscriptionService
+from app.services.envelope_encryption import (
+    EnvelopeEncryptionService,
+    get_encryption_service,
+    create_envelope_encryption_service,
+)
 from app.middleware.jwt import get_current_user
 from app.schemas.transcription import (
     TranscriptionTriggerRequest,
@@ -21,6 +26,13 @@ from app.schemas.transcription import (
     TranscriptionCreate,
 )
 from app.schemas.voice_entry import DeleteResponse
+from app.utils.encryption_helpers import (
+    should_encrypt,
+    decrypt_audio_to_temp,
+    cleanup_temp_file,
+    encrypt_text,
+    decrypt_text_if_encrypted,
+)
 from app.utils.logger import get_logger
 
 logger = get_logger("transcription_routes")
@@ -56,6 +68,7 @@ def get_transcription_service(request: Request) -> TranscriptionService:
 async def process_transcription_task(
     transcription_id: UUID,
     entry_id: UUID,
+    user_id: UUID,
     audio_file_path: str,
     language: str,
     transcription_service: TranscriptionService,
@@ -69,6 +82,7 @@ async def process_transcription_task(
     Args:
         transcription_id: UUID of transcription record
         entry_id: UUID of voice entry
+        user_id: UUID of the user (for encryption/decryption)
         audio_file_path: Path to audio file
         language: Language code for transcription
         transcription_service: Transcription service instance
@@ -84,8 +98,22 @@ async def process_transcription_task(
         entry_id=str(entry_id)
     )
 
+    temp_decrypted_path = None
+    encryption_service = None
+
     async with AsyncSessionLocal() as db:
         try:
+            # Get voice entry to check encryption status
+            voice_entry = await db_service.get_entry_by_id(db, entry_id, user_id)
+            if not voice_entry:
+                raise ValueError(f"Voice entry not found: {entry_id}")
+
+            # Initialize encryption service if needed
+            if voice_entry.is_encrypted:
+                encryption_service = create_envelope_encryption_service()
+                if encryption_service is None:
+                    raise RuntimeError("Encryption service unavailable but audio is encrypted")
+
             # Update status to processing
             await db_service.update_transcription_status(
                 db=db,
@@ -96,9 +124,31 @@ async def process_transcription_task(
 
             logger.info(f"Transcription status updated to 'processing'", transcription_id=str(transcription_id))
 
+            # Decrypt audio file if encrypted
+            actual_audio_path = audio_file_path
+            if voice_entry.is_encrypted:
+                logger.info(
+                    "Decrypting audio file for transcription",
+                    entry_id=str(entry_id),
+                    encrypted_path=audio_file_path
+                )
+                temp_decrypted_path = await decrypt_audio_to_temp(
+                    encryption_service,
+                    db,
+                    audio_file_path,
+                    entry_id,
+                    user_id,
+                )
+                actual_audio_path = str(temp_decrypted_path)
+                logger.info(
+                    "Audio file decrypted for transcription",
+                    entry_id=str(entry_id),
+                    temp_path=actual_audio_path
+                )
+
             # Perform transcription
             result = await transcription_service.transcribe_audio(
-                audio_path=Path(audio_file_path),
+                audio_path=Path(actual_audio_path),
                 language=language,
                 beam_size=beam_size,
                 temperature=temperature,
@@ -112,14 +162,45 @@ async def process_transcription_task(
                 beam_size=result.get("beam_size")
             )
 
-            # Update with result
-            await db_service.update_transcription_status(
-                db=db,
-                transcription_id=transcription_id,
-                status="completed",
-                transcribed_text=result["text"]
-                # beam_size and temperature already set at creation time
-            )
+            # Check if we should encrypt the transcription result
+            # Re-create encryption service for saving (if needed)
+            if encryption_service is None:
+                encryption_service = create_envelope_encryption_service()
+
+            should_encrypt_result = await should_encrypt(db, user_id, encryption_service)
+
+            if should_encrypt_result:
+                # Encrypt transcription text
+                encrypted_text = await encrypt_text(
+                    encryption_service,
+                    db,
+                    result["text"],
+                    entry_id,
+                    user_id,
+                )
+                logger.info(
+                    "Transcription text encrypted",
+                    transcription_id=str(transcription_id),
+                    encrypted_length=len(encrypted_text)
+                )
+
+                # Update with encrypted result
+                await db_service.update_transcription_status(
+                    db=db,
+                    transcription_id=transcription_id,
+                    status="completed",
+                    transcribed_text=None,  # Don't store plaintext
+                    transcribed_text_encrypted=encrypted_text,
+                    is_encrypted=True,
+                )
+            else:
+                # Update with plaintext result
+                await db_service.update_transcription_status(
+                    db=db,
+                    transcription_id=transcription_id,
+                    status="completed",
+                    transcribed_text=result["text"]
+                )
             await db.commit()
 
             logger.info(f"Transcription result saved to database", transcription_id=str(transcription_id))
@@ -173,6 +254,10 @@ async def process_transcription_task(
                     error=str(db_error),
                     exc_info=True
                 )
+
+        finally:
+            # Clean up temp decrypted file
+            cleanup_temp_file(temp_decrypted_path)
 
 
 @router.post(
@@ -254,6 +339,7 @@ async def trigger_transcription(
         process_transcription_task,
         transcription_id=transcription.id,
         entry_id=entry_id,
+        user_id=current_user.id,
         audio_file_path=entry.file_path,
         language=request_data.language,
         transcription_service=transcription_service,
@@ -281,7 +367,8 @@ async def trigger_transcription(
 async def get_transcription(
     transcription_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service)
 ):
     """
     Get transcription by ID.
@@ -318,9 +405,32 @@ async def get_transcription(
             detail=f"Transcription not found: {transcription_id}"
         )
 
+    # Decrypt transcription text if encrypted
+    decrypted_text = await decrypt_text_if_encrypted(
+        encryption_service=encryption_service,
+        db=db,
+        encrypted_bytes=transcription.transcribed_text_encrypted,
+        plaintext=transcription.transcribed_text,
+        voice_entry_id=entry.id,
+        user_id=current_user.id,
+        is_encrypted=transcription.is_encrypted,
+    )
+
     logger.info(f"Transcription retrieved", transcription_id=str(transcription_id))
 
-    return TranscriptionStatusResponse.model_validate(transcription)
+    return TranscriptionStatusResponse(
+        id=transcription.id,
+        status=transcription.status,
+        transcribed_text=decrypted_text,
+        model_used=transcription.model_used,
+        language_code=transcription.language_code,
+        beam_size=transcription.beam_size,
+        temperature=transcription.temperature,
+        transcription_started_at=transcription.transcription_started_at,
+        transcription_completed_at=transcription.transcription_completed_at,
+        error_message=transcription.error_message,
+        is_primary=transcription.is_primary,
+    )
 
 
 @router.get(

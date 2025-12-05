@@ -3,10 +3,11 @@ Entries endpoint for retrieving voice entry metadata.
 """
 import os
 import re
+from pathlib import Path
 from uuid import UUID
 from typing import Optional, Annotated
-from fastapi import APIRouter, Depends, HTTPException, status, Query
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -22,7 +23,17 @@ from app.schemas.voice_entry import (
 from app.schemas.transcription import TranscriptionResponse
 from app.services.database import db_service
 from app.services.storage import storage_service
+from app.services.envelope_encryption import (
+    EnvelopeEncryptionService,
+    get_encryption_service,
+)
 from app.middleware.jwt import get_current_user
+from app.utils.encryption_helpers import (
+    decrypt_text_if_encrypted,
+    decrypt_json_if_encrypted,
+    decrypt_audio_to_temp,
+    cleanup_temp_file,
+)
 from app.utils.logger import get_logger
 
 logger = get_logger("entries")
@@ -46,7 +57,8 @@ async def list_entries(
     offset: Annotated[int, Query(ge=0)] = 0,
     entry_type: Annotated[Optional[str], Query(description="Filter by entry type (dream, journal, meeting, note)")] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service)
 ) -> VoiceEntryListResponse:
     """
     Get paginated list of voice entries for authenticated user.
@@ -115,16 +127,43 @@ async def list_entries(
                 sorted_cleaned = sorted(entry.cleaned_entries, key=lambda c: c.created_at, reverse=True)
                 primary_cleanup = sorted_cleaned[0]
 
-            # Create text preview (first 200 chars)
+            # Create text preview (first 200 chars), decrypt if needed
             text_preview = None
-            if primary_cleanup.cleaned_text:
-                text_preview = primary_cleanup.cleaned_text[:200]
+            cleaned_text = primary_cleanup.cleaned_text
+
+            # TODO: lots of DB calls for encrypted DEK key, optimise with batching
+            # Decrypt cleaned_text if encrypted
+            if primary_cleanup.is_encrypted and primary_cleanup.cleaned_text_encrypted:
+                cleaned_text = await decrypt_text_if_encrypted(
+                    encryption_service=encryption_service,
+                    db=db,
+                    encrypted_bytes=primary_cleanup.cleaned_text_encrypted,
+                    voice_entry_id=entry.id,
+                    user_id=current_user.id,
+                    is_encrypted=True
+                )
+
+            if cleaned_text:
+                text_preview = cleaned_text[:200]
+
+            # TODO: lots of DB calls for encrypted DEK key, optimise with batching
+            # Decrypt analysis if encrypted
+            analysis = primary_cleanup.analysis
+            if primary_cleanup.is_encrypted and primary_cleanup.analysis_encrypted:
+                analysis = await decrypt_json_if_encrypted(
+                    encryption_service=encryption_service,
+                    db=db,
+                    encrypted_bytes=primary_cleanup.analysis_encrypted,
+                    voice_entry_id=entry.id,
+                    user_id=current_user.id,
+                    is_encrypted=True
+                )
 
             latest_cleaned = CleanedEntrySummary(
                 id=primary_cleanup.id,
                 status=primary_cleanup.status.value,  # Convert enum to string
                 cleaned_text_preview=text_preview,
-                analysis=primary_cleanup.analysis,
+                analysis=analysis,
                 error_message=primary_cleanup.error_message,
                 created_at=primary_cleanup.created_at
             )
@@ -247,7 +286,8 @@ def _sanitize_filename(filename: str) -> str:
 async def get_entry_audio(
     entry_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service)
 ):
     """
     Download audio file for a voice entry.
@@ -257,6 +297,7 @@ async def get_entry_audio(
     - Users can only download their own audio files
     - Returns 404 for both non-existent entries and unauthorized access
       (to avoid leaking information about which entry IDs exist)
+    - Encrypted files are decrypted transparently before serving
 
     Technical details:
     - All audio files are preprocessed to 16kHz mono WAV format
@@ -267,6 +308,7 @@ async def get_entry_audio(
         entry_id: UUID of the entry
         db: Database session
         current_user: Authenticated user from JWT token
+        encryption_service: Envelope encryption service for decryption
 
     Returns:
         FileResponse with audio file
@@ -316,6 +358,51 @@ async def get_entry_audio(
     # Change extension to .wav since all files are preprocessed to WAV format
     filename_base = safe_filename.rsplit('.', 1)[0] if '.' in safe_filename else safe_filename
     download_filename = f"{filename_base}.wav"
+
+    # If file is encrypted, decrypt to temp file and serve
+    if entry.is_encrypted:
+        logger.info(
+            "Decrypting encrypted audio file",
+            entry_id=str(entry_id),
+            user_id=str(current_user.id)
+        )
+
+        temp_decrypted_path = await decrypt_audio_to_temp(
+            encryption_service=encryption_service,
+            db=db,
+            encrypted_file_path=entry.file_path,
+            voice_entry_id=entry.id,
+            user_id=current_user.id
+        )
+
+        if not temp_decrypted_path:
+            logger.error(
+                "Failed to decrypt audio file",
+                entry_id=str(entry_id),
+                user_id=str(current_user.id)
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Cannot decrypt audio file"
+            )
+
+        # Stream the decrypted file and clean up after
+        async def stream_and_cleanup():
+            try:
+                with open(temp_decrypted_path, "rb") as f:
+                    while chunk := f.read(8192):
+                        yield chunk
+            finally:
+                cleanup_temp_file(temp_decrypted_path)
+
+        return StreamingResponse(
+            stream_and_cleanup(),
+            media_type="audio/wav",
+            headers={
+                "Content-Disposition": f'inline; filename="{download_filename}"',
+                "Cache-Control": "private, no-store",  # Don't cache decrypted content
+            }
+        )
 
     logger.info(
         "Serving audio file",

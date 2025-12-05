@@ -54,7 +54,9 @@ class DatabaseService:
                 entry_type=entry_data.entry_type,
                 duration_seconds=entry_data.duration_seconds,
                 uploaded_at=entry_data.uploaded_at,
-                user_id=entry_data.user_id
+                user_id=entry_data.user_id,
+                is_encrypted=entry_data.is_encrypted,
+                encryption_version=entry_data.encryption_version,
             )
 
             db.add(entry)
@@ -124,6 +126,70 @@ class DatabaseService:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to retrieve entry from database"
+            )
+
+    async def update_entry_encryption(
+        self,
+        db: AsyncSession,
+        entry_id: UUID,
+        user_id: UUID,
+        file_path: str,
+        is_encrypted: bool,
+        encryption_version: Optional[str],
+    ) -> VoiceEntry:
+        """
+        Update voice entry encryption status after encrypting the file.
+
+        Args:
+            db: Database session
+            entry_id: UUID of the entry to update
+            user_id: User ID for authorization
+            file_path: New file path (encrypted file)
+            is_encrypted: Whether the entry is now encrypted
+            encryption_version: Encryption provider version
+
+        Returns:
+            Updated VoiceEntry instance
+
+        Raises:
+            HTTPException: If entry not found or update fails
+        """
+        try:
+            entry = await self.get_entry_by_id(db, entry_id, user_id)
+            if not entry:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Entry not found"
+                )
+
+            entry.file_path = file_path
+            entry.is_encrypted = is_encrypted
+            entry.encryption_version = encryption_version
+
+            await db.flush()
+            await db.refresh(entry)
+
+            logger.info(
+                f"Entry encryption status updated",
+                entry_id=str(entry_id),
+                is_encrypted=is_encrypted,
+                encryption_version=encryption_version
+            )
+
+            return entry
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Failed to update entry encryption status",
+                entry_id=str(entry_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update entry encryption status"
             )
 
     async def delete_entry(
@@ -579,6 +645,8 @@ class DatabaseService:
         transcription_id: UUID,
         status: str,
         transcribed_text: Optional[str] = None,
+        transcribed_text_encrypted: Optional[bytes] = None,
+        is_encrypted: bool = False,
         error_message: Optional[str] = None,
         beam_size: Optional[int] = None
     ) -> Optional[Transcription]:
@@ -589,7 +657,9 @@ class DatabaseService:
             db: Database session
             transcription_id: UUID of the transcription
             status: New status value
-            transcribed_text: Optional transcribed text
+            transcribed_text: Optional transcribed text (plaintext)
+            transcribed_text_encrypted: Optional encrypted transcribed text
+            is_encrypted: Whether the transcription text is encrypted
             error_message: Optional error message
             beam_size: Optional beam size used for transcription
 
@@ -616,6 +686,9 @@ class DatabaseService:
                 transcription.transcription_completed_at = datetime.now(timezone.utc)
                 if transcribed_text:
                     transcription.transcribed_text = transcribed_text
+                if transcribed_text_encrypted is not None:
+                    transcription.transcribed_text_encrypted = transcribed_text_encrypted
+                    transcription.is_encrypted = is_encrypted
                 # beam_size and temperature are set at creation time and are immutable
 
             if status == "failed":
@@ -1037,7 +1110,9 @@ class DatabaseService:
         self,
         db: AsyncSession,
         user_id: UUID,
-        preferred_transcription_language: Optional[str] = None
+        preferred_transcription_language: Optional[str] = None,
+        preferred_llm_model: Optional[str] = None,
+        encryption_enabled: Optional[bool] = None,
     ) -> UserPreference:
         """
         Update user preferences.
@@ -1046,6 +1121,8 @@ class DatabaseService:
             db: Database session
             user_id: User's UUID
             preferred_transcription_language: Language code for transcription
+            preferred_llm_model: Preferred LLM model in format 'provider-model'
+            encryption_enabled: Whether to encrypt voice entries at rest
 
         Returns:
             Updated UserPreference instance
@@ -1060,6 +1137,10 @@ class DatabaseService:
             # Update fields if provided
             if preferred_transcription_language is not None:
                 preferences.preferred_transcription_language = preferred_transcription_language
+            if preferred_llm_model is not None:
+                preferences.preferred_llm_model = preferred_llm_model
+            if encryption_enabled is not None:
+                preferences.encryption_enabled = encryption_enabled
 
             # Update timestamp
             preferences.updated_at = datetime.now(timezone.utc)
@@ -1070,7 +1151,9 @@ class DatabaseService:
             logger.info(
                 f"User preferences updated",
                 user_id=str(user_id),
-                language=preferred_transcription_language
+                language=preferred_transcription_language,
+                preferred_llm_model=preferred_llm_model,
+                encryption_enabled=encryption_enabled
             )
 
             return preferences
@@ -1263,6 +1346,9 @@ class DatabaseService:
         cleanup_status: CleanupStatus,
         cleaned_text: Optional[str] = None,
         analysis: Optional[dict] = None,
+        cleaned_text_encrypted: Optional[bytes] = None,
+        analysis_encrypted: Optional[bytes] = None,
+        is_encrypted: bool = False,
         error_message: Optional[str] = None,
         prompt_template_id: Optional[int] = None,
         llm_raw_response: Optional[str] = None,
@@ -1276,8 +1362,11 @@ class DatabaseService:
             db: Database session
             cleaned_entry_id: UUID of the cleaned entry
             cleanup_status: New cleanup status
-            cleaned_text: Cleaned text result
-            analysis: Analysis data dict
+            cleaned_text: Cleaned text result (plaintext)
+            analysis: Analysis data dict (plaintext)
+            cleaned_text_encrypted: Encrypted cleaned text
+            analysis_encrypted: Encrypted analysis JSON
+            is_encrypted: Whether the data is encrypted
             error_message: Error message if failed
             prompt_template_id: ID of prompt template used (optional)
             llm_raw_response: Raw LLM response before parsing (optional)
@@ -1305,6 +1394,12 @@ class DatabaseService:
                 cleaned_entry.cleaned_text = cleaned_text
             if analysis is not None:
                 cleaned_entry.analysis = analysis
+            if cleaned_text_encrypted is not None:
+                cleaned_entry.cleaned_text_encrypted = cleaned_text_encrypted
+            if analysis_encrypted is not None:
+                cleaned_entry.analysis_encrypted = analysis_encrypted
+            if is_encrypted:
+                cleaned_entry.is_encrypted = is_encrypted
             if error_message is not None:
                 cleaned_entry.error_message = error_message
             if prompt_template_id is not None:

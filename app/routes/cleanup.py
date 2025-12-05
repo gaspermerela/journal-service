@@ -2,7 +2,7 @@
 API routes for LLM cleanup operations.
 """
 from uuid import UUID
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +19,19 @@ from app.schemas.cleanup import (
 from app.schemas.voice_entry import DeleteResponse
 from app.services.database import db_service
 from app.services.llm_cleanup_base import LLMCleanupService
+from app.services.envelope_encryption import (
+    EnvelopeEncryptionService,
+    get_encryption_service,
+    create_envelope_encryption_service,
+)
 from app.config import settings
+from app.utils.encryption_helpers import (
+    should_encrypt,
+    decrypt_text_if_encrypted,
+    decrypt_json_if_encrypted,
+    encrypt_text,
+    encrypt_json,
+)
 from app.utils.logger import get_logger
 
 
@@ -64,10 +76,10 @@ async def process_cleanup_background(
 
     Args:
         cleaned_entry_id: UUID of the cleaned entry to update
-        transcription_text: Raw transcription text to clean
+        transcription_text: Raw transcription text to clean (already decrypted if was encrypted)
         entry_type: Type of entry (dream, journal, etc.)
-        user_id: User ID (for auto-sync)
-        voice_entry_id: Voice entry ID (for auto-sync)
+        user_id: User ID (for auto-sync and encryption check)
+        voice_entry_id: Voice entry ID (for auto-sync and DEK lookup)
         temperature: Temperature for LLM sampling (0.0-2.0)
         top_p: Top-p for nucleus sampling (0.0-1.0)
         llm_model: Model to use for cleanup (optional, uses service default if None)
@@ -83,6 +95,9 @@ async def process_cleanup_background(
             provider=settings.LLM_PROVIDER,
             db_session=db
         )
+
+        # Initialize encryption service for potential output encryption
+        encryption_service = create_envelope_encryption_service()
 
         try:
             # Update status to processing
@@ -108,17 +123,56 @@ async def process_cleanup_background(
                 model=llm_model
             )
 
-            # Update with results
-            await db_service.update_cleaned_entry_processing(
-                db=db,
-                cleaned_entry_id=cleaned_entry_id,
-                cleanup_status=CleanupStatus.COMPLETED,
-                cleaned_text=result["cleaned_text"],
-                analysis=result["analysis"],
-                prompt_template_id=result.get("prompt_template_id"),
-                llm_raw_response=result.get("llm_raw_response")
-                # temperature and top_p already set at creation time
-            )
+            # Check if we should encrypt the results
+            should_encrypt_result = await should_encrypt(db, user_id, encryption_service)
+
+            if should_encrypt_result:
+                # Encrypt cleaned text and analysis
+                encrypted_cleaned_text = await encrypt_text(
+                    encryption_service,
+                    db,
+                    result["cleaned_text"],
+                    voice_entry_id,
+                    user_id,
+                )
+                encrypted_analysis = await encrypt_json(
+                    encryption_service,
+                    db,
+                    result["analysis"],
+                    voice_entry_id,
+                    user_id,
+                )
+                logger.info(
+                    "Cleanup results encrypted",
+                    cleaned_entry_id=str(cleaned_entry_id),
+                    encrypted_text_length=len(encrypted_cleaned_text),
+                    encrypted_analysis_length=len(encrypted_analysis)
+                )
+
+                # Update with encrypted results
+                await db_service.update_cleaned_entry_processing(
+                    db=db,
+                    cleaned_entry_id=cleaned_entry_id,
+                    cleanup_status=CleanupStatus.COMPLETED,
+                    cleaned_text=None,  # Don't store plaintext
+                    analysis=None,  # Don't store plaintext
+                    cleaned_text_encrypted=encrypted_cleaned_text,
+                    analysis_encrypted=encrypted_analysis,
+                    is_encrypted=True,
+                    prompt_template_id=result.get("prompt_template_id"),
+                    llm_raw_response=result.get("llm_raw_response")
+                )
+            else:
+                # Update with plaintext results
+                await db_service.update_cleaned_entry_processing(
+                    db=db,
+                    cleaned_entry_id=cleaned_entry_id,
+                    cleanup_status=CleanupStatus.COMPLETED,
+                    cleaned_text=result["cleaned_text"],
+                    analysis=result["analysis"],
+                    prompt_template_id=result.get("prompt_template_id"),
+                    llm_raw_response=result.get("llm_raw_response")
+                )
             await db.commit()
 
             logger.info(f"LLM cleanup completed for entry {cleaned_entry_id}")
@@ -256,7 +310,8 @@ async def trigger_cleanup(
     current_user: Annotated[User, Depends(get_current_user)],
     llm_service: Annotated[LLMCleanupService, Depends(get_llm_cleanup_service)],
     db: AsyncSession = Depends(get_db),
-    request: CleanupTriggerRequest = CleanupTriggerRequest()
+    request: CleanupTriggerRequest = CleanupTriggerRequest(),
+    encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service)
 ):
     """
     Trigger LLM cleanup for a completed transcription.
@@ -288,14 +343,7 @@ async def trigger_cleanup(
             detail=f"Transcription must be completed before cleanup. Current status: {transcription.status}"
         )
 
-    # Verify there's text to clean
-    if not transcription.transcribed_text:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Transcription has no text to clean"
-        )
-
-    # Get the voice entry to determine entry_type
+    # Get the voice entry to determine entry_type and for DEK lookup
     voice_entry = await db_service.get_entry_by_id(
         db=db,
         entry_id=transcription.entry_id,
@@ -306,6 +354,24 @@ async def trigger_cleanup(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Voice entry not found"
+        )
+
+    # Get the transcription text (decrypt if encrypted)
+    transcription_text = await decrypt_text_if_encrypted(
+        encryption_service=encryption_service,
+        db=db,
+        encrypted_bytes=transcription.transcribed_text_encrypted,
+        plaintext=transcription.transcribed_text,
+        voice_entry_id=voice_entry.id,
+        user_id=current_user.id,
+        is_encrypted=transcription.is_encrypted,
+    )
+
+    # Verify there's text to clean
+    if not transcription_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Transcription has no text to clean"
         )
 
     # Create cleaned entry record
@@ -329,11 +395,11 @@ async def trigger_cleanup(
 
     await db.commit()
 
-    # Start background processing
+    # Start background processing with decrypted text
     background_tasks.add_task(
         process_cleanup_background,
         cleaned_entry_id=cleaned_entry.id,
-        transcription_text=transcription.transcribed_text,
+        transcription_text=transcription_text,
         entry_type=voice_entry.entry_type,
         user_id=current_user.id,
         voice_entry_id=voice_entry.id,
@@ -367,7 +433,8 @@ async def trigger_cleanup(
 async def get_cleaned_entry(
     cleaned_entry_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service)
 ):
     """
     Get detailed information about a cleaned entry.
@@ -390,13 +457,34 @@ async def get_cleaned_entry(
             detail="Cleaned entry not found"
         )
 
+    # Decrypt cleaned text and analysis if encrypted
+    decrypted_text = await decrypt_text_if_encrypted(
+        encryption_service=encryption_service,
+        db=db,
+        encrypted_bytes=cleaned_entry.cleaned_text_encrypted,
+        plaintext=cleaned_entry.cleaned_text,
+        voice_entry_id=cleaned_entry.voice_entry_id,
+        user_id=current_user.id,
+        is_encrypted=cleaned_entry.is_encrypted,
+    )
+
+    decrypted_analysis = await decrypt_json_if_encrypted(
+        encryption_service=encryption_service,
+        db=db,
+        encrypted_bytes=cleaned_entry.analysis_encrypted,
+        plaintext_dict=cleaned_entry.analysis,
+        voice_entry_id=cleaned_entry.voice_entry_id,
+        user_id=current_user.id,
+        is_encrypted=cleaned_entry.is_encrypted,
+    )
+
     return CleanedEntryDetail(
         id=cleaned_entry.id,
         voice_entry_id=cleaned_entry.voice_entry_id,
         transcription_id=cleaned_entry.transcription_id,
         user_id=cleaned_entry.user_id,
-        cleaned_text=cleaned_entry.cleaned_text,
-        analysis=cleaned_entry.analysis,
+        cleaned_text=decrypted_text,
+        analysis=decrypted_analysis,
         llm_raw_response=cleaned_entry.llm_raw_response,
         status=cleaned_entry.status,
         model_name=cleaned_entry.model_name,
@@ -423,7 +511,8 @@ async def get_cleaned_entry(
 async def get_cleaned_entries_by_entry(
     entry_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service)
 ):
     """
     Get all cleaned entries associated with a voice entry.
@@ -453,14 +542,34 @@ async def get_cleaned_entries_by_entry(
         user_id=current_user.id
     )
 
-    return [
-        CleanedEntryDetail(
+    # Decrypt each entry if encrypted
+    result = []
+    for ce in cleaned_entries:
+        decrypted_text = await decrypt_text_if_encrypted(
+            encryption_service=encryption_service,
+            db=db,
+            encrypted_bytes=ce.cleaned_text_encrypted,
+            plaintext=ce.cleaned_text,
+            voice_entry_id=ce.voice_entry_id,
+            user_id=current_user.id,
+            is_encrypted=ce.is_encrypted,
+        )
+        decrypted_analysis = await decrypt_json_if_encrypted(
+            encryption_service=encryption_service,
+            db=db,
+            encrypted_bytes=ce.analysis_encrypted,
+            plaintext_dict=ce.analysis,
+            voice_entry_id=ce.voice_entry_id,
+            user_id=current_user.id,
+            is_encrypted=ce.is_encrypted,
+        )
+        result.append(CleanedEntryDetail(
             id=ce.id,
             voice_entry_id=ce.voice_entry_id,
             transcription_id=ce.transcription_id,
             user_id=ce.user_id,
-            cleaned_text=ce.cleaned_text,
-            analysis=ce.analysis,
+            cleaned_text=decrypted_text,
+            analysis=decrypted_analysis,
             llm_raw_response=ce.llm_raw_response,
             status=ce.status,
             model_name=ce.model_name,
@@ -475,9 +584,8 @@ async def get_cleaned_entries_by_entry(
             prompt_template_id=ce.prompt_template_id,
             prompt_name=ce.prompt_template.name if ce.prompt_template else None,
             prompt_description=ce.prompt_template.description if ce.prompt_template else None
-        )
-        for ce in cleaned_entries
-    ]
+        ))
+    return result
 
 
 @router.put(

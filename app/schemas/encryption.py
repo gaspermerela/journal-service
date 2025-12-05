@@ -78,8 +78,8 @@ class DEKDestroyResponse(BaseModel):
 class UserEncryptionPreference(BaseModel):
     """User's encryption preference."""
     encryption_enabled: bool = Field(
-        default=False,
-        description="Whether to encrypt dream entries at rest (opt-in)"
+        default=True,
+        description="Whether to encrypt voice entries at rest (enabled by default, opt-out)"
     )
 
 

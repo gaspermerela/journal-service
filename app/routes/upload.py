@@ -3,7 +3,7 @@ Upload endpoint for audio file uploads.
 """
 import uuid
 from datetime import datetime, timezone
-from typing import Tuple, Optional
+from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,10 +17,12 @@ from app.services.storage import storage_service
 from app.services.database import db_service
 from app.services.transcription import TranscriptionService
 from app.services.audio_preprocessing import preprocessing_service
+from app.services.envelope_encryption import EnvelopeEncryptionService, get_encryption_service
 from app.middleware.jwt import get_current_user
 from app.utils.validators import validate_audio_file
 from app.utils.logger import get_logger
 from app.utils.audio import get_audio_duration
+from app.utils.encryption_helpers import should_encrypt, encrypt_audio_file
 from app.config import settings
 
 logger = get_logger("upload")
@@ -101,6 +103,7 @@ async def transcription_then_cleanup_task(
     await process_transcription_task(
         transcription_id=transcription_id,
         entry_id=entry_id,
+        user_id=user_id,
         audio_file_path=audio_file_path,
         language=language,
         transcription_service=transcription_service,
@@ -189,7 +192,8 @@ async def upload_audio(
     file: UploadFile = File(..., description="Audio file to upload (MP3 or M4A)"),
     entry_type: str = Form("dream", description="Type of voice entry (dream, journal, meeting, note, etc.)"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service),
 ) -> VoiceEntryUploadResponse:
     """
     Upload audio file endpoint.
@@ -237,7 +241,7 @@ async def upload_audio(
         # Step 2.6: Calculate audio duration (using preprocessed file)
         duration_seconds = get_audio_duration(final_file_path)
 
-        # Step 3: Create database entry
+        # Step 3: Create database entry (initially unencrypted)
         entry_data = VoiceEntryCreate(
             original_filename=file.filename,
             saved_filename=saved_filename,
@@ -249,15 +253,43 @@ async def upload_audio(
         )
 
         entry = await db_service.create_entry(db, entry_data)
+        await db.flush()  # Get entry.id for encryption
 
-        # Step 4: Commit transaction (handled by get_db dependency)
+        # Step 4: Encrypt audio file if user has encryption enabled
+        if await should_encrypt(db, current_user.id, encryption_service):
+            encrypted_path, encryption_version = await encrypt_audio_file(
+                encryption_service,
+                db,
+                final_file_path,
+                entry.id,
+                current_user.id,
+            )
+            # Update entry with encrypted file path
+            entry = await db_service.update_entry_encryption(
+                db,
+                entry.id,
+                current_user.id,
+                file_path=encrypted_path,
+                is_encrypted=True,
+                encryption_version=encryption_version,
+            )
+            # Update saved_file_path for rollback in case of later failure
+            saved_file_path = encrypted_path
+            logger.info(
+                "Audio file encrypted",
+                entry_id=str(entry.id),
+                encrypted_path=encrypted_path,
+            )
+
+        # Step 5: Commit transaction (handled by get_db dependency)
         await db.commit()
 
         logger.info(
             f"File upload completed successfully",
             entry_id=str(entry.id),
             filename=file.filename,
-            saved_as=saved_filename
+            saved_as=saved_filename,
+            is_encrypted=entry.is_encrypted,
         )
 
         # Return response
@@ -322,7 +354,8 @@ async def upload_and_transcribe(
     transcription_model: Optional[str] = Form(None, description="Transcription model to use (e.g., 'whisper-large-v3'). If not provided, uses configured default."),
     db: AsyncSession = Depends(get_db),
     transcription_service: TranscriptionService = Depends(get_transcription_service),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service),
 ) -> VoiceEntryUploadAndTranscribeResponse:
     """
     Combined endpoint to upload audio file and start transcription.
@@ -384,7 +417,7 @@ async def upload_and_transcribe(
         # Step 2.6: Calculate audio duration (using preprocessed file)
         duration_seconds = get_audio_duration(final_file_path)
 
-        # Step 3: Create database entry
+        # Step 3: Create database entry (initially unencrypted)
         entry_data = VoiceEntryCreate(
             original_filename=file.filename,
             saved_filename=saved_filename,
@@ -396,13 +429,41 @@ async def upload_and_transcribe(
         )
 
         entry = await db_service.create_entry(db, entry_data)
+        await db.flush()  # Get entry.id for encryption
+
+        # Step 3.5: Encrypt audio file if user has encryption enabled
+        if await should_encrypt(db, current_user.id, encryption_service):
+            encrypted_path, encryption_version = await encrypt_audio_file(
+                encryption_service,
+                db,
+                final_file_path,
+                entry.id,
+                current_user.id,
+            )
+            # Update entry with encrypted file path
+            entry = await db_service.update_entry_encryption(
+                db,
+                entry.id,
+                current_user.id,
+                file_path=encrypted_path,
+                is_encrypted=True,
+                encryption_version=encryption_version,
+            )
+            saved_file_path = encrypted_path
+            logger.info(
+                "Audio file encrypted",
+                entry_id=str(entry.id),
+                encrypted_path=encrypted_path,
+            )
+
         await db.commit()
 
         logger.info(
             f"File upload completed successfully",
             entry_id=str(entry.id),
             filename=file.filename,
-            saved_as=saved_filename
+            saved_as=saved_filename,
+            is_encrypted=entry.is_encrypted,
         )
 
         # Step 4: Create transcription record
@@ -435,6 +496,7 @@ async def upload_and_transcribe(
             process_transcription_task,
             transcription_id=transcription.id,
             entry_id=entry.id,
+            user_id=current_user.id,
             audio_file_path=entry.file_path,
             language=effective_language,
             transcription_service=transcription_service,
@@ -516,7 +578,8 @@ async def upload_transcribe_and_cleanup(
     llm_model: Optional[str] = Form(None, description="LLM model to use for cleanup (e.g., 'llama-3.3-70b-versatile'). If not provided, uses configured default."),
     db: AsyncSession = Depends(get_db),
     transcription_service: TranscriptionService = Depends(get_transcription_service),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service),
 ) -> UploadTranscribeCleanupResponse:
     """
     Complete workflow endpoint: upload audio file, transcribe, and cleanup with LLM.
@@ -583,7 +646,7 @@ async def upload_transcribe_and_cleanup(
         # Step 2.6: Calculate audio duration (using preprocessed file)
         duration_seconds = get_audio_duration(final_file_path)
 
-        # Step 3: Create database entry
+        # Step 3: Create database entry (initially unencrypted)
         entry_data = VoiceEntryCreate(
             original_filename=file.filename,
             saved_filename=saved_filename,
@@ -595,13 +658,41 @@ async def upload_transcribe_and_cleanup(
         )
 
         entry = await db_service.create_entry(db, entry_data)
+        await db.flush()  # Get entry.id for encryption
+
+        # Step 3.5: Encrypt audio file if user has encryption enabled
+        if await should_encrypt(db, current_user.id, encryption_service):
+            encrypted_path, encryption_version = await encrypt_audio_file(
+                encryption_service,
+                db,
+                final_file_path,
+                entry.id,
+                current_user.id,
+            )
+            # Update entry with encrypted file path
+            entry = await db_service.update_entry_encryption(
+                db,
+                entry.id,
+                current_user.id,
+                file_path=encrypted_path,
+                is_encrypted=True,
+                encryption_version=encryption_version,
+            )
+            saved_file_path = encrypted_path
+            logger.info(
+                "Audio file encrypted",
+                entry_id=str(entry.id),
+                encrypted_path=encrypted_path,
+            )
+
         await db.commit()
 
         logger.info(
             f"File upload completed successfully",
             entry_id=str(entry.id),
             filename=file.filename,
-            saved_as=saved_filename
+            saved_as=saved_filename,
+            is_encrypted=entry.is_encrypted,
         )
 
         # Step 4: Create transcription record

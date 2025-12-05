@@ -19,7 +19,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = 'e1f2a3b4c5d6'
-down_revision: Union[str, None] = 'dc2d062ee961'
+down_revision: Union[str, None] = '25dda16871b4'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -100,10 +100,10 @@ def upgrade() -> None:
         schema='journal'
     )
 
-    # Add encryption preference to user_preferences
+    # Add encryption preference to user_preferences (enabled by default, opt-out)
     op.add_column(
         'user_preferences',
-        sa.Column('encryption_enabled', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('encryption_enabled', sa.Boolean(), nullable=False, server_default='true'),
         schema='journal'
     )
 
