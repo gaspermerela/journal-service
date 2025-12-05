@@ -87,20 +87,24 @@ async def update_user_preferences(
     logger.info(
         f"Updating preferences",
         user_id=str(current_user.id),
-        language=preferences_data.preferred_transcription_language
+        language=preferences_data.preferred_transcription_language,
+        encryption_enabled=preferences_data.encryption_enabled
     )
 
     preferences = await db_service.update_user_preferences(
         db,
         current_user.id,
-        preferred_transcription_language=preferences_data.preferred_transcription_language
+        preferred_transcription_language=preferences_data.preferred_transcription_language,
+        preferred_llm_model=preferences_data.preferred_llm_model,
+        encryption_enabled=preferences_data.encryption_enabled,
     )
     await db.commit()
 
     logger.info(
         f"User preferences updated successfully",
         user_id=str(current_user.id),
-        language=preferences.preferred_transcription_language
+        language=preferences.preferred_transcription_language,
+        encryption_enabled=preferences.encryption_enabled
     )
 
     return UserPreferencesResponse.model_validate(preferences)

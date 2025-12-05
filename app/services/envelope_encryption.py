@@ -37,6 +37,7 @@ from typing import Optional, Union
 from uuid import UUID
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -726,7 +727,7 @@ def create_envelope_encryption_service(
 # =============================================================================
 
 
-def get_encryption_service(request) -> Optional[EnvelopeEncryptionService]:
+def get_encryption_service(request: Request) -> Optional[EnvelopeEncryptionService]:
     """
     Dependency to get encryption service from app state.
 

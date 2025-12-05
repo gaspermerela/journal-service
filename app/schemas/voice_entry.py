@@ -23,6 +23,8 @@ class VoiceEntryCreate(BaseModel):
     duration_seconds: float = 0.0
     uploaded_at: datetime
     user_id: Optional[UUID] = None
+    is_encrypted: bool = False
+    encryption_version: Optional[str] = None
 
 
 class VoiceEntryResponse(VoiceEntryBase):

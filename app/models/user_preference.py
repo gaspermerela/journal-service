@@ -61,9 +61,9 @@ class UserPreference(Base):
     encryption_enabled: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
-        default=False,
-        server_default="false",
-        doc="Whether to encrypt dream entries at rest (opt-in)"
+        default=True,
+        server_default="true",
+        doc="Whether to encrypt voice entries at rest (enabled by default, opt-out)"
     )
 
     # Timestamps
