@@ -384,8 +384,11 @@ class OllamaLLMCleanupService(LLMCleanupService):
             # Use .get() with default - tolerates missing fields
             analysis[field_name] = parsed.get(field_name, [])
 
+        # Replace <break> markers with actual paragraph breaks
+        cleaned_text = parsed["cleaned_text"].replace("<break>", "\n\n")
+
         return {
-            "cleaned_text": parsed["cleaned_text"],
+            "cleaned_text": cleaned_text,
             "analysis": analysis
         }
 

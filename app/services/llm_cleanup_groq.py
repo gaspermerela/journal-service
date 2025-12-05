@@ -19,7 +19,7 @@ from app.utils.logger import get_logger
 logger = get_logger("services.llm_cleanup_groq")
 
 INVALID_CHARS = (
-        r"[\x00-\x1F\x7F"  # ASCII control characters
+        r"[\x00-\x09\x0B-\x1F\x7F"  # ASCII control chars EXCEPT \x0A (newline)
         r"\u2028\u2029"  # Unicode line/paragraph separators
         r"\u200B\u200C\u200D"  # zero-width spaces
         r"\u00AD"  # soft hyphen
@@ -422,6 +422,8 @@ class GroqLLMCleanupService(LLMCleanupService):
         # Handle traditional output (cleaned_text directly)
         elif has_cleaned_text:
             cleaned_text = parsed["cleaned_text"]
+            # Replace <break> markers with actual paragraph breaks
+            cleaned_text = cleaned_text.replace("<break>", "\n\n")
             analysis = {}
 
             logger.info(
