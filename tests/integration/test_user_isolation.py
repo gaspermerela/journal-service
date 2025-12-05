@@ -24,6 +24,12 @@ async def user_a(db_session: AsyncSession) -> User:
     user = await db_service.create_user(db_session, user_data)
     await db_session.commit()
     await db_session.refresh(user)
+
+    # Disable encryption for tests (encryption service not available)
+    user_prefs = await db_service.get_user_preferences(db_session, user.id)
+    user_prefs.encryption_enabled = False
+    await db_session.commit()
+
     return user
 
 
@@ -37,6 +43,12 @@ async def user_b(db_session: AsyncSession) -> User:
     user = await db_service.create_user(db_session, user_data)
     await db_session.commit()
     await db_session.refresh(user)
+
+    # Disable encryption for tests (encryption service not available)
+    user_prefs = await db_service.get_user_preferences(db_session, user.id)
+    user_prefs.encryption_enabled = False
+    await db_session.commit()
+
     return user
 
 
