@@ -2,32 +2,32 @@
 Envelope Encryption Service for GDPR-compliant data protection.
 
 Implements the envelope encryption pattern where:
-- Each piece of sensitive data gets a unique DEK (Data Encryption Key)
+- Each VoiceEntry gets a unique DEK (Data Encryption Key)
 - DEKs are encrypted with a KEK (Key Encryption Key) via a provider
 - The KEK is derived per-user (local master key) or managed by KMS
+- One DEK per VoiceEntry encrypts all related data (audio, transcriptions, cleaned entries)
 
 Features:
-- Per-record encryption isolation
-- GDPR-compliant deletion (destroy DEK = data unrecoverable)
+- Per-VoiceEntry encryption isolation
+- GDPR-compliant deletion (destroy DEK = all entry data unrecoverable)
 - Version tracking for provider migration (local → KMS)
 - Supports both data (bytes/string) and file encryption
-- Streaming file encryption for memory efficiency
 
 Usage:
     service = create_envelope_encryption_service(provider="local")
 
-    # Encrypt data
+    # Encrypt data for a voice entry
     encrypted = await service.encrypt_data(
-        db, data, "transcription", transcription_id, user_id
+        db, data, voice_entry_id, user_id
     )
 
     # Decrypt data
     decrypted = await service.decrypt_data(
-        db, encrypted, "transcription", transcription_id, user_id
+        db, encrypted, voice_entry_id, user_id
     )
 
-    # GDPR deletion
-    await service.destroy_dek(db, "transcription", transcription_id, user_id)
+    # GDPR deletion - destroys all data for the voice entry
+    await service.destroy_dek(db, voice_entry_id, user_id)
 """
 
 import os
@@ -75,9 +75,10 @@ class EnvelopeEncryptionService:
     Envelope encryption service for encrypting sensitive data.
 
     Uses the envelope encryption pattern:
-    - Each piece of data gets a unique DEK (Data Encryption Key)
+    - Each VoiceEntry gets a unique DEK (Data Encryption Key)
     - DEKs are encrypted with a KEK (Key Encryption Key)
     - KEK is derived from master key (local) or managed by KMS
+    - One DEK per VoiceEntry encrypts all related data
 
     Thread Safety:
         This service is thread-safe. All operations are stateless
@@ -85,13 +86,13 @@ class EnvelopeEncryptionService:
 
     Example:
         >>> service = EnvelopeEncryptionService(LocalKEKProvider(master_key))
-        >>> # Encrypt transcription text
+        >>> # Encrypt transcription text (uses VoiceEntry's DEK)
         >>> encrypted = await service.encrypt_data(
-        ...     db, text.encode(), "transcription", t_id, user_id
+        ...     db, text.encode(), voice_entry_id, user_id
         ... )
         >>> # Later, decrypt
         >>> decrypted = await service.decrypt_data(
-        ...     db, encrypted, "transcription", t_id, user_id
+        ...     db, encrypted, voice_entry_id, user_id
         ... )
     """
 
@@ -116,11 +117,10 @@ class EnvelopeEncryptionService:
         self,
         db: AsyncSession,
         user_id: UUID,
-        target_type: str,
-        target_id: UUID,
+        voice_entry_id: UUID,
     ) -> UUID:
         """
-        Create a new DEK for a target entity.
+        Create a new DEK for a VoiceEntry.
 
         Generates a random 256-bit DEK, encrypts it with the user's KEK,
         and stores the encrypted DEK in the database.
@@ -128,8 +128,7 @@ class EnvelopeEncryptionService:
         Args:
             db: Database session
             user_id: Owner user ID
-            target_type: Type of target ("voice_entry", "transcription", "cleaned_entry")
-            target_id: UUID of the target entity
+            voice_entry_id: UUID of the VoiceEntry to protect
 
         Returns:
             UUID of the created DEK record
@@ -149,8 +148,7 @@ class EnvelopeEncryptionService:
                 user_id=user_id,
                 encrypted_dek=encrypted_dek,
                 encryption_version=self.kek_provider.get_provider_version(),
-                target_type=target_type,
-                target_id=target_id,
+                voice_entry_id=voice_entry_id,
             )
 
             db.add(dek_record)
@@ -159,8 +157,7 @@ class EnvelopeEncryptionService:
             logger.debug(
                 "Created DEK",
                 dek_id=str(dek_record.id),
-                target_type=target_type,
-                target_id=str(target_id),
+                voice_entry_id=str(voice_entry_id),
                 user_id=str(user_id),
             )
 
@@ -169,8 +166,7 @@ class EnvelopeEncryptionService:
         except Exception as e:
             logger.error(
                 "Failed to create DEK",
-                target_type=target_type,
-                target_id=str(target_id),
+                voice_entry_id=str(voice_entry_id),
                 user_id=str(user_id),
                 error=str(e),
             )
@@ -179,17 +175,15 @@ class EnvelopeEncryptionService:
     async def get_dek(
         self,
         db: AsyncSession,
-        target_type: str,
-        target_id: UUID,
+        voice_entry_id: UUID,
         user_id: UUID,
     ) -> Optional[DataEncryptionKey]:
         """
-        Get DEK record for a target entity.
+        Get DEK record for a VoiceEntry.
 
         Args:
             db: Database session
-            target_type: Type of target
-            target_id: UUID of target entity
+            voice_entry_id: UUID of the VoiceEntry
             user_id: User ID for authorization check
 
         Returns:
@@ -197,8 +191,7 @@ class EnvelopeEncryptionService:
         """
         result = await db.execute(
             select(DataEncryptionKey).where(
-                DataEncryptionKey.target_type == target_type,
-                DataEncryptionKey.target_id == target_id,
+                DataEncryptionKey.voice_entry_id == voice_entry_id,
                 DataEncryptionKey.user_id == user_id,
             )
         )
@@ -208,19 +201,17 @@ class EnvelopeEncryptionService:
         self,
         db: AsyncSession,
         user_id: UUID,
-        target_type: str,
-        target_id: UUID,
+        voice_entry_id: UUID,
     ) -> tuple[bytes, DataEncryptionKey]:
         """
-        Get existing DEK or create new one for a target.
+        Get existing DEK or create new one for a VoiceEntry.
 
         Returns both the plaintext DEK (for immediate use) and the record.
 
         Args:
             db: Database session
             user_id: User ID
-            target_type: Target entity type
-            target_id: Target entity UUID
+            voice_entry_id: VoiceEntry UUID
 
         Returns:
             Tuple of (plaintext_dek, dek_record)
@@ -229,13 +220,13 @@ class EnvelopeEncryptionService:
             DEKDestroyedError: If DEK exists but was destroyed
             EncryptionError: If DEK operations fail
         """
-        dek_record = await self.get_dek(db, target_type, target_id, user_id)
+        dek_record = await self.get_dek(db, voice_entry_id, user_id)
 
         if dek_record is not None:
             # Check if DEK was destroyed (GDPR deletion)
             if dek_record.is_deleted:
                 raise DEKDestroyedError(
-                    f"DEK for {target_type}:{target_id} has been destroyed "
+                    f"DEK for voice_entry:{voice_entry_id} has been destroyed "
                     "(GDPR deletion performed)"
                 )
 
@@ -253,8 +244,7 @@ class EnvelopeEncryptionService:
             user_id=user_id,
             encrypted_dek=encrypted_dek,
             encryption_version=self.kek_provider.get_provider_version(),
-            target_type=target_type,
-            target_id=target_id,
+            voice_entry_id=voice_entry_id,
         )
 
         db.add(dek_record)
@@ -262,8 +252,7 @@ class EnvelopeEncryptionService:
 
         logger.debug(
             "Created DEK on-demand",
-            target_type=target_type,
-            target_id=str(target_id),
+            voice_entry_id=str(voice_entry_id),
         )
 
         return plaintext_dek, dek_record
@@ -271,8 +260,7 @@ class EnvelopeEncryptionService:
     async def destroy_dek(
         self,
         db: AsyncSession,
-        target_type: str,
-        target_id: UUID,
+        voice_entry_id: UUID,
         user_id: UUID,
     ) -> bool:
         """
@@ -281,36 +269,34 @@ class EnvelopeEncryptionService:
         This performs cryptographic erasure by:
         1. Setting deleted_at timestamp
         2. Overwriting encrypted_dek with random bytes
-        3. The DEK is gone - data encrypted with it is unrecoverable
+        3. The DEK is gone - all data for the VoiceEntry is unrecoverable
 
         Args:
             db: Database session
-            target_type: Type of target
-            target_id: UUID of target entity
+            voice_entry_id: UUID of the VoiceEntry
             user_id: User ID for authorization
 
         Returns:
             True if DEK was destroyed, False if not found
 
         Note:
-            This operation is irreversible. The encrypted data becomes
+            This operation is irreversible. All encrypted data for the
+            VoiceEntry (audio, transcriptions, cleaned entries) becomes
             permanently unrecoverable.
         """
-        dek_record = await self.get_dek(db, target_type, target_id, user_id)
+        dek_record = await self.get_dek(db, voice_entry_id, user_id)
 
         if dek_record is None:
             logger.warning(
                 "DEK not found for destruction",
-                target_type=target_type,
-                target_id=str(target_id),
+                voice_entry_id=str(voice_entry_id),
             )
             return False
 
         if dek_record.is_deleted:
             logger.debug(
                 "DEK already destroyed",
-                target_type=target_type,
-                target_id=str(target_id),
+                voice_entry_id=str(voice_entry_id),
             )
             return True
 
@@ -322,8 +308,7 @@ class EnvelopeEncryptionService:
 
         logger.info(
             "Destroyed DEK (GDPR erasure)",
-            target_type=target_type,
-            target_id=str(target_id),
+            voice_entry_id=str(voice_entry_id),
             user_id=str(user_id),
         )
 
@@ -337,20 +322,18 @@ class EnvelopeEncryptionService:
         self,
         db: AsyncSession,
         data: Union[str, bytes],
-        target_type: str,
-        target_id: UUID,
+        voice_entry_id: UUID,
         user_id: UUID,
     ) -> bytes:
         """
-        Encrypt data using the DEK for the target entity.
+        Encrypt data using the DEK for the VoiceEntry.
 
-        If no DEK exists for the target, one is created automatically.
+        If no DEK exists for the VoiceEntry, one is created automatically.
 
         Args:
             db: Database session
             data: Data to encrypt (string or bytes)
-            target_type: Type of target entity
-            target_id: UUID of target entity
+            voice_entry_id: UUID of the VoiceEntry
             user_id: User ID
 
         Returns:
@@ -367,9 +350,9 @@ class EnvelopeEncryptionService:
             raise ValueError("Data cannot be empty")
 
         try:
-            # Get or create DEK for this target
+            # Get or create DEK for this VoiceEntry
             plaintext_dek, _ = await self._get_or_create_dek(
-                db, user_id, target_type, target_id
+                db, user_id, voice_entry_id
             )
 
             # Encrypt data with DEK using AES-GCM
@@ -385,8 +368,7 @@ class EnvelopeEncryptionService:
         except Exception as e:
             logger.error(
                 "Failed to encrypt data",
-                target_type=target_type,
-                target_id=str(target_id),
+                voice_entry_id=str(voice_entry_id),
                 error=str(e),
             )
             raise EncryptionError(f"Failed to encrypt data: {e}") from e
@@ -395,25 +377,23 @@ class EnvelopeEncryptionService:
         self,
         db: AsyncSession,
         encrypted_data: bytes,
-        target_type: str,
-        target_id: UUID,
+        voice_entry_id: UUID,
         user_id: UUID,
     ) -> bytes:
         """
-        Decrypt data using the DEK for the target entity.
+        Decrypt data using the DEK for the VoiceEntry.
 
         Args:
             db: Database session
             encrypted_data: Encrypted bytes (as returned by encrypt_data)
-            target_type: Type of target entity
-            target_id: UUID of target entity
+            voice_entry_id: UUID of the VoiceEntry
             user_id: User ID
 
         Returns:
             Decrypted data bytes
 
         Raises:
-            DEKNotFoundError: If no DEK exists for target
+            DEKNotFoundError: If no DEK exists for VoiceEntry
             DEKDestroyedError: If DEK has been destroyed (GDPR deletion)
             EncryptionError: If decryption fails
         """
@@ -430,16 +410,16 @@ class EnvelopeEncryptionService:
 
         try:
             # Get DEK record
-            dek_record = await self.get_dek(db, target_type, target_id, user_id)
+            dek_record = await self.get_dek(db, voice_entry_id, user_id)
 
             if dek_record is None:
                 raise DEKNotFoundError(
-                    f"No DEK found for {target_type}:{target_id}"
+                    f"No DEK found for voice_entry:{voice_entry_id}"
                 )
 
             if dek_record.is_deleted:
                 raise DEKDestroyedError(
-                    f"DEK for {target_type}:{target_id} has been destroyed"
+                    f"DEK for voice_entry:{voice_entry_id} has been destroyed"
                 )
 
             # Decrypt DEK using KEK provider
@@ -462,8 +442,7 @@ class EnvelopeEncryptionService:
         except Exception as e:
             logger.error(
                 "Failed to decrypt data",
-                target_type=target_type,
-                target_id=str(target_id),
+                voice_entry_id=str(voice_entry_id),
                 error=str(e),
             )
             raise EncryptionError(f"Failed to decrypt data: {e}") from e
@@ -477,14 +456,13 @@ class EnvelopeEncryptionService:
         db: AsyncSession,
         input_path: Path,
         output_path: Path,
-        target_type: str,
-        target_id: UUID,
+        voice_entry_id: UUID,
         user_id: UUID,
     ) -> None:
         """
-        Encrypt a file using the DEK for the target entity.
+        Encrypt a file using the DEK for the VoiceEntry.
 
-        Uses streaming encryption with AES-GCM for memory efficiency.
+        Uses AES-GCM encryption.
         The entire file is encrypted as a single authenticated unit.
 
         Output format: nonce (12 bytes) || ciphertext || tag (16 bytes)
@@ -493,8 +471,7 @@ class EnvelopeEncryptionService:
             db: Database session
             input_path: Path to plaintext file
             output_path: Path for encrypted output
-            target_type: Type of target entity
-            target_id: UUID of target entity
+            voice_entry_id: UUID of the VoiceEntry
             user_id: User ID
 
         Raises:
@@ -507,7 +484,7 @@ class EnvelopeEncryptionService:
         try:
             # Get or create DEK
             plaintext_dek, _ = await self._get_or_create_dek(
-                db, user_id, target_type, target_id
+                db, user_id, voice_entry_id
             )
 
             # Read entire file (AES-GCM needs all data for authentication)
@@ -539,16 +516,14 @@ class EnvelopeEncryptionService:
                 "Encrypted file",
                 input_path=str(input_path),
                 output_path=str(output_path),
-                target_type=target_type,
-                target_id=str(target_id),
+                voice_entry_id=str(voice_entry_id),
             )
 
         except Exception as e:
             logger.error(
                 "Failed to encrypt file",
                 input_path=str(input_path),
-                target_type=target_type,
-                target_id=str(target_id),
+                voice_entry_id=str(voice_entry_id),
                 error=str(e),
             )
             raise EncryptionError(f"Failed to encrypt file: {e}") from e
@@ -558,24 +533,22 @@ class EnvelopeEncryptionService:
         db: AsyncSession,
         input_path: Path,
         output_path: Path,
-        target_type: str,
-        target_id: UUID,
+        voice_entry_id: UUID,
         user_id: UUID,
     ) -> None:
         """
-        Decrypt a file using the DEK for the target entity.
+        Decrypt a file using the DEK for the VoiceEntry.
 
         Args:
             db: Database session
             input_path: Path to encrypted file
             output_path: Path for decrypted output
-            target_type: Type of target entity
-            target_id: UUID of target entity
+            voice_entry_id: UUID of the VoiceEntry
             user_id: User ID
 
         Raises:
             FileNotFoundError: If input file doesn't exist
-            DEKNotFoundError: If no DEK exists for target
+            DEKNotFoundError: If no DEK exists for VoiceEntry
             DEKDestroyedError: If DEK has been destroyed
             EncryptionError: If decryption fails
         """
@@ -584,14 +557,14 @@ class EnvelopeEncryptionService:
 
         try:
             # Get DEK record
-            dek_record = await self.get_dek(db, target_type, target_id, user_id)
+            dek_record = await self.get_dek(db, voice_entry_id, user_id)
 
             if dek_record is None:
-                raise DEKNotFoundError(f"No DEK found for {target_type}:{target_id}")
+                raise DEKNotFoundError(f"No DEK found for voice_entry:{voice_entry_id}")
 
             if dek_record.is_deleted:
                 raise DEKDestroyedError(
-                    f"DEK for {target_type}:{target_id} has been destroyed"
+                    f"DEK for voice_entry:{voice_entry_id} has been destroyed"
                 )
 
             # Decrypt DEK
@@ -628,8 +601,7 @@ class EnvelopeEncryptionService:
                 "Decrypted file",
                 input_path=str(input_path),
                 output_path=str(output_path),
-                target_type=target_type,
-                target_id=str(target_id),
+                voice_entry_id=str(voice_entry_id),
             )
 
         except (DEKNotFoundError, DEKDestroyedError):
@@ -638,8 +610,7 @@ class EnvelopeEncryptionService:
             logger.error(
                 "Failed to decrypt file",
                 input_path=str(input_path),
-                target_type=target_type,
-                target_id=str(target_id),
+                voice_entry_id=str(voice_entry_id),
                 error=str(e),
             )
             raise EncryptionError(f"Failed to decrypt file: {e}") from e
@@ -651,16 +622,14 @@ class EnvelopeEncryptionService:
     async def get_dek_info(
         self,
         db: AsyncSession,
-        target_type: str,
-        target_id: UUID,
+        voice_entry_id: UUID,
     ) -> Optional[dict]:
         """
         Get DEK metadata without decrypting.
 
         Args:
             db: Database session
-            target_type: Type of target
-            target_id: UUID of target entity
+            voice_entry_id: UUID of the VoiceEntry
 
         Returns:
             Dict with encryption_version, key_version, created_at, etc.
@@ -668,8 +637,7 @@ class EnvelopeEncryptionService:
         """
         result = await db.execute(
             select(DataEncryptionKey).where(
-                DataEncryptionKey.target_type == target_type,
-                DataEncryptionKey.target_id == target_id,
+                DataEncryptionKey.voice_entry_id == voice_entry_id,
             )
         )
         dek = result.scalar_one_or_none()
@@ -679,6 +647,7 @@ class EnvelopeEncryptionService:
 
         return {
             "id": dek.id,
+            "voice_entry_id": dek.voice_entry_id,
             "encryption_version": dek.encryption_version,
             "key_version": dek.key_version,
             "created_at": dek.created_at,
@@ -690,24 +659,21 @@ class EnvelopeEncryptionService:
     async def is_encrypted(
         self,
         db: AsyncSession,
-        target_type: str,
-        target_id: UUID,
+        voice_entry_id: UUID,
     ) -> bool:
         """
-        Check if a target entity has an active DEK.
+        Check if a VoiceEntry has an active DEK.
 
         Args:
             db: Database session
-            target_type: Type of target
-            target_id: UUID of target entity
+            voice_entry_id: UUID of the VoiceEntry
 
         Returns:
             True if active DEK exists (not destroyed)
         """
         result = await db.execute(
             select(DataEncryptionKey.id).where(
-                DataEncryptionKey.target_type == target_type,
-                DataEncryptionKey.target_id == target_id,
+                DataEncryptionKey.voice_entry_id == voice_entry_id,
                 DataEncryptionKey.deleted_at.is_(None),
             )
         )

@@ -1,5 +1,8 @@
 """
 Pydantic schemas for envelope encryption operations.
+
+All encryption operations are scoped to VoiceEntry - one DEK per VoiceEntry
+encrypts the audio file, transcriptions, and cleaned entries.
 """
 from datetime import datetime
 from typing import Optional
@@ -12,8 +15,7 @@ class DEKInfo(BaseModel):
     """Information about a Data Encryption Key (DEK)."""
     id: UUID = Field(description="DEK record ID")
     user_id: UUID = Field(description="User who owns this DEK")
-    target_type: str = Field(description="Type of encrypted target (voice_entry, transcription, cleaned_entry)")
-    target_id: UUID = Field(description="ID of the encrypted target")
+    voice_entry_id: UUID = Field(description="VoiceEntry this DEK protects")
     encryption_version: str = Field(description="Encryption provider version (e.g., 'local-v1')")
     key_version: int = Field(description="Key version for rotation tracking")
     created_at: datetime = Field(description="When the DEK was created")
@@ -24,57 +26,50 @@ class DEKInfo(BaseModel):
 
 
 class EncryptionStatus(BaseModel):
-    """Encryption status for a resource."""
-    target_type: str = Field(description="Type of resource")
-    target_id: UUID = Field(description="Resource ID")
-    is_encrypted: bool = Field(description="Whether the resource is currently encrypted")
+    """Encryption status for a VoiceEntry."""
+    voice_entry_id: UUID = Field(description="VoiceEntry ID")
+    is_encrypted: bool = Field(description="Whether the VoiceEntry is currently encrypted")
     encryption_version: Optional[str] = Field(None, description="Encryption version if encrypted")
     dek_id: Optional[UUID] = Field(None, description="DEK ID if encrypted")
 
 
 class EncryptDataRequest(BaseModel):
-    """Request to encrypt data for a target."""
-    target_type: str = Field(description="Type of target (voice_entry, transcription, cleaned_entry)")
-    target_id: UUID = Field(description="ID of the target")
+    """Request to encrypt data for a VoiceEntry."""
+    voice_entry_id: UUID = Field(description="ID of the VoiceEntry")
     data: str = Field(description="Data to encrypt (text content)")
 
 
 class EncryptDataResponse(BaseModel):
     """Response after encrypting data."""
-    target_type: str = Field(description="Type of encrypted target")
-    target_id: UUID = Field(description="ID of the encrypted target")
+    voice_entry_id: UUID = Field(description="ID of the VoiceEntry")
     dek_id: UUID = Field(description="ID of the DEK used for encryption")
     encryption_version: str = Field(description="Encryption provider version used")
     message: str = Field(description="Human-readable message")
 
 
 class DecryptDataRequest(BaseModel):
-    """Request to decrypt data for a target."""
-    target_type: str = Field(description="Type of target")
-    target_id: UUID = Field(description="ID of the target")
+    """Request to decrypt data for a VoiceEntry."""
+    voice_entry_id: UUID = Field(description="ID of the VoiceEntry")
 
 
 class DecryptDataResponse(BaseModel):
     """Response after decrypting data."""
-    target_type: str = Field(description="Type of decrypted target")
-    target_id: UUID = Field(description="ID of the decrypted target")
+    voice_entry_id: UUID = Field(description="ID of the VoiceEntry")
     data: str = Field(description="Decrypted data")
 
 
 class DEKDestroyRequest(BaseModel):
     """Request to destroy a DEK (GDPR cryptographic erasure)."""
-    target_type: str = Field(description="Type of target")
-    target_id: UUID = Field(description="ID of the target")
+    voice_entry_id: UUID = Field(description="ID of the VoiceEntry")
     confirm: bool = Field(
         default=False,
-        description="Must be True to confirm DEK destruction (data becomes unrecoverable)"
+        description="Must be True to confirm DEK destruction (all data for entry becomes unrecoverable)"
     )
 
 
 class DEKDestroyResponse(BaseModel):
     """Response after destroying a DEK."""
-    target_type: str = Field(description="Type of target")
-    target_id: UUID = Field(description="ID of the target")
+    voice_entry_id: UUID = Field(description="ID of the VoiceEntry")
     dek_id: UUID = Field(description="ID of the destroyed DEK")
     destroyed_at: datetime = Field(description="When the DEK was destroyed")
     message: str = Field(description="Human-readable message")

@@ -1,7 +1,7 @@
 """add envelope encryption
 
 Adds support for GDPR-compliant envelope encryption:
-- data_encryption_keys table for storing encrypted DEKs
+- data_encryption_keys table for storing encrypted DEKs (one per VoiceEntry)
 - is_encrypted and encryption_version columns on existing tables
 - encryption_enabled preference for users
 
@@ -25,20 +25,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Create data_encryption_keys table
+    # Create data_encryption_keys table (one DEK per VoiceEntry)
     op.create_table(
         'data_encryption_keys',
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column('user_id', postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column('voice_entry_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('encrypted_dek', postgresql.BYTEA(), nullable=False),
         sa.Column('encryption_version', sa.String(50), nullable=False),
         sa.Column('key_version', sa.Integer(), nullable=False, server_default='1'),
-        sa.Column('target_type', sa.String(50), nullable=False),
-        sa.Column('target_id', postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column('rotated_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(['user_id'], ['journal.users.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['voice_entry_id'], ['journal.voice_entries.id'], ondelete='CASCADE'),
+        sa.UniqueConstraint('voice_entry_id', name='uq_dek_voice_entry'),
         schema='journal'
     )
 
@@ -51,17 +52,9 @@ def upgrade() -> None:
     )
 
     op.create_index(
-        'uq_dek_target',
-        'data_encryption_keys',
-        ['target_type', 'target_id'],
-        unique=True,
-        schema='journal'
-    )
-
-    op.create_index(
         'idx_dek_active',
         'data_encryption_keys',
-        ['target_type', 'target_id'],
+        ['voice_entry_id'],
         schema='journal',
         postgresql_where=sa.text('deleted_at IS NULL')
     )
@@ -134,8 +127,7 @@ def downgrade() -> None:
 
     # Drop indexes
     op.drop_index('idx_dek_active', table_name='data_encryption_keys', schema='journal')
-    op.drop_index('uq_dek_target', table_name='data_encryption_keys', schema='journal')
     op.drop_index('idx_dek_user_id', table_name='data_encryption_keys', schema='journal')
 
-    # Drop data_encryption_keys table
+    # Drop data_encryption_keys table (unique constraint dropped with table)
     op.drop_table('data_encryption_keys', schema='journal')
