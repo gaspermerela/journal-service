@@ -232,7 +232,7 @@ class OllamaLLMCleanupService(LLMCleanupService):
 
                 # Add prompt_template_id and parameters to result
                 result["prompt_template_id"] = template_id
-                result["temperature"] = temperature if temperature is not None else 0.3
+                result["temperature"] = temperature
                 result["top_p"] = top_p
 
                 return result
