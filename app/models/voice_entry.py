@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from app.models.transcription import Transcription
     from app.models.user import User
     from app.models.cleaned_entry import CleanedEntry
+    from app.models.data_encryption_key import DataEncryptionKey
 
 
 class VoiceEntry(Base):
@@ -135,6 +136,14 @@ class VoiceEntry(Base):
     cleaned_entries: Mapped[list["CleanedEntry"]] = relationship(
         "CleanedEntry",
         back_populates="voice_entry",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+
+    data_encryption_key: Mapped[Optional["DataEncryptionKey"]] = relationship(
+        "DataEncryptionKey",
+        back_populates="voice_entry",
+        uselist=False,  # One-to-one relationship
         cascade="all, delete-orphan",
         lazy="selectin"
     )
