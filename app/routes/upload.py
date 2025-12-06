@@ -118,29 +118,62 @@ async def transcription_then_cleanup_task(
 
     # Check if transcription succeeded
     from app.database import get_session
+    from app.main import app
+    from app.utils.encryption_helpers import decrypt_text_if_encrypted
+
     async with get_session() as db:
         transcription_result = await db_service.get_transcription_by_id(
             db=db,
             transcription_id=transcription_id
         )
 
-        if transcription_result and transcription_result.status == "completed" and transcription_result.transcribed_text:
-            # Trigger cleanup
-            logger.info(
-                f"Transcription completed, starting cleanup for {cleaned_entry_id}",
-                cleanup_temperature=cleanup_temperature,
-                cleanup_top_p=cleanup_top_p
-            )
-            await process_cleanup_background(
-                cleaned_entry_id=cleaned_entry_id,
-                transcription_text=transcription_result.transcribed_text,
-                entry_type=entry_type,
-                user_id=user_id,
+        # Check for text in either plaintext or encrypted form
+        has_text = (
+            transcription_result
+            and transcription_result.status == "completed"
+            and (transcription_result.transcribed_text or transcription_result.transcribed_text_encrypted)
+        )
+
+        if has_text:
+            # Decrypt text if needed
+            encryption_service = getattr(app.state, "encryption_service", None)
+            transcription_text = await decrypt_text_if_encrypted(
+                encryption_service=encryption_service,
+                db=db,
+                encrypted_bytes=transcription_result.transcribed_text_encrypted,
+                plaintext=transcription_result.transcribed_text,
                 voice_entry_id=entry_id,
-                temperature=cleanup_temperature,
-                top_p=cleanup_top_p,
-                llm_model=llm_model
+                user_id=user_id,
+                is_encrypted=transcription_result.is_encrypted,
             )
+
+            if transcription_text:
+                # Trigger cleanup
+                logger.info(
+                    f"Transcription completed, starting cleanup for {cleaned_entry_id}",
+                    cleanup_temperature=cleanup_temperature,
+                    cleanup_top_p=cleanup_top_p
+                )
+                await process_cleanup_background(
+                    cleaned_entry_id=cleaned_entry_id,
+                    transcription_text=transcription_text,
+                    entry_type=entry_type,
+                    user_id=user_id,
+                    voice_entry_id=entry_id,
+                    temperature=cleanup_temperature,
+                    top_p=cleanup_top_p,
+                    llm_model=llm_model
+                )
+            else:
+                # Decryption failed
+                logger.warning(f"Failed to decrypt transcription text for {cleaned_entry_id}")
+                await db_service.update_cleaned_entry_processing(
+                    db=db,
+                    cleaned_entry_id=cleaned_entry_id,
+                    cleanup_status=CleanupStatus.FAILED,
+                    error_message="Failed to decrypt transcription text"
+                )
+                await db.commit()
         else:
             # Transcription failed, mark cleanup as failed too
             logger.warning(f"Transcription failed, skipping cleanup for {cleaned_entry_id}")
