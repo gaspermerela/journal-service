@@ -304,17 +304,13 @@ async def test_transcription_cascade_delete(db_session, sample_voice_entry, test
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="Partial unique index for is_primary not implemented in model - only has regular composite index")
 async def test_unique_primary_constraint(db_session, sample_voice_entry):
     """Test that database constraint prevents multiple primary transcriptions.
 
-    NOTE: This test requires a partial unique index to be added to the Transcription model:
-    Index("ix_transcriptions_unique_primary", "entry_id", unique=True, postgresql_where="is_primary = true")
-
-    Currently the model only has a composite index for query performance, not uniqueness.
+    The partial unique index ix_transcriptions_unique_primary ensures only one
+    transcription per entry can have is_primary=true.
     """
     from fastapi import HTTPException
-    from sqlalchemy.exc import IntegrityError
 
     # Store entry ID before any operations that might detach the object
     entry_id = sample_voice_entry.id

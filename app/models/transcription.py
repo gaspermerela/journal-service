@@ -3,7 +3,7 @@ SQLAlchemy model for transcriptions table.
 """
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, DateTime, Boolean, Integer, Float, ForeignKey, Index, LargeBinary
+from sqlalchemy import String, Text, DateTime, Boolean, Integer, Float, ForeignKey, Index, LargeBinary, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base, DB_SCHEMA
@@ -143,6 +143,13 @@ class Transcription(Base):
         Index("idx_transcriptions_entry_id_is_primary", "entry_id", "is_primary"),
         Index("idx_transcriptions_status", "status"),
         Index("idx_transcriptions_created_at", "created_at"),
+        # Partial unique index: only one primary transcription per entry
+        Index(
+            "ix_transcriptions_unique_primary",
+            "entry_id",
+            unique=True,
+            postgresql_where=text("is_primary = true")
+        ),
         {"schema": DB_SCHEMA}
     )
 
