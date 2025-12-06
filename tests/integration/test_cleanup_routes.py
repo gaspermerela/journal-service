@@ -40,13 +40,23 @@ async def sample_prompt_template(
 @pytest.fixture
 async def completed_transcription(
     db_session: AsyncSession,
-    sample_voice_entry: VoiceEntry
+    sample_voice_entry: VoiceEntry,
+    encryption_service
 ) -> Transcription:
-    """Create a completed transcription for cleanup testing."""
+    """Create a completed transcription for cleanup testing with proper encryption."""
+    # Encrypt the transcribed text properly so DEK is created
+    plaintext = "I had a vivid dream about flying over mountains and vast oceans. The scenery was beautiful."
+    encrypted_text = await encryption_service.encrypt_data(
+        db_session,
+        plaintext,
+        sample_voice_entry.id,
+        sample_voice_entry.user_id
+    )
+
     transcription = Transcription(
         id=uuid.uuid4(),
         entry_id=sample_voice_entry.id,
-        transcribed_text="I had a dream about flying over mountains and oceans.",
+        transcribed_text=encrypted_text,
         status="completed",
         model_used="whisper-base",
         language_code="en",
@@ -91,21 +101,41 @@ async def sample_cleaned_entry(
     sample_voice_entry: VoiceEntry,
     completed_transcription: Transcription,
     test_user: User,
-    sample_prompt_template: PromptTemplate
+    sample_prompt_template: PromptTemplate,
+    encryption_service
 ) -> CleanedEntry:
-    """Create a completed cleaned entry."""
+    """Create a completed cleaned entry with proper encryption."""
+    import json
+
+    # Properly encrypt cleaned_text and analysis using the encryption service
+    cleaned_text_plain = "This is the cleaned and processed dream content about flying over mountains."
+    analysis_dict = {
+        "themes": ["flying", "nature", "adventure"],
+        "emotions": ["excitement", "wonder"],
+        "characters": [],
+        "locations": ["mountains", "oceans"]
+    }
+
+    encrypted_cleaned_text = await encryption_service.encrypt_data(
+        db_session,
+        cleaned_text_plain,
+        sample_voice_entry.id,
+        test_user.id
+    )
+    encrypted_analysis = await encryption_service.encrypt_data(
+        db_session,
+        json.dumps(analysis_dict),
+        sample_voice_entry.id,
+        test_user.id
+    )
+
     cleaned_entry = CleanedEntry(
         id=uuid.uuid4(),
         voice_entry_id=sample_voice_entry.id,
         transcription_id=completed_transcription.id,
         user_id=test_user.id,
-        cleaned_text="I had a dream about flying over mountains and oceans.",
-        analysis={
-            "themes": ["flying", "nature", "adventure"],
-            "emotions": ["excitement", "wonder"],
-            "characters": [],
-            "locations": ["mountains", "oceans"]
-        },
+        cleaned_text=encrypted_cleaned_text,
+        analysis=encrypted_analysis,
         prompt_template_id=sample_prompt_template.id,
         model_name="llama3.2:3b",
         processing_started_at=datetime.utcnow(),
@@ -294,7 +324,7 @@ class TestGetCleanedEntry:
             voice_entry_id=sample_voice_entry.id,
             transcription_id=completed_transcription.id,
             user_id=other_user.id,  # Different user!
-            cleaned_text="Text",
+            cleaned_text=b"encrypted_text",
             model_name="llama3.2:3b"
         )
         cleaned_entry.status = "completed"
@@ -375,17 +405,25 @@ class TestGetCleanedEntriesByVoiceEntry:
         db_session: AsyncSession,
         sample_voice_entry: VoiceEntry,
         completed_transcription: Transcription,
-        test_user: User
+        test_user: User,
+        encryption_service
     ):
         """Test retrieving multiple cleanup attempts for same entry."""
         # Create multiple cleaned entries (only last one is primary due to constraint)
+        # Properly encrypt the cleaned_text using the encryption service
         for i in range(3):
+            encrypted_text = await encryption_service.encrypt_data(
+                db_session,
+                f"Version {i+1}",
+                sample_voice_entry.id,
+                test_user.id
+            )
             cleaned_entry = CleanedEntry(
                 id=uuid.uuid4(),
                 voice_entry_id=sample_voice_entry.id,
                 transcription_id=completed_transcription.id,
                 user_id=test_user.id,
-                cleaned_text=f"Version {i+1}",
+                cleaned_text=encrypted_text,
                 model_name="llama3.2:3b",
                 is_primary=(i == 2)  # Only the last one is primary (one primary per voice_entry)
             )
@@ -464,7 +502,7 @@ class TestSetPrimaryCleanup:
             voice_entry_id=sample_voice_entry.id,
             transcription_id=completed_transcription.id,
             user_id=test_user.id,
-            cleaned_text="First cleanup",
+            cleaned_text=b"First cleanup",
             model_name="llama3.2:3b",
             prompt_template_id=sample_prompt_template.id,
             is_primary=True
@@ -476,7 +514,7 @@ class TestSetPrimaryCleanup:
             voice_entry_id=sample_voice_entry.id,
             transcription_id=completed_transcription.id,
             user_id=test_user.id,
-            cleaned_text="Second cleanup",
+            cleaned_text=b"Second cleanup",
             model_name="llama3.2:3b",
             prompt_template_id=sample_prompt_template.id,
             is_primary=False
@@ -573,7 +611,7 @@ class TestSetPrimaryCleanup:
             voice_entry_id=sample_voice_entry.id,
             transcription_id=completed_transcription.id,
             user_id=test_user.id,
-            cleaned_text="Test cleanup",
+            cleaned_text=b"Test cleanup",
             model_name="llama3.2:3b",
             is_primary=True
         )
@@ -610,7 +648,7 @@ class TestSetPrimaryCleanup:
             voice_entry_id=sample_voice_entry.id,
             transcription_id=completed_transcription.id,
             user_id=test_user.id,
-            cleaned_text="Test cleanup without prompt",
+            cleaned_text=b"Test cleanup without prompt",
             model_name="llama3.2:3b",
             prompt_template_id=None,  # No prompt template
             is_primary=True
@@ -751,14 +789,15 @@ class TestCleanupParameterHandling:
         test_user: User
     ):
         """Test GET endpoint returns temperature and top_p parameters."""
+        import json as json_lib
         # Create cleaned entry with parameters
         cleaned_entry = CleanedEntry(
             id=uuid.uuid4(),
             voice_entry_id=sample_voice_entry.id,
             transcription_id=completed_transcription.id,
             user_id=test_user.id,
-            cleaned_text="Test cleaned text",
-            analysis={"themes": [], "emotions": [], "characters": [], "locations": []},
+            cleaned_text=b"Test cleaned text",
+            analysis=json_lib.dumps({"themes": [], "emotions": [], "characters": [], "locations": []}).encode("utf-8"),
             model_name="test-model",
             temperature=0.6,
             top_p=0.85,

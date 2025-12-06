@@ -115,7 +115,7 @@ async def test_set_primary_after_comparison(authenticated_client, sample_voice_e
         db_session,
         trans1.id,
         status="completed",
-        transcribed_text="Quick but less accurate transcription."
+        transcribed_text=b"Quick but less accurate transcription."
     )
 
     trans2_data = TranscriptionCreate(
@@ -130,7 +130,7 @@ async def test_set_primary_after_comparison(authenticated_client, sample_voice_e
         db_session,
         trans2.id,
         status="completed",
-        transcribed_text="High quality accurate transcription with proper punctuation."
+        transcribed_text=b"High quality accurate transcription with proper punctuation."
     )
     await db_session.commit()
 

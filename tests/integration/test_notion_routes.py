@@ -4,6 +4,7 @@ Integration tests for Notion routes.
 Tests all Notion API endpoints with real database interactions.
 Mocks external Notion API calls to avoid external dependencies.
 """
+import json
 import pytest
 import uuid
 from datetime import datetime, timezone
@@ -81,24 +82,42 @@ async def completed_cleaned_entry(
     db_session: AsyncSession,
     sample_voice_entry: VoiceEntry,
     sample_transcription: Transcription,
-    test_user: User
+    test_user: User,
+    encryption_service
 ) -> CleanedEntry:
-    """Create a completed cleaned entry for Notion sync testing."""
+    """Create a completed cleaned entry for Notion sync testing with proper encryption."""
     # Use timezone-naive datetime for database compatibility
     now = datetime.utcnow()
+
+    # Properly encrypt cleaned_text and analysis using the encryption service
+    cleaned_text_plain = "I had a lucid dream about flying over mountains."
+    analysis_dict = {
+        "themes": ["flying", "nature"],
+        "emotions": ["joy", "freedom"],
+        "characters": [],
+        "locations": ["mountains"]
+    }
+
+    encrypted_cleaned_text = await encryption_service.encrypt_data(
+        db_session,
+        cleaned_text_plain,
+        sample_voice_entry.id,
+        test_user.id
+    )
+    encrypted_analysis = await encryption_service.encrypt_data(
+        db_session,
+        json.dumps(analysis_dict),
+        sample_voice_entry.id,
+        test_user.id
+    )
 
     cleaned_entry = CleanedEntry(
         id=uuid.uuid4(),
         voice_entry_id=sample_voice_entry.id,
         transcription_id=sample_transcription.id,
         user_id=test_user.id,
-        cleaned_text="I had a lucid dream about flying over mountains.",
-        analysis={
-            "themes": ["flying", "nature"],
-            "emotions": ["joy", "freedom"],
-            "characters": [],
-            "locations": ["mountains"]
-        },
+        cleaned_text=encrypted_cleaned_text,
+        analysis=encrypted_analysis,
         model_name="llama3.2:3b",
         processing_started_at=now,
         processing_completed_at=now

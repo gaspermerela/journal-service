@@ -139,10 +139,11 @@ def test_settings(test_storage_path) -> Settings:
 
 
 @pytest.fixture
-async def client(db_session: AsyncSession, test_settings: Settings, mock_transcription_service, mock_llm_cleanup_service) -> AsyncGenerator[AsyncClient, None]:
+async def client(db_session: AsyncSession, test_settings: Settings, mock_transcription_service, mock_llm_cleanup_service, encryption_service) -> AsyncGenerator[AsyncClient, None]:
     """
     Create an async test client for the FastAPI application.
     Overrides the database dependency to use test database.
+    Includes encryption service (required for encryption-only mode).
     """
     # Override dependencies
     async def override_get_db():
@@ -157,6 +158,8 @@ async def client(db_session: AsyncSession, test_settings: Settings, mock_transcr
     # Mock AI services to avoid loading Whisper/Ollama/Groq in tests
     app.state.transcription_service = mock_transcription_service
     app.state.llm_cleanup_service = mock_llm_cleanup_service
+    # Encryption service is required (encryption-only mode)
+    app.state.encryption_service = encryption_service
 
     # Create client
     async with AsyncClient(
@@ -169,6 +172,7 @@ async def client(db_session: AsyncSession, test_settings: Settings, mock_transcr
     app.dependency_overrides.clear()
     app.state.transcription_service = None
     app.state.llm_cleanup_service = None
+    app.state.encryption_service = None
 
 
 @pytest.fixture
@@ -189,11 +193,6 @@ async def test_user(db_session: AsyncSession) -> User:
     user = await db_service.create_user(db_session, user_data)
     await db_session.commit()
     await db_session.refresh(user)
-
-    # Disable encryption for tests (encryption service not available)
-    user_prefs = await db_service.get_user_preferences(db_session, user.id)
-    user_prefs.encryption_enabled = False
-    await db_session.commit()
 
     return user
 
@@ -403,18 +402,29 @@ def mock_llm_cleanup_service():
 @pytest.fixture
 async def sample_transcription(
     db_session: AsyncSession,
-    sample_voice_entry: VoiceEntry
+    sample_voice_entry: VoiceEntry,
+    encryption_service
 ) -> Transcription:
     """
     Create a sample completed transcription for testing.
     Linked to the sample_voice_entry fixture.
+    Data is properly encrypted using the encryption service.
     """
     from datetime import datetime, timezone
+
+    # Encrypt the transcribed text properly
+    plaintext = "I had a dream about flying over mountains and vast oceans."
+    encrypted_text = await encryption_service.encrypt_data(
+        db_session,
+        plaintext,
+        sample_voice_entry.id,
+        sample_voice_entry.user_id
+    )
 
     transcription = Transcription(
         id=uuid.uuid4(),
         entry_id=sample_voice_entry.id,
-        transcribed_text="I dreamt about flying over mountains.",
+        transcribed_text=encrypted_text,
         status="completed",
         model_used="whisper-base",
         language_code="en",
@@ -552,81 +562,3 @@ def encryption_service():
     return EnvelopeEncryptionService(provider)
 
 
-@pytest.fixture
-async def test_user_with_encryption(db_session: AsyncSession) -> User:
-    """
-    Create a test user with encryption enabled.
-
-    Use this fixture when testing encrypted workflows.
-    The user has encryption_enabled=True in their preferences.
-    """
-    user_data = UserCreate(
-        email="encrypted_user@example.com",
-        password="EncryptedPassword123!"
-    )
-    user = await db_service.create_user(db_session, user_data)
-    await db_session.commit()
-    await db_session.refresh(user)
-
-    # Enable encryption for this user
-    user_prefs = await db_service.get_user_preferences(db_session, user.id)
-    user_prefs.encryption_enabled = True
-    await db_session.commit()
-
-    return user
-
-
-@pytest.fixture
-async def authenticated_client_with_encryption(
-    db_session: AsyncSession,
-    test_settings: Settings,
-    mock_transcription_service,
-    mock_llm_cleanup_service,
-    encryption_service,
-    test_user_with_encryption: User
-) -> AsyncGenerator[AsyncClient, None]:
-    """
-    Create an authenticated test client with encryption service available.
-
-    This client is authenticated as a user with encryption enabled,
-    and the app has the encryption service available in app.state.
-    """
-    # Override dependencies
-    async def override_get_db():
-        yield db_session
-
-    app.dependency_overrides[get_db] = override_get_db
-
-    # Override settings
-    from app import config
-    config.settings = test_settings
-
-    # Set up services including encryption
-    app.state.transcription_service = mock_transcription_service
-    app.state.llm_cleanup_service = mock_llm_cleanup_service
-    app.state.encryption_service = encryption_service
-
-    # Create client and authenticate
-    async with AsyncClient(
-        transport=ASGITransport(app=app),
-        base_url="http://test"
-    ) as ac:
-        # Login to get token
-        login_response = await ac.post(
-            "/api/v1/auth/login",
-            json={
-                "email": "encrypted_user@example.com",
-                "password": "EncryptedPassword123!"
-            }
-        )
-        assert login_response.status_code == 200
-        tokens = login_response.json()
-        ac.headers["Authorization"] = f"Bearer {tokens['access_token']}"
-
-        yield ac
-
-    # Clear overrides
-    app.dependency_overrides.clear()
-    app.state.transcription_service = None
-    app.state.llm_cleanup_service = None
-    app.state.encryption_service = None

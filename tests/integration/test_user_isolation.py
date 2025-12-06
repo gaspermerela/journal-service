@@ -211,7 +211,7 @@ async def test_user_cannot_access_other_users_transcription(
     transcription = Transcription(
         id=uuid.uuid4(),
         entry_id=user_b_entry.id,
-        transcribed_text="User B's transcription",
+        transcribed_text=b"User B's transcription",
         status="completed",
         model_used="whisper-base",
         language_code="en",
@@ -256,7 +256,7 @@ async def test_user_cannot_set_primary_for_other_users_transcription(
     transcription = Transcription(
         id=uuid.uuid4(),
         entry_id=user_b_entry.id,
-        transcribed_text="User B's transcription",
+        transcribed_text=b"User B's transcription",
         status="completed",
         model_used="whisper-base",
         language_code="en",

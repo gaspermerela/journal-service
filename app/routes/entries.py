@@ -29,8 +29,8 @@ from app.services.envelope_encryption import (
 )
 from app.middleware.jwt import get_current_user
 from app.utils.encryption_helpers import (
-    decrypt_text_if_encrypted,
-    decrypt_json_if_encrypted,
+    decrypt_text,
+    decrypt_json,
     decrypt_audio_to_temp,
     cleanup_temp_file,
 )
@@ -127,37 +127,31 @@ async def list_entries(
                 sorted_cleaned = sorted(entry.cleaned_entries, key=lambda c: c.created_at, reverse=True)
                 primary_cleanup = sorted_cleaned[0]
 
-            # Create text preview (first 200 chars), decrypt if needed
+            # Create text preview (first 200 chars), decrypt the encrypted data
             text_preview = None
-            cleaned_text = primary_cleanup.cleaned_text
 
             # TODO: lots of DB calls for encrypted DEK key, optimise with batching
-            # Decrypt cleaned_text if encrypted
-            if primary_cleanup.is_encrypted and primary_cleanup.cleaned_text_encrypted:
-                cleaned_text = await decrypt_text_if_encrypted(
-                    encryption_service=encryption_service,
-                    db=db,
-                    encrypted_bytes=primary_cleanup.cleaned_text_encrypted,
-                    voice_entry_id=entry.id,
-                    user_id=current_user.id,
-                    is_encrypted=True
-                )
+            # Decrypt cleaned_text (always encrypted)
+            cleaned_text = await decrypt_text(
+                encryption_service=encryption_service,
+                db=db,
+                encrypted_bytes=primary_cleanup.cleaned_text,
+                voice_entry_id=entry.id,
+                user_id=current_user.id,
+            )
 
             if cleaned_text:
                 text_preview = cleaned_text[:200]
 
             # TODO: lots of DB calls for encrypted DEK key, optimise with batching
-            # Decrypt analysis if encrypted
-            analysis = primary_cleanup.analysis
-            if primary_cleanup.is_encrypted and primary_cleanup.analysis_encrypted:
-                analysis = await decrypt_json_if_encrypted(
-                    encryption_service=encryption_service,
-                    db=db,
-                    encrypted_bytes=primary_cleanup.analysis_encrypted,
-                    voice_entry_id=entry.id,
-                    user_id=current_user.id,
-                    is_encrypted=True
-                )
+            # Decrypt analysis (always encrypted)
+            analysis = await decrypt_json(
+                encryption_service=encryption_service,
+                db=db,
+                encrypted_bytes=primary_cleanup.analysis,
+                voice_entry_id=entry.id,
+                user_id=current_user.id,
+            )
 
             latest_cleaned = CleanedEntrySummary(
                 id=primary_cleanup.id,
@@ -211,7 +205,8 @@ async def list_entries(
 async def get_entry(
     entry_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service)
 ) -> VoiceEntryResponse:
     """
     Get voice entry by ID (user can only access their own entries).
@@ -220,6 +215,7 @@ async def get_entry(
         entry_id: UUID of the entry to retrieve
         db: Database session
         current_user: Authenticated user from JWT token
+        encryption_service: Encryption service for decrypting transcription
 
     Returns:
         VoiceEntryResponse with entry metadata
@@ -244,7 +240,31 @@ async def get_entry(
     primary_transcription_data = None
 
     if primary_transcription:
-        primary_transcription_data = TranscriptionResponse.model_validate(primary_transcription)
+        # Decrypt the transcribed_text before creating response
+        decrypted_text = await decrypt_text(
+            encryption_service=encryption_service,
+            db=db,
+            encrypted_bytes=primary_transcription.transcribed_text,
+            voice_entry_id=entry_id,
+            user_id=current_user.id,
+        )
+
+        primary_transcription_data = TranscriptionResponse(
+            id=primary_transcription.id,
+            entry_id=primary_transcription.entry_id,
+            status=primary_transcription.status,
+            model_used=primary_transcription.model_used,
+            language_code=primary_transcription.language_code,
+            beam_size=primary_transcription.beam_size,
+            temperature=primary_transcription.temperature,
+            transcribed_text=decrypted_text,
+            transcription_started_at=primary_transcription.transcription_started_at,
+            transcription_completed_at=primary_transcription.transcription_completed_at,
+            error_message=primary_transcription.error_message,
+            is_primary=primary_transcription.is_primary,
+            created_at=primary_transcription.created_at,
+            updated_at=primary_transcription.updated_at,
+        )
         logger.info(
             f"Entry retrieved with primary transcription",
             entry_id=str(entry_id),

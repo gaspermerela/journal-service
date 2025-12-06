@@ -51,10 +51,11 @@ class Transcription(Base):
         index=True
     )
 
-    # Transcription data
-    transcribed_text: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True
+    # Transcription data (always encrypted as LargeBinary)
+    transcribed_text: Mapped[bytes | None] = mapped_column(
+        LargeBinary,
+        nullable=True,
+        doc="Encrypted transcription text (BYTEA)"
     )
 
     status: Mapped[str] = mapped_column(
@@ -101,21 +102,6 @@ class Transcription(Base):
     error_message: Mapped[str | None] = mapped_column(
         Text,
         nullable=True
-    )
-
-    # Encryption metadata
-    transcribed_text_encrypted: Mapped[bytes | None] = mapped_column(
-        LargeBinary,
-        nullable=True,
-        doc="Encrypted transcription text (BYTEA)"
-    )
-
-    is_encrypted: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=False,
-        server_default="false",
-        doc="Whether the transcription text is encrypted"
     )
 
     # Primary transcription flag

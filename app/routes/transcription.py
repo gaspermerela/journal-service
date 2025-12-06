@@ -27,11 +27,10 @@ from app.schemas.transcription import (
 )
 from app.schemas.voice_entry import DeleteResponse
 from app.utils.encryption_helpers import (
-    should_encrypt,
     decrypt_audio_to_temp,
     cleanup_temp_file,
     encrypt_text,
-    decrypt_text_if_encrypted,
+    decrypt_text,
 )
 from app.utils.logger import get_logger
 
@@ -162,45 +161,31 @@ async def process_transcription_task(
                 beam_size=result.get("beam_size")
             )
 
-            # Check if we should encrypt the transcription result
+            # Encrypt the transcription result (encryption is always on)
             # Re-create encryption service for saving (if needed)
             if encryption_service is None:
                 encryption_service = create_envelope_encryption_service()
 
-            should_encrypt_result = await should_encrypt(db, user_id, encryption_service)
+            encrypted_text = await encrypt_text(
+                encryption_service,
+                db,
+                result["text"],
+                entry_id,
+                user_id,
+            )
+            logger.info(
+                "Transcription text encrypted",
+                transcription_id=str(transcription_id),
+                encrypted_length=len(encrypted_text)
+            )
 
-            if should_encrypt_result:
-                # Encrypt transcription text
-                encrypted_text = await encrypt_text(
-                    encryption_service,
-                    db,
-                    result["text"],
-                    entry_id,
-                    user_id,
-                )
-                logger.info(
-                    "Transcription text encrypted",
-                    transcription_id=str(transcription_id),
-                    encrypted_length=len(encrypted_text)
-                )
-
-                # Update with encrypted result
-                await db_service.update_transcription_status(
-                    db=db,
-                    transcription_id=transcription_id,
-                    status="completed",
-                    transcribed_text=None,  # Don't store plaintext
-                    transcribed_text_encrypted=encrypted_text,
-                    is_encrypted=True,
-                )
-            else:
-                # Update with plaintext result
-                await db_service.update_transcription_status(
-                    db=db,
-                    transcription_id=transcription_id,
-                    status="completed",
-                    transcribed_text=result["text"]
-                )
+            # Update with encrypted result
+            await db_service.update_transcription_status(
+                db=db,
+                transcription_id=transcription_id,
+                status="completed",
+                transcribed_text=encrypted_text,
+            )
             await db.commit()
 
             logger.info(f"Transcription result saved to database", transcription_id=str(transcription_id))
@@ -405,15 +390,13 @@ async def get_transcription(
             detail=f"Transcription not found: {transcription_id}"
         )
 
-    # Decrypt transcription text if encrypted
-    decrypted_text = await decrypt_text_if_encrypted(
+    # Decrypt transcription text (always encrypted)
+    decrypted_text = await decrypt_text(
         encryption_service=encryption_service,
         db=db,
-        encrypted_bytes=transcription.transcribed_text_encrypted,
-        plaintext=transcription.transcribed_text,
+        encrypted_bytes=transcription.transcribed_text,
         voice_entry_id=entry.id,
         user_id=current_user.id,
-        is_encrypted=transcription.is_encrypted,
     )
 
     logger.info(f"Transcription retrieved", transcription_id=str(transcription_id))

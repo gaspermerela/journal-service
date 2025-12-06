@@ -76,7 +76,8 @@ async def test_get_transcription_success(authenticated_client, sample_transcript
     data = response.json()
     assert data["id"] == str(sample_transcription.id)
     assert data["status"] == "completed"
-    assert data["transcribed_text"] == sample_transcription.transcribed_text
+    # The transcribed_text is decrypted by the route - verify it's the expected plaintext
+    assert data["transcribed_text"] == "I had a dream about flying over mountains and vast oceans."
     assert data["model_used"] == "whisper-base"
     assert data["language_code"] == "en"
     assert data["is_primary"] is True
@@ -212,7 +213,8 @@ async def test_get_entry_with_primary_transcription(authenticated_client, sample
     assert data["id"] == str(sample_voice_entry.id)
     assert data["primary_transcription"] is not None
     assert data["primary_transcription"]["id"] == str(sample_transcription.id)
-    assert data["primary_transcription"]["transcribed_text"] == sample_transcription.transcribed_text
+    # The fixture encrypts the text, the route decrypts it - verify decryption works
+    assert data["primary_transcription"]["transcribed_text"] == "I had a dream about flying over mountains and vast oceans."
 
 
 @pytest.mark.asyncio
@@ -364,7 +366,7 @@ class TestTranscriptionBeamSizeParameter:
         transcription = Transcription(
             id=uuid.uuid4(),
             entry_id=sample_voice_entry.id,
-            transcribed_text="Test transcription",
+            transcribed_text=b"Test transcription",
             status="completed",
             model_used="whisper-base",
             language_code="en",
@@ -402,7 +404,7 @@ class TestTranscriptionBeamSizeParameter:
         transcription = Transcription(
             id=uuid.uuid4(),
             entry_id=sample_voice_entry.id,
-            transcribed_text="Test transcription",
+            transcribed_text=b"Test transcription",
             status="completed",
             model_used="whisper-base",
             language_code="en",

@@ -26,9 +26,8 @@ from app.services.envelope_encryption import (
 )
 from app.config import settings
 from app.utils.encryption_helpers import (
-    should_encrypt,
-    decrypt_text_if_encrypted,
-    decrypt_json_if_encrypted,
+    decrypt_text,
+    decrypt_json,
     encrypt_text,
     encrypt_json,
 )
@@ -123,56 +122,38 @@ async def process_cleanup_background(
                 model=llm_model
             )
 
-            # Check if we should encrypt the results
-            should_encrypt_result = await should_encrypt(db, user_id, encryption_service)
+            # Encrypt cleaned text and analysis (encryption is always on)
+            encrypted_cleaned_text = await encrypt_text(
+                encryption_service,
+                db,
+                result["cleaned_text"],
+                voice_entry_id,
+                user_id,
+            )
+            encrypted_analysis = await encrypt_json(
+                encryption_service,
+                db,
+                result["analysis"],
+                voice_entry_id,
+                user_id,
+            )
+            logger.info(
+                "Cleanup results encrypted",
+                cleaned_entry_id=str(cleaned_entry_id),
+                encrypted_text_length=len(encrypted_cleaned_text),
+                encrypted_analysis_length=len(encrypted_analysis)
+            )
 
-            if should_encrypt_result:
-                # Encrypt cleaned text and analysis
-                encrypted_cleaned_text = await encrypt_text(
-                    encryption_service,
-                    db,
-                    result["cleaned_text"],
-                    voice_entry_id,
-                    user_id,
-                )
-                encrypted_analysis = await encrypt_json(
-                    encryption_service,
-                    db,
-                    result["analysis"],
-                    voice_entry_id,
-                    user_id,
-                )
-                logger.info(
-                    "Cleanup results encrypted",
-                    cleaned_entry_id=str(cleaned_entry_id),
-                    encrypted_text_length=len(encrypted_cleaned_text),
-                    encrypted_analysis_length=len(encrypted_analysis)
-                )
-
-                # Update with encrypted results
-                await db_service.update_cleaned_entry_processing(
-                    db=db,
-                    cleaned_entry_id=cleaned_entry_id,
-                    cleanup_status=CleanupStatus.COMPLETED,
-                    cleaned_text=None,  # Don't store plaintext
-                    analysis=None,  # Don't store plaintext
-                    cleaned_text_encrypted=encrypted_cleaned_text,
-                    analysis_encrypted=encrypted_analysis,
-                    is_encrypted=True,
-                    prompt_template_id=result.get("prompt_template_id"),
-                    llm_raw_response=result.get("llm_raw_response")
-                )
-            else:
-                # Update with plaintext results
-                await db_service.update_cleaned_entry_processing(
-                    db=db,
-                    cleaned_entry_id=cleaned_entry_id,
-                    cleanup_status=CleanupStatus.COMPLETED,
-                    cleaned_text=result["cleaned_text"],
-                    analysis=result["analysis"],
-                    prompt_template_id=result.get("prompt_template_id"),
-                    llm_raw_response=result.get("llm_raw_response")
-                )
+            # Update with encrypted results
+            await db_service.update_cleaned_entry_processing(
+                db=db,
+                cleaned_entry_id=cleaned_entry_id,
+                cleanup_status=CleanupStatus.COMPLETED,
+                cleaned_text=encrypted_cleaned_text,
+                analysis=encrypted_analysis,
+                prompt_template_id=result.get("prompt_template_id"),
+                llm_raw_response=result.get("llm_raw_response")
+            )
             await db.commit()
 
             logger.info(f"LLM cleanup completed for entry {cleaned_entry_id}")
@@ -356,15 +337,13 @@ async def trigger_cleanup(
             detail="Voice entry not found"
         )
 
-    # Get the transcription text (decrypt if encrypted)
-    transcription_text = await decrypt_text_if_encrypted(
+    # Get the transcription text (always encrypted)
+    transcription_text = await decrypt_text(
         encryption_service=encryption_service,
         db=db,
-        encrypted_bytes=transcription.transcribed_text_encrypted,
-        plaintext=transcription.transcribed_text,
+        encrypted_bytes=transcription.transcribed_text,
         voice_entry_id=voice_entry.id,
         user_id=current_user.id,
-        is_encrypted=transcription.is_encrypted,
     )
 
     # Verify there's text to clean
@@ -458,24 +437,20 @@ async def get_cleaned_entry(
         )
 
     # Decrypt cleaned text and analysis if encrypted
-    decrypted_text = await decrypt_text_if_encrypted(
+    decrypted_text = await decrypt_text(
         encryption_service=encryption_service,
         db=db,
-        encrypted_bytes=cleaned_entry.cleaned_text_encrypted,
-        plaintext=cleaned_entry.cleaned_text,
+        encrypted_bytes=cleaned_entry.cleaned_text,
         voice_entry_id=cleaned_entry.voice_entry_id,
         user_id=current_user.id,
-        is_encrypted=cleaned_entry.is_encrypted,
     )
 
-    decrypted_analysis = await decrypt_json_if_encrypted(
+    decrypted_analysis = await decrypt_json(
         encryption_service=encryption_service,
         db=db,
-        encrypted_bytes=cleaned_entry.analysis_encrypted,
-        plaintext_dict=cleaned_entry.analysis,
+        encrypted_bytes=cleaned_entry.analysis,
         voice_entry_id=cleaned_entry.voice_entry_id,
         user_id=current_user.id,
-        is_encrypted=cleaned_entry.is_encrypted,
     )
 
     return CleanedEntryDetail(
@@ -542,26 +517,22 @@ async def get_cleaned_entries_by_entry(
         user_id=current_user.id
     )
 
-    # Decrypt each entry if encrypted
+    # Decrypt each entry (always encrypted)
     result = []
     for ce in cleaned_entries:
-        decrypted_text = await decrypt_text_if_encrypted(
+        decrypted_text = await decrypt_text(
             encryption_service=encryption_service,
             db=db,
-            encrypted_bytes=ce.cleaned_text_encrypted,
-            plaintext=ce.cleaned_text,
+            encrypted_bytes=ce.cleaned_text,
             voice_entry_id=ce.voice_entry_id,
             user_id=current_user.id,
-            is_encrypted=ce.is_encrypted,
         )
-        decrypted_analysis = await decrypt_json_if_encrypted(
+        decrypted_analysis = await decrypt_json(
             encryption_service=encryption_service,
             db=db,
-            encrypted_bytes=ce.analysis_encrypted,
-            plaintext_dict=ce.analysis,
+            encrypted_bytes=ce.analysis,
             voice_entry_id=ce.voice_entry_id,
             user_id=current_user.id,
-            is_encrypted=ce.is_encrypted,
         )
         result.append(CleanedEntryDetail(
             id=ce.id,

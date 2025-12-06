@@ -12,14 +12,18 @@ High-level design decisions and trade-offs.
 3. Validate file type + size
 4. Generate UUID + timestamp filename
 5. Save audio file to disk
-6. Calculate audio duration (pydub)
-7. Create database record (with duration_seconds)
-   - If DB fails: delete audio file
-8. Start background transcription (Whisper)
-9. Return entry metadata + transcription_id
+6. Preprocess audio (16kHz mono WAV) - only for self-hosted transcription
+7. Calculate audio duration
+8. Create database record
+9. Encrypt audio file (envelope encryption)
+   - Create/reuse DEK for this VoiceEntry
+   - Delete original unencrypted file
+10. Start background transcription (Whisper)
+11. Return entry metadata + transcription_id
 ```
 
 **Cleanup mechanism:** If database write fails, saved file is deleted automatically. No orphaned files.
+**Encryption:** All audio files are encrypted. Frontend receives decrypted audio via the download endpoint.
 
 ## Key Decisions
 
@@ -86,7 +90,9 @@ depending on what we are running (local whisper or groq for transcription, local
 
 ### Envelope Encryption
 
-The service implements **envelope encryption** for GDPR-compliant data protection:
+The service implements **envelope encryption** for GDPR-compliant data protection.
+
+**Encryption is always enabled** - there is no user toggle. The application fails at startup if the encryption service is unavailable. All audio files, transcriptions, and cleaned entries (including analysis) are encrypted.
 
 ```
 Master Key → KEK (per-user) → DEK (per-VoiceEntry) → Data

@@ -2,7 +2,10 @@
 Helper functions for envelope encryption integration.
 
 These helpers simplify the integration of encryption into routes and services
-by providing common patterns for checking encryption status and decrypting data.
+by providing common patterns for encrypting and decrypting data.
+
+Note: Encryption is always on - there is no user preference toggle.
+The app fails at startup if the encryption service is unavailable.
 """
 import json
 import uuid
@@ -12,14 +15,10 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
-from app.services.database import DatabaseService
 from app.services.envelope_encryption import EnvelopeEncryptionService
 from app.utils.logger import get_logger
 
 logger = get_logger("encryption.helpers")
-
-db_service = DatabaseService()
 
 
 class EncryptionServiceUnavailableError(Exception):
@@ -27,151 +26,90 @@ class EncryptionServiceUnavailableError(Exception):
     pass
 
 
-async def should_encrypt(
-    db: AsyncSession,
-    user_id: UUID,
-    encryption_service: Optional[EnvelopeEncryptionService],
-) -> bool:
-    """
-    Check if data should be encrypted for a user.
-
-    Encryption is enabled when:
-    1. The user has encryption_enabled = True in their preferences (enabled by default)
-    2. The encryption service is available
-
-    If user has encryption enabled but service is unavailable, raises an error
-    to fail fast rather than silently storing unencrypted data.
-
-    Args:
-        db: Database session
-        user_id: User's UUID
-        encryption_service: Encryption service instance (may be None if unavailable)
-
-    Returns:
-        True if data should be encrypted, False if user has encryption disabled
-
-    Raises:
-        EncryptionServiceUnavailableError: If user wants encryption but service is unavailable
-    """
-    try:
-        user_prefs = await db_service.get_user_preferences(db, user_id)
-    except Exception as e:
-        logger.warning(
-            "Failed to check user encryption preference, defaulting to False",
-            user_id=str(user_id),
-            error=str(e),
-        )
-        return False
-
-    # If user doesn't want encryption, we're done
-    if not user_prefs.encryption_enabled:
-        return False
-
-    # User wants encryption - check if service is available
-    if encryption_service is None:
-        logger.error(
-            "Encryption required but service unavailable",
-            user_id=str(user_id),
-        )
-        raise EncryptionServiceUnavailableError(
-            "Encryption service is unavailable. Cannot process request for user with encryption enabled."
-        )
-
-    return True
-
-
-async def decrypt_text_if_encrypted(
+async def decrypt_text(
     encryption_service: Optional[EnvelopeEncryptionService],
     db: AsyncSession,
     encrypted_bytes: Optional[bytes],
-    plaintext: Optional[str],
     voice_entry_id: UUID,
     user_id: UUID,
-    is_encrypted: bool,
 ) -> Optional[str]:
     """
-    Decrypt text if it's encrypted, otherwise return the plaintext.
-
-    Handles the dual-storage pattern where both encrypted and plaintext fields
-    may exist during migration. Prioritizes encrypted data if is_encrypted flag is set.
+    Decrypt text data.
 
     Args:
-        encryption_service: Encryption service (may be None)
+        encryption_service: Encryption service
         db: Database session
-        encrypted_bytes: Encrypted data (may be None)
-        plaintext: Plaintext data (may be None, for backward compatibility)
+        encrypted_bytes: Encrypted data (may be None if no data)
         voice_entry_id: VoiceEntry UUID (for DEK lookup)
         user_id: User UUID (for authorization)
-        is_encrypted: Flag indicating if the data is encrypted
 
     Returns:
-        Decrypted text or original plaintext, None if no data available
+        Decrypted text, or None if encrypted_bytes is None or decryption fails
 
     Raises:
-        EncryptionError: If decryption fails
+        RuntimeError: If encryption_service is None but encrypted_bytes is provided
     """
-    if is_encrypted and encrypted_bytes is not None:
-        if encryption_service is None:
-            logger.error(
-                "Cannot decrypt - encryption service unavailable",
-                voice_entry_id=str(voice_entry_id),
-            )
-            raise RuntimeError("Encryption service unavailable but data is encrypted")
+    if encrypted_bytes is None:
+        return None
 
+    if encryption_service is None:
+        raise RuntimeError("Encryption service unavailable")
+
+    try:
         decrypted = await encryption_service.decrypt_data(
             db, encrypted_bytes, voice_entry_id, user_id
         )
         return decrypted.decode("utf-8")
+    except Exception as e:
+        logger.error(
+            "Failed to decrypt text",
+            voice_entry_id=str(voice_entry_id),
+            error=str(e),
+        )
+        return None
 
-    # Fall back to plaintext for unencrypted or legacy data
-    return plaintext
 
-
-async def decrypt_json_if_encrypted(
+async def decrypt_json(
     encryption_service: Optional[EnvelopeEncryptionService],
     db: AsyncSession,
     encrypted_bytes: Optional[bytes],
-    plaintext_dict: Optional[dict],
     voice_entry_id: UUID,
     user_id: UUID,
-    is_encrypted: bool,
 ) -> Optional[dict]:
     """
-    Decrypt JSON data if it's encrypted, otherwise return the plaintext dict.
-
-    Similar to decrypt_text_if_encrypted but handles JSON serialization/deserialization.
+    Decrypt JSON data.
 
     Args:
-        encryption_service: Encryption service (may be None)
+        encryption_service: Encryption service
         db: Database session
-        encrypted_bytes: Encrypted JSON data (may be None)
-        plaintext_dict: Plaintext dict (may be None, for backward compatibility)
+        encrypted_bytes: Encrypted JSON data (may be None if no data)
         voice_entry_id: VoiceEntry UUID (for DEK lookup)
         user_id: User UUID (for authorization)
-        is_encrypted: Flag indicating if the data is encrypted
 
     Returns:
-        Decrypted dict or original plaintext dict, None if no data available
+        Decrypted dict, or None if encrypted_bytes is None or decryption fails
 
     Raises:
-        EncryptionError: If decryption fails
-        json.JSONDecodeError: If decrypted data is not valid JSON
+        RuntimeError: If encryption_service is None but encrypted_bytes is provided
     """
-    if is_encrypted and encrypted_bytes is not None:
-        if encryption_service is None:
-            logger.error(
-                "Cannot decrypt JSON - encryption service unavailable",
-                voice_entry_id=str(voice_entry_id),
-            )
-            raise RuntimeError("Encryption service unavailable but data is encrypted")
+    if encrypted_bytes is None:
+        return None
 
+    if encryption_service is None:
+        raise RuntimeError("Encryption service unavailable")
+
+    try:
         decrypted = await encryption_service.decrypt_data(
             db, encrypted_bytes, voice_entry_id, user_id
         )
         return json.loads(decrypted.decode("utf-8"))
-
-    # Fall back to plaintext for unencrypted or legacy data
-    return plaintext_dict
+    except Exception as e:
+        logger.error(
+            "Failed to decrypt JSON",
+            voice_entry_id=str(voice_entry_id),
+            error=str(e),
+        )
+        return None
 
 
 async def encrypt_text(
@@ -232,7 +170,7 @@ async def encrypt_audio_file(
     Encrypt an audio file and return the encrypted file path.
 
     Creates an encrypted copy with .enc suffix appended to the original filename.
-    Optionally keeps the original file based on ENCRYPTION_KEEP_ORIGINAL_FILES setting.
+    The original file is deleted after successful encryption.
 
     Args:
         encryption_service: Encryption service
@@ -266,21 +204,19 @@ async def encrypt_audio_file(
         voice_entry_id=str(voice_entry_id),
     )
 
-    # Delete original unless in dev mode
-    if not settings.ENCRYPTION_KEEP_ORIGINAL_FILES:
-        try:
-            # TODO: Is this enough for GDPR compliance?
-            original_path.unlink()
-            logger.info(
-                "Original audio file deleted after encryption",
-                file_path=str(original_path),
-            )
-        except Exception as e:
-            logger.warning(
-                "Failed to delete original audio file after encryption",
-                file_path=str(original_path),
-                error=str(e),
-            )
+    # Delete original file after successful encryption
+    try:
+        original_path.unlink()
+        logger.info(
+            "Original audio file deleted after encryption",
+            file_path=str(original_path),
+        )
+    except Exception as e:
+        logger.warning(
+            "Failed to delete original audio file after encryption",
+            file_path=str(original_path),
+            error=str(e),
+        )
 
     return str(encrypted_path), encryption_service.kek_provider.VERSION
 

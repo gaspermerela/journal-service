@@ -54,6 +54,12 @@ This approach could extend to general voice-based daily journaling.
 - Encrypted API key storage
 - Auto-sync after transcription cleanup (if enabled)
 
+**Current - Phase 6 (Envelope Encryption):** ✅
+- GDPR-compliant envelope encryption (Master Key → KEK → DEK → Data)
+- All audio files, transcriptions, and cleaned entries encrypted at rest
+- Cryptographic erasure support (delete DEK = data unrecoverable)
+- Encryption always enabled
+
 **Future Phases:**
 - Frontend UI under consideration for future expansion
 
