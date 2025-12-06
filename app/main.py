@@ -103,22 +103,16 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize LLM cleanup service: {e}", exc_info=True)
         raise RuntimeError(f"Cannot start application without LLM cleanup service: {e}") from e
 
-    # Initialize envelope encryption service
+    # Initialize envelope encryption service (required - app fails without it)
     logger.info(f"Initializing encryption service with provider: {settings.ENCRYPTION_PROVIDER}")
     try:
         app.state.encryption_service = create_envelope_encryption_service(
             provider=settings.ENCRYPTION_PROVIDER
         )
-        logger.info(
-            f"Envelope encryption service initialized: "
-            f"provider={settings.ENCRYPTION_PROVIDER}, "
-            f"dreams={settings.ENCRYPTION_ENABLED_DREAMS}, "
-            f"therapy={settings.ENCRYPTION_ENABLED_THERAPY}"
-        )
+        logger.info(f"Envelope encryption service initialized: provider={settings.ENCRYPTION_PROVIDER}")
     except Exception as e:
-        # Encryption service is optional - app can start without it
-        logger.warning(f"Encryption service not available: {e}")
-        app.state.encryption_service = None
+        logger.error(f"Failed to initialize encryption service: {e}", exc_info=True)
+        raise RuntimeError(f"Cannot start application without encryption service: {e}") from e
 
     yield
 

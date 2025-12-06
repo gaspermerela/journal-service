@@ -63,9 +63,9 @@ class CleanedEntry(Base):
         index=True
     )
 
-    # Cleanup results
-    cleaned_text = Column(Text, nullable=True)
-    analysis = Column(JSON, nullable=True)  # Structured data: themes, emotions, etc.
+    # Cleanup results (always encrypted as LargeBinary)
+    cleaned_text = Column(LargeBinary, nullable=True, doc="Encrypted cleaned text (BYTEA)")
+    analysis = Column(LargeBinary, nullable=True, doc="Encrypted analysis JSON (BYTEA)")
     llm_raw_response = Column(Text, nullable=True)  # Raw response from LLM before parsing
 
     # Processing metadata
@@ -100,25 +100,6 @@ class CleanedEntry(Base):
 
     # Primary cleanup flag (one per voice_entry enforced by DB constraint)
     is_primary = Column(Boolean, nullable=False, default=False, index=True)
-
-    # Encryption metadata
-    cleaned_text_encrypted = Column(
-        LargeBinary,
-        nullable=True,
-        doc="Encrypted cleaned text (BYTEA)"
-    )
-    analysis_encrypted = Column(
-        LargeBinary,
-        nullable=True,
-        doc="Encrypted analysis JSON (BYTEA)"
-    )
-    is_encrypted = Column(
-        Boolean,
-        nullable=False,
-        default=False,
-        server_default="false",
-        doc="Whether the cleaned text and analysis are encrypted"
-    )
 
     # Timestamps
     processing_started_at = Column(DateTime, nullable=True)

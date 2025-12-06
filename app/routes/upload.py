@@ -23,9 +23,8 @@ from app.utils.validators import validate_audio_file
 from app.utils.logger import get_logger
 from app.utils.audio import get_audio_duration
 from app.utils.encryption_helpers import (
-    should_encrypt,
     encrypt_audio_file,
-    EncryptionServiceUnavailableError,
+    decrypt_text,
 )
 from app.config import settings
 
@@ -119,7 +118,6 @@ async def transcription_then_cleanup_task(
     # Check if transcription succeeded
     from app.database import get_session
     from app.main import app
-    from app.utils.encryption_helpers import decrypt_text_if_encrypted
 
     async with get_session() as db:
         transcription_result = await db_service.get_transcription_by_id(
@@ -127,24 +125,22 @@ async def transcription_then_cleanup_task(
             transcription_id=transcription_id
         )
 
-        # Check for text in either plaintext or encrypted form
+        # Check for completed transcription with text
         has_text = (
             transcription_result
             and transcription_result.status == "completed"
-            and (transcription_result.transcribed_text or transcription_result.transcribed_text_encrypted)
+            and transcription_result.transcribed_text is not None
         )
 
         if has_text:
-            # Decrypt text if needed
-            encryption_service = getattr(app.state, "encryption_service", None)
-            transcription_text = await decrypt_text_if_encrypted(
+            # Decrypt transcription text (always encrypted)
+            encryption_service = app.state.encryption_service
+            transcription_text = await decrypt_text(
                 encryption_service=encryption_service,
                 db=db,
-                encrypted_bytes=transcription_result.transcribed_text_encrypted,
-                plaintext=transcription_result.transcribed_text,
+                encrypted_bytes=transcription_result.transcribed_text,
                 voice_entry_id=entry_id,
                 user_id=user_id,
-                is_encrypted=transcription_result.is_encrypted,
             )
 
             if transcription_text:
@@ -292,39 +288,30 @@ async def upload_audio(
         entry = await db_service.create_entry(db, entry_data)
         await db.flush()  # Get entry.id for encryption
 
-        # Step 4: Encrypt audio file if user has encryption enabled
-        try:
-            encrypt_file = await should_encrypt(db, current_user.id, encryption_service)
-        except EncryptionServiceUnavailableError:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Encryption service unavailable. Please try again later or disable encryption in your preferences."
-            )
-
-        if encrypt_file:
-            encrypted_path, encryption_version = await encrypt_audio_file(
-                encryption_service,
-                db,
-                final_file_path,
-                entry.id,
-                current_user.id,
-            )
-            # Update entry with encrypted file path
-            entry = await db_service.update_entry_encryption(
-                db,
-                entry.id,
-                current_user.id,
-                file_path=encrypted_path,
-                is_encrypted=True,
-                encryption_version=encryption_version,
-            )
-            # Update saved_file_path for rollback in case of later failure
-            saved_file_path = encrypted_path
-            logger.info(
-                "Audio file encrypted",
-                entry_id=str(entry.id),
-                encrypted_path=encrypted_path,
-            )
+        # Step 4: Encrypt audio file (always encrypted)
+        encrypted_path, encryption_version = await encrypt_audio_file(
+            encryption_service,
+            db,
+            final_file_path,
+            entry.id,
+            current_user.id,
+        )
+        # Update entry with encrypted file path
+        entry = await db_service.update_entry_encryption(
+            db,
+            entry.id,
+            current_user.id,
+            file_path=encrypted_path,
+            is_encrypted=True,
+            encryption_version=encryption_version,
+        )
+        # Update saved_file_path for rollback in case of later failure
+        saved_file_path = encrypted_path
+        logger.info(
+            "Audio file encrypted",
+            entry_id=str(entry.id),
+            encrypted_path=encrypted_path,
+        )
 
         # Step 5: Commit transaction (handled by get_db dependency)
         await db.commit()
@@ -476,38 +463,29 @@ async def upload_and_transcribe(
         entry = await db_service.create_entry(db, entry_data)
         await db.flush()  # Get entry.id for encryption
 
-        # Step 3.5: Encrypt audio file if user has encryption enabled
-        try:
-            encrypt_file = await should_encrypt(db, current_user.id, encryption_service)
-        except EncryptionServiceUnavailableError:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Encryption service unavailable. Please try again later or disable encryption in your preferences."
-            )
-
-        if encrypt_file:
-            encrypted_path, encryption_version = await encrypt_audio_file(
-                encryption_service,
-                db,
-                final_file_path,
-                entry.id,
-                current_user.id,
-            )
-            # Update entry with encrypted file path
-            entry = await db_service.update_entry_encryption(
-                db,
-                entry.id,
-                current_user.id,
-                file_path=encrypted_path,
-                is_encrypted=True,
-                encryption_version=encryption_version,
-            )
-            saved_file_path = encrypted_path
-            logger.info(
-                "Audio file encrypted",
-                entry_id=str(entry.id),
-                encrypted_path=encrypted_path,
-            )
+        # Step 3.5: Encrypt audio file (always encrypted)
+        encrypted_path, encryption_version = await encrypt_audio_file(
+            encryption_service,
+            db,
+            final_file_path,
+            entry.id,
+            current_user.id,
+        )
+        # Update entry with encrypted file path
+        entry = await db_service.update_entry_encryption(
+            db,
+            entry.id,
+            current_user.id,
+            file_path=encrypted_path,
+            is_encrypted=True,
+            encryption_version=encryption_version,
+        )
+        saved_file_path = encrypted_path
+        logger.info(
+            "Audio file encrypted",
+            entry_id=str(entry.id),
+            encrypted_path=encrypted_path,
+        )
 
         await db.commit()
 
@@ -713,38 +691,29 @@ async def upload_transcribe_and_cleanup(
         entry = await db_service.create_entry(db, entry_data)
         await db.flush()  # Get entry.id for encryption
 
-        # Step 3.5: Encrypt audio file if user has encryption enabled
-        try:
-            encrypt_file = await should_encrypt(db, current_user.id, encryption_service)
-        except EncryptionServiceUnavailableError:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Encryption service unavailable. Please try again later or disable encryption in your preferences."
-            )
-
-        if encrypt_file:
-            encrypted_path, encryption_version = await encrypt_audio_file(
-                encryption_service,
-                db,
-                final_file_path,
-                entry.id,
-                current_user.id,
-            )
-            # Update entry with encrypted file path
-            entry = await db_service.update_entry_encryption(
-                db,
-                entry.id,
-                current_user.id,
-                file_path=encrypted_path,
-                is_encrypted=True,
-                encryption_version=encryption_version,
-            )
-            saved_file_path = encrypted_path
-            logger.info(
-                "Audio file encrypted",
-                entry_id=str(entry.id),
-                encrypted_path=encrypted_path,
-            )
+        # Step 3.5: Encrypt audio file (always encrypted)
+        encrypted_path, encryption_version = await encrypt_audio_file(
+            encryption_service,
+            db,
+            final_file_path,
+            entry.id,
+            current_user.id,
+        )
+        # Update entry with encrypted file path
+        entry = await db_service.update_entry_encryption(
+            db,
+            entry.id,
+            current_user.id,
+            file_path=encrypted_path,
+            is_encrypted=True,
+            encryption_version=encryption_version,
+        )
+        saved_file_path = encrypted_path
+        logger.info(
+            "Audio file encrypted",
+            entry_id=str(entry.id),
+            encrypted_path=encrypted_path,
+        )
 
         await db.commit()
 

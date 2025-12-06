@@ -1,6 +1,7 @@
 """
 Integration tests for cleaned entry database operations with parameters.
 """
+import json
 import pytest
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,13 +26,15 @@ class TestCleanedEntryDatabaseParameters:
     ):
         """Test creating cleaned entry with temperature and top_p parameters."""
         # Create cleaned entry with parameters
+        # cleaned_text and analysis are LargeBinary (encrypted bytes)
+        analysis_dict = {"themes": ["test"], "emotions": [], "characters": [], "locations": []}
         cleaned_entry = CleanedEntry(
             id=uuid.uuid4(),
             voice_entry_id=sample_voice_entry.id,
             transcription_id=sample_transcription.id,
             user_id=test_user.id,
-            cleaned_text="Test cleaned text",
-            analysis={"themes": ["test"], "emotions": [], "characters": [], "locations": []},
+            cleaned_text=b"Test cleaned text",
+            analysis=json.dumps(analysis_dict).encode("utf-8"),
             model_name="test-model",
             temperature=0.75,
             top_p=0.95,
@@ -71,12 +74,14 @@ class TestCleanedEntryDatabaseParameters:
         await db_session.commit()
 
         # Try to update with different parameter values (should be ignored)
+        # cleaned_text and analysis are now LargeBinary (encrypted bytes)
+        updated_analysis = {"themes": ["updated"], "emotions": [], "characters": [], "locations": []}
         updated_entry = await db_service.update_cleaned_entry_processing(
             db=db_session,
             cleaned_entry_id=cleaned_entry.id,
             cleanup_status=CleanupStatus.COMPLETED,
-            cleaned_text="Updated cleaned text",
-            analysis={"themes": ["updated"], "emotions": [], "characters": [], "locations": []},
+            cleaned_text=b"Updated cleaned text",
+            analysis=json.dumps(updated_analysis).encode("utf-8"),
             temperature=0.9,  # Should be IGNORED (immutable)
             top_p=0.95       # Should be IGNORED (immutable)
         )
@@ -84,7 +89,7 @@ class TestCleanedEntryDatabaseParameters:
         # Verify parameters UNCHANGED (immutable behavior)
         assert updated_entry.temperature == 0.5  # Original value
         assert updated_entry.top_p == 0.8        # Original value
-        assert updated_entry.cleaned_text == "Updated cleaned text"  # Other fields DO update
+        assert updated_entry.cleaned_text == b"Updated cleaned text"  # Other fields DO update
 
     @pytest.mark.asyncio
     async def test_query_cleaned_entries_with_parameters(
@@ -96,13 +101,16 @@ class TestCleanedEntryDatabaseParameters:
     ):
         """Test querying cleaned entries and verifying parameters are retrieved."""
         # Create multiple cleaned entries with different parameters
+        # cleaned_text and analysis are LargeBinary (encrypted bytes)
+        analysis1 = {"themes": [], "emotions": [], "characters": [], "locations": []}
+        analysis2 = {"themes": [], "emotions": [], "characters": [], "locations": []}
         entry1 = CleanedEntry(
             id=uuid.uuid4(),
             voice_entry_id=sample_voice_entry.id,
             transcription_id=sample_transcription.id,
             user_id=test_user.id,
-            cleaned_text="Entry 1",
-            analysis={"themes": [], "emotions": [], "characters": [], "locations": []},
+            cleaned_text=b"Entry 1",
+            analysis=json.dumps(analysis1).encode("utf-8"),
             model_name="model-1",
             temperature=0.3,
             top_p=0.8,
@@ -114,8 +122,8 @@ class TestCleanedEntryDatabaseParameters:
             voice_entry_id=sample_voice_entry.id,
             transcription_id=sample_transcription.id,
             user_id=test_user.id,
-            cleaned_text="Entry 2",
-            analysis={"themes": [], "emotions": [], "characters": [], "locations": []},
+            cleaned_text=b"Entry 2",
+            analysis=json.dumps(analysis2).encode("utf-8"),
             model_name="model-2",
             temperature=0.7,
             top_p=0.9,

@@ -644,9 +644,7 @@ class DatabaseService:
         db: AsyncSession,
         transcription_id: UUID,
         status: str,
-        transcribed_text: Optional[str] = None,
-        transcribed_text_encrypted: Optional[bytes] = None,
-        is_encrypted: bool = False,
+        transcribed_text: Optional[bytes] = None,
         error_message: Optional[str] = None,
         beam_size: Optional[int] = None
     ) -> Optional[Transcription]:
@@ -657,9 +655,7 @@ class DatabaseService:
             db: Database session
             transcription_id: UUID of the transcription
             status: New status value
-            transcribed_text: Optional transcribed text (plaintext)
-            transcribed_text_encrypted: Optional encrypted transcribed text
-            is_encrypted: Whether the transcription text is encrypted
+            transcribed_text: Optional encrypted transcribed text (bytes)
             error_message: Optional error message
             beam_size: Optional beam size used for transcription
 
@@ -684,11 +680,8 @@ class DatabaseService:
 
             if status == "completed":
                 transcription.transcription_completed_at = datetime.now(timezone.utc)
-                if transcribed_text:
+                if transcribed_text is not None:
                     transcription.transcribed_text = transcribed_text
-                if transcribed_text_encrypted is not None:
-                    transcription.transcribed_text_encrypted = transcribed_text_encrypted
-                    transcription.is_encrypted = is_encrypted
                 # beam_size and temperature are set at creation time and are immutable
 
             if status == "failed":
@@ -1112,7 +1105,6 @@ class DatabaseService:
         user_id: UUID,
         preferred_transcription_language: Optional[str] = None,
         preferred_llm_model: Optional[str] = None,
-        encryption_enabled: Optional[bool] = None,
     ) -> UserPreference:
         """
         Update user preferences.
@@ -1122,7 +1114,6 @@ class DatabaseService:
             user_id: User's UUID
             preferred_transcription_language: Language code for transcription
             preferred_llm_model: Preferred LLM model in format 'provider-model'
-            encryption_enabled: Whether to encrypt voice entries at rest
 
         Returns:
             Updated UserPreference instance
@@ -1139,8 +1130,6 @@ class DatabaseService:
                 preferences.preferred_transcription_language = preferred_transcription_language
             if preferred_llm_model is not None:
                 preferences.preferred_llm_model = preferred_llm_model
-            if encryption_enabled is not None:
-                preferences.encryption_enabled = encryption_enabled
 
             # Update timestamp
             preferences.updated_at = datetime.now(timezone.utc)
@@ -1153,7 +1142,6 @@ class DatabaseService:
                 user_id=str(user_id),
                 language=preferred_transcription_language,
                 preferred_llm_model=preferred_llm_model,
-                encryption_enabled=encryption_enabled
             )
 
             return preferences
@@ -1344,11 +1332,8 @@ class DatabaseService:
         db: AsyncSession,
         cleaned_entry_id: UUID,
         cleanup_status: CleanupStatus,
-        cleaned_text: Optional[str] = None,
-        analysis: Optional[dict] = None,
-        cleaned_text_encrypted: Optional[bytes] = None,
-        analysis_encrypted: Optional[bytes] = None,
-        is_encrypted: bool = False,
+        cleaned_text: Optional[bytes] = None,
+        analysis: Optional[bytes] = None,
         error_message: Optional[str] = None,
         prompt_template_id: Optional[int] = None,
         llm_raw_response: Optional[str] = None,
@@ -1362,11 +1347,8 @@ class DatabaseService:
             db: Database session
             cleaned_entry_id: UUID of the cleaned entry
             cleanup_status: New cleanup status
-            cleaned_text: Cleaned text result (plaintext)
-            analysis: Analysis data dict (plaintext)
-            cleaned_text_encrypted: Encrypted cleaned text
-            analysis_encrypted: Encrypted analysis JSON
-            is_encrypted: Whether the data is encrypted
+            cleaned_text: Encrypted cleaned text (bytes)
+            analysis: Encrypted analysis JSON (bytes)
             error_message: Error message if failed
             prompt_template_id: ID of prompt template used (optional)
             llm_raw_response: Raw LLM response before parsing (optional)
@@ -1394,12 +1376,6 @@ class DatabaseService:
                 cleaned_entry.cleaned_text = cleaned_text
             if analysis is not None:
                 cleaned_entry.analysis = analysis
-            if cleaned_text_encrypted is not None:
-                cleaned_entry.cleaned_text_encrypted = cleaned_text_encrypted
-            if analysis_encrypted is not None:
-                cleaned_entry.analysis_encrypted = analysis_encrypted
-            if is_encrypted:
-                cleaned_entry.is_encrypted = is_encrypted
             if error_message is not None:
                 cleaned_entry.error_message = error_message
             if prompt_template_id is not None:

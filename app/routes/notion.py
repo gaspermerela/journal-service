@@ -10,7 +10,7 @@ Handles:
 from uuid import UUID
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -27,8 +27,10 @@ from app.schemas.notion import (
     NotionSyncListResponse
 )
 from app.services.encryption import encrypt_notion_key, decrypt_notion_key
+from app.services.envelope_encryption import EnvelopeEncryptionService, get_encryption_service
 from app.services.notion_service import NotionService, NotionValidationError, NotionAPIError
 from app.services.database import db_service
+from app.utils.encryption_helpers import decrypt_text
 from app.utils.logger import get_logger
 
 logger = get_logger("notion_routes")
@@ -238,6 +240,19 @@ async def process_notion_sync_background(
             if not cleaned_entry or not cleaned_entry.cleaned_text:
                 raise ValueError(f"No cleaned text available for entry {entry_id}")
 
+            # Decrypt cleaned text (always encrypted)
+            from app.main import app
+            encryption_service = app.state.encryption_service
+            decrypted_cleaned_text = await decrypt_text(
+                encryption_service=encryption_service,
+                db=db,
+                encrypted_bytes=cleaned_entry.cleaned_text,
+                voice_entry_id=entry_id,
+                user_id=user_id,
+            )
+            if not decrypted_cleaned_text:
+                raise ValueError(f"Failed to decrypt cleaned text for entry {entry_id}")
+
             # Decrypt API key
             api_key = decrypt_notion_key(encrypted_api_key, user_id)
 
@@ -249,7 +264,7 @@ async def process_notion_sync_background(
                     # Update existing page
                     page = await notion_service.update_dream_page(
                         page_id=existing_page_id,
-                        dream_content=cleaned_entry.cleaned_text,
+                        dream_content=decrypted_cleaned_text,
                         uploaded_at=voice_entry.uploaded_at,
                         dream_name="Dream"  # Phase 5: hardcoded
                     )
@@ -263,7 +278,7 @@ async def process_notion_sync_background(
                     # Create new dream page
                     page = await notion_service.create_dream_page(
                         database_id=database_id,
-                        dream_content=cleaned_entry.cleaned_text,
+                        dream_content=decrypted_cleaned_text,
                         uploaded_at=voice_entry.uploaded_at,
                         dream_name="Dream"  # Phase 5: hardcoded
                     )
@@ -343,7 +358,8 @@ async def sync_entry_to_notion(
     entry_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
-    background_tasks: BackgroundTasks
+    background_tasks: BackgroundTasks,
+    encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service),
 ):
     """
     Sync a voice entry to Notion.
@@ -373,12 +389,26 @@ async def sync_entry_to_notion(
             detail=f"Voice entry not found"
         )
 
-    # Check if cleaned text exists
+    # Check if cleaned text exists and can be decrypted
     cleaned_entry = await db_service.get_latest_cleaned_entry(db, entry_id, current_user.id)
     if not cleaned_entry or not cleaned_entry.cleaned_text:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No cleaned text available for this entry. Please run cleanup first."
+        )
+
+    # Verify we can decrypt the cleaned text (don't use the value, just verify)
+    decrypted_text = await decrypt_text(
+        encryption_service=encryption_service,
+        db=db,
+        encrypted_bytes=cleaned_entry.cleaned_text,
+        voice_entry_id=entry_id,
+        user_id=current_user.id,
+    )
+    if not decrypted_text:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to decrypt cleaned text for this entry."
         )
 
     # Check for in-progress syncs to prevent race conditions

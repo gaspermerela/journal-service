@@ -2,9 +2,9 @@
 End-to-end tests for encrypted workflow.
 
 Tests cover the full encrypted workflow with real services:
-- Upload → Transcribe → Cleanup with encryption enabled
+- Upload → Transcribe → Cleanup with encryption (always enabled)
 - Audio download with decryption
-- Mixed encrypted/unencrypted entries
+- Multiple users each with encrypted entries
 
 IMPORTANT: These tests require:
 - Running backend with encryption service configured
@@ -16,7 +16,6 @@ DO NOT RUN AUTOMATICALLY IN CI/CD.
 
 import asyncio
 import os
-import uuid
 from pathlib import Path
 from typing import AsyncGenerator, Tuple
 
@@ -38,10 +37,10 @@ from tests.conftest import (
 @pytest.fixture
 async def e2e_encryption_client() -> AsyncGenerator[Tuple[AsyncClient, str], None]:
     """
-    Create a new user with encryption enabled, authenticate, and return client.
+    Create a new user, authenticate, and return client.
 
     This fixture creates a real HTTP client that connects to the running backend.
-    The user is created with encryption_enabled=True.
+    Encryption is always enabled for all users.
 
     Returns:
         Tuple of (authenticated client, user email)
@@ -69,23 +68,13 @@ async def e2e_encryption_client() -> AsyncGenerator[Tuple[AsyncClient, str], Non
         access_token = login_response.json()["access_token"]
         client.headers["Authorization"] = f"Bearer {access_token}"
 
-        # Enable encryption for this user (should be enabled by default, but verify)
-        prefs_response = await client.get("/api/v1/user/preferences")
-        assert prefs_response.status_code == 200
-        if not prefs_response.json().get("encryption_enabled", False):
-            # Enable encryption
-            update_response = await client.put(
-                "/api/v1/user/preferences", json={"encryption_enabled": True}
-            )
-            assert update_response.status_code == 200
-
         yield client, email
 
 
 @pytest.fixture
-async def e2e_no_encryption_client() -> AsyncGenerator[Tuple[AsyncClient, str], None]:
+async def e2e_second_user_client() -> AsyncGenerator[Tuple[AsyncClient, str], None]:
     """
-    Create a new user with encryption disabled, authenticate, and return client.
+    Create a second user for multi-user tests.
 
     Returns:
         Tuple of (authenticated client, user email)
@@ -94,8 +83,8 @@ async def e2e_no_encryption_client() -> AsyncGenerator[Tuple[AsyncClient, str], 
         base_url="http://localhost:8000", timeout=120.0
     ) as client:
         # Generate unique email for this test
-        email = f"e2e_no_encryption_{os.urandom(4).hex()}@example.com"
-        password = "E2ENoEncryptionPassword123!"
+        email = f"e2e_second_user_{os.urandom(4).hex()}@example.com"
+        password = "E2ESecondUserPassword123!"
 
         # Register
         register_response = await client.post(
@@ -113,12 +102,6 @@ async def e2e_no_encryption_client() -> AsyncGenerator[Tuple[AsyncClient, str], 
         access_token = login_response.json()["access_token"]
         client.headers["Authorization"] = f"Bearer {access_token}"
 
-        # Disable encryption for this user
-        update_response = await client.put(
-            "/api/v1/user/preferences", json={"encryption_enabled": False}
-        )
-        assert update_response.status_code == 200
-
         yield client, email
 
 
@@ -134,10 +117,10 @@ async def test_e2e_full_encrypted_workflow(
     real_audio_mp3_path: Path,
 ):
     """
-    E2E test: Upload → Transcribe → Cleanup with encryption enabled.
+    E2E test: Upload → Transcribe → Cleanup with encryption.
 
     Tests the complete workflow:
-    1. Upload audio file (should be encrypted)
+    1. Upload audio file (always encrypted)
     2. Transcription processes encrypted audio
     3. Cleanup processes encrypted transcription
     4. Retrieve cleaned entry (should be decrypted)
@@ -146,11 +129,6 @@ async def test_e2e_full_encrypted_workflow(
         pytest.skip("Backend not available at http://localhost:8000")
 
     client, email = e2e_encryption_client
-
-    # Verify encryption is enabled
-    prefs_response = await client.get("/api/v1/user/preferences")
-    assert prefs_response.status_code == 200
-    assert prefs_response.json()["encryption_enabled"] is True
 
     # Upload + transcribe + cleanup
     with open(real_audio_mp3_path, "rb") as f:
@@ -166,7 +144,7 @@ async def test_e2e_full_encrypted_workflow(
 
     entry_id = data["entry_id"]
     transcription_id = data["transcription_id"]
-    cleanup_id = data["cleanup_id"]  # Field is cleanup_id, not cleaned_entry_id
+    cleanup_id = data["cleanup_id"]
 
     # Wait for transcription to complete
     for _ in range(E2E_TRANSCRIPTION_TIMEOUT):
@@ -228,8 +206,6 @@ async def test_e2e_encrypted_audio_download(
 
     # Upload audio file
     with open(real_audio_mp3_path, "rb") as f:
-        original_size = f.seek(0, 2)
-        f.seek(0)
         files = {"file": ("test_download.mp3", f, "audio/mpeg")}
         response = await client.post("/api/v1/upload", files=files)
 
@@ -241,7 +217,6 @@ async def test_e2e_encrypted_audio_download(
     assert download_response.status_code == 200
 
     # Verify we got audio content
-    content_type = download_response.headers.get("content-type")
     audio_content = download_response.content
     assert len(audio_content) > 0
 
@@ -254,108 +229,62 @@ async def test_e2e_encrypted_audio_download(
 
 @pytest.mark.e2e_real
 @pytest.mark.asyncio
-async def test_e2e_encryption_preference_change(
-    e2e_no_encryption_client: Tuple[AsyncClient, str],
-    real_audio_mp3_path: Path,
-):
-    """
-    E2E test: Toggle encryption preference mid-session.
-
-    Tests that:
-    1. With encryption disabled, entries are not encrypted
-    2. Enable encryption, new entries are encrypted
-    3. Old unencrypted entries remain accessible
-    """
-    if not app_is_available():
-        pytest.skip("Backend not available at http://localhost:8000")
-
-    client, email = e2e_no_encryption_client
-
-    # Upload first entry with encryption DISABLED
-    with open(real_audio_mp3_path, "rb") as f:
-        files = {"file": ("unencrypted.mp3", f, "audio/mpeg")}
-        response = await client.post("/api/v1/upload", files=files)
-
-    assert response.status_code == 201
-    unencrypted_entry_id = response.json()["id"]
-
-    # Enable encryption
-    update_response = await client.put(
-        "/api/v1/user/preferences", json={"encryption_enabled": True}
-    )
-    assert update_response.status_code == 200
-    assert update_response.json()["encryption_enabled"] is True
-
-    # Upload second entry with encryption ENABLED
-    with open(real_audio_mp3_path, "rb") as f:
-        files = {"file": ("encrypted.mp3", f, "audio/mpeg")}
-        response = await client.post("/api/v1/upload", files=files)
-
-    assert response.status_code == 201
-    encrypted_entry_id = response.json()["id"]
-
-    # Both entries should be accessible
-    response1 = await client.get(f"/api/v1/entries/{unencrypted_entry_id}")
-    assert response1.status_code == 200
-
-    response2 = await client.get(f"/api/v1/entries/{encrypted_entry_id}")
-    assert response2.status_code == 200
-
-    # List entries - should include both
-    list_response = await client.get("/api/v1/entries")
-    assert list_response.status_code == 200
-    assert list_response.json()["total"] >= 2
-
-
-@pytest.mark.e2e_real
-@pytest.mark.asyncio
-async def test_e2e_mixed_encrypted_unencrypted(
+async def test_e2e_multiple_encrypted_users(
     e2e_encryption_client: Tuple[AsyncClient, str],
-    e2e_no_encryption_client: Tuple[AsyncClient, str],
+    e2e_second_user_client: Tuple[AsyncClient, str],
     real_audio_mp3_path: Path,
 ):
     """
-    E2E test: Multiple users with different encryption settings.
+    E2E test: Multiple users each with encrypted entries.
 
     Tests that:
-    1. User A with encryption enabled creates encrypted entries
-    2. User B with encryption disabled creates unencrypted entries
+    1. User A creates encrypted entries
+    2. User B creates encrypted entries
     3. Each user can only access their own entries
     """
     if not app_is_available():
         pytest.skip("Backend not available at http://localhost:8000")
 
-    client_enc, email_enc = e2e_encryption_client
-    client_no_enc, email_no_enc = e2e_no_encryption_client
+    client_a, email_a = e2e_encryption_client
+    client_b, email_b = e2e_second_user_client
 
-    # User A uploads with encryption
+    # User A uploads
     with open(real_audio_mp3_path, "rb") as f:
         files = {"file": ("user_a.mp3", f, "audio/mpeg")}
-        response_a = await client_enc.post("/api/v1/upload", files=files)
+        response_a = await client_a.post("/api/v1/upload", files=files)
 
     assert response_a.status_code == 201
     entry_a_id = response_a.json()["id"]
 
-    # User B uploads without encryption
+    # User B uploads
     with open(real_audio_mp3_path, "rb") as f:
         files = {"file": ("user_b.mp3", f, "audio/mpeg")}
-        response_b = await client_no_enc.post("/api/v1/upload", files=files)
+        response_b = await client_b.post("/api/v1/upload", files=files)
 
     assert response_b.status_code == 201
     entry_b_id = response_b.json()["id"]
 
     # User A can access their entry
-    response = await client_enc.get(f"/api/v1/entries/{entry_a_id}")
+    response = await client_a.get(f"/api/v1/entries/{entry_a_id}")
     assert response.status_code == 200
 
     # User A cannot access User B's entry
-    response = await client_enc.get(f"/api/v1/entries/{entry_b_id}")
+    response = await client_a.get(f"/api/v1/entries/{entry_b_id}")
     assert response.status_code == 404
 
     # User B can access their entry
-    response = await client_no_enc.get(f"/api/v1/entries/{entry_b_id}")
+    response = await client_b.get(f"/api/v1/entries/{entry_b_id}")
     assert response.status_code == 200
 
     # User B cannot access User A's entry
-    response = await client_no_enc.get(f"/api/v1/entries/{entry_a_id}")
+    response = await client_b.get(f"/api/v1/entries/{entry_a_id}")
     assert response.status_code == 404
+
+    # Both users can download their own encrypted audio
+    download_a = await client_a.get(f"/api/v1/entries/{entry_a_id}/audio")
+    assert download_a.status_code == 200
+    assert len(download_a.content) > 0
+
+    download_b = await client_b.get(f"/api/v1/entries/{entry_b_id}/audio")
+    assert download_b.status_code == 200
+    assert len(download_b.content) > 0

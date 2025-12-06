@@ -22,10 +22,6 @@ class UserPreferencesResponse(BaseModel):
         default=None,
         description="Preferred LLM model in format 'provider-model' (e.g., 'ollama-llama3.2:3b', 'groq-llama-3.3-70b-versatile')"
     )
-    encryption_enabled: bool = Field(
-        default=True,
-        description="Whether to encrypt voice entries at rest (enabled by default, opt-out)"
-    )
     created_at: datetime
     updated_at: datetime
 
@@ -46,10 +42,6 @@ class UserPreferencesUpdate(BaseModel):
     preferred_llm_model: Optional[str] = Field(
         None,
         description="Preferred LLM model in format 'provider-model' (e.g., 'ollama-llama3.2:3b', 'groq-llama-3.3-70b-versatile')"
-    )
-    encryption_enabled: Optional[bool] = Field(
-        None,
-        description="Whether to encrypt voice entries at rest (enabled by default, opt-out)"
     )
 
     @field_validator('preferred_transcription_language')
@@ -88,10 +80,6 @@ class UserPreferencesCreate(BaseModel):
     preferred_llm_model: Optional[str] = Field(
         default=None,
         description="Preferred LLM model"
-    )
-    encryption_enabled: bool = Field(
-        default=True,
-        description="Whether to encrypt voice entries at rest (enabled by default)"
     )
 
     @field_validator('preferred_transcription_language')
