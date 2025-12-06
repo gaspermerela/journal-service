@@ -425,7 +425,8 @@ async def get_transcription(
 async def list_transcriptions(
     entry_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service),
 ):
     """
     List all transcriptions for a voice entry.
@@ -451,10 +452,39 @@ async def list_transcriptions(
 
     transcriptions = await db_service.get_transcriptions_for_entry(db, entry_id, current_user.id)
 
+    # Decrypt transcribed_text for each transcription
+    transcription_responses = []
+    for t in transcriptions:
+        decrypted_text = None
+        if t.transcribed_text is not None:
+            decrypted_text = await decrypt_text(
+                encryption_service=encryption_service,
+                db=db,
+                encrypted_bytes=t.transcribed_text,
+                voice_entry_id=entry_id,
+                user_id=current_user.id,
+            )
+        transcription_responses.append(TranscriptionResponse(
+            id=t.id,
+            entry_id=t.entry_id,
+            transcribed_text=decrypted_text,
+            status=t.status,
+            model_used=t.model_used,
+            language_code=t.language_code,
+            is_primary=t.is_primary,
+            beam_size=t.beam_size,
+            temperature=t.temperature,
+            transcription_started_at=t.transcription_started_at,
+            transcription_completed_at=t.transcription_completed_at,
+            error_message=t.error_message,
+            created_at=t.created_at,
+            updated_at=t.updated_at,
+        ))
+
     logger.info(f"Transcriptions listed", entry_id=str(entry_id), count=len(transcriptions))
 
     return TranscriptionListResponse(
-        transcriptions=[TranscriptionResponse.model_validate(t) for t in transcriptions],
+        transcriptions=transcription_responses,
         total=len(transcriptions)
     )
 
@@ -468,7 +498,8 @@ async def list_transcriptions(
 async def set_primary_transcription(
     transcription_id: UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service),
 ):
     """
     Set a transcription as primary for its entry.
@@ -521,9 +552,35 @@ async def set_primary_transcription(
     updated_transcription = await db_service.set_primary_transcription(db, transcription_id)
     await db.commit()
 
+    # Decrypt transcribed_text before returning
+    decrypted_text = None
+    if updated_transcription.transcribed_text is not None:
+        decrypted_text = await decrypt_text(
+            encryption_service=encryption_service,
+            db=db,
+            encrypted_bytes=updated_transcription.transcribed_text,
+            voice_entry_id=updated_transcription.entry_id,
+            user_id=current_user.id,
+        )
+
     logger.info(f"Transcription set as primary", transcription_id=str(transcription_id))
 
-    return TranscriptionResponse.model_validate(updated_transcription)
+    return TranscriptionResponse(
+        id=updated_transcription.id,
+        entry_id=updated_transcription.entry_id,
+        transcribed_text=decrypted_text,
+        status=updated_transcription.status,
+        model_used=updated_transcription.model_used,
+        language_code=updated_transcription.language_code,
+        is_primary=updated_transcription.is_primary,
+        beam_size=updated_transcription.beam_size,
+        temperature=updated_transcription.temperature,
+        transcription_started_at=updated_transcription.transcription_started_at,
+        transcription_completed_at=updated_transcription.transcription_completed_at,
+        error_message=updated_transcription.error_message,
+        created_at=updated_transcription.created_at,
+        updated_at=updated_transcription.updated_at,
+    )
 
 
 @router.delete(

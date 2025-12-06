@@ -568,7 +568,8 @@ async def get_cleaned_entries_by_entry(
 async def set_primary_cleanup(
     cleanup_id: UUID,
     current_user: Annotated[User, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service),
 ):
     """
     Set a cleanup as primary for its transcription.
@@ -630,6 +631,27 @@ async def set_primary_cleanup(
             detail="Failed to set primary cleanup"
         )
 
+    # Decrypt cleaned_text and analysis before returning
+    # This is somewhat wasteful but it avoids separate GET request form the client
+    decrypted_text = None
+    decrypted_analysis = None
+    if updated_cleanup.cleaned_text is not None:
+        decrypted_text = await decrypt_text(
+            encryption_service=encryption_service,
+            db=db,
+            encrypted_bytes=updated_cleanup.cleaned_text,
+            voice_entry_id=updated_cleanup.voice_entry_id,
+            user_id=current_user.id,
+        )
+    if updated_cleanup.analysis is not None:
+        decrypted_analysis = await decrypt_json(
+            encryption_service=encryption_service,
+            db=db,
+            encrypted_bytes=updated_cleanup.analysis,
+            voice_entry_id=updated_cleanup.voice_entry_id,
+            user_id=current_user.id,
+        )
+
     logger.info(
         f"Cleanup set as primary",
         cleanup_id=str(cleanup_id),
@@ -642,8 +664,8 @@ async def set_primary_cleanup(
         voice_entry_id=updated_cleanup.voice_entry_id,
         transcription_id=updated_cleanup.transcription_id,
         user_id=updated_cleanup.user_id,
-        cleaned_text=updated_cleanup.cleaned_text,
-        analysis=updated_cleanup.analysis,
+        cleaned_text=decrypted_text,
+        analysis=decrypted_analysis,
         llm_raw_response=updated_cleanup.llm_raw_response,
         status=updated_cleanup.status,
         model_name=updated_cleanup.model_name,
