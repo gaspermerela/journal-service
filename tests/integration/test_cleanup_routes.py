@@ -490,19 +490,53 @@ class TestSetPrimaryCleanup:
         completed_transcription: Transcription,
         test_user: User,
         db_session: AsyncSession,
-        sample_prompt_template: PromptTemplate
+        sample_prompt_template: PromptTemplate,
+        encryption_service
     ):
-        """Test setting a cleanup as primary."""
+        """Test setting a cleanup as primary with encrypted text."""
         from app.models.cleaned_entry import CleanedEntry, CleanupStatus
+        from app.utils.encryption_helpers import encrypt_text, encrypt_json
         import uuid
 
-        # Create two completed cleanups
+        # Encrypt the cleanup text and analysis
+        encrypted_text1 = await encrypt_text(
+            encryption_service=encryption_service,
+            db=db_session,
+            text="First cleanup text",
+            voice_entry_id=sample_voice_entry.id,
+            user_id=test_user.id,
+        )
+        encrypted_analysis1 = await encrypt_json(
+            encryption_service=encryption_service,
+            db=db_session,
+            data={"themes": ["theme1"]},
+            voice_entry_id=sample_voice_entry.id,
+            user_id=test_user.id,
+        )
+
+        encrypted_text2 = await encrypt_text(
+            encryption_service=encryption_service,
+            db=db_session,
+            text="Second cleanup text",
+            voice_entry_id=sample_voice_entry.id,
+            user_id=test_user.id,
+        )
+        encrypted_analysis2 = await encrypt_json(
+            encryption_service=encryption_service,
+            db=db_session,
+            data={"themes": ["theme2"]},
+            voice_entry_id=sample_voice_entry.id,
+            user_id=test_user.id,
+        )
+
+        # Create two completed cleanups with encrypted data
         cleanup1 = CleanedEntry(
             id=uuid.uuid4(),
             voice_entry_id=sample_voice_entry.id,
             transcription_id=completed_transcription.id,
             user_id=test_user.id,
-            cleaned_text=b"First cleanup",
+            cleaned_text=encrypted_text1,
+            analysis=encrypted_analysis1,
             model_name="llama3.2:3b",
             prompt_template_id=sample_prompt_template.id,
             is_primary=True
@@ -514,7 +548,8 @@ class TestSetPrimaryCleanup:
             voice_entry_id=sample_voice_entry.id,
             transcription_id=completed_transcription.id,
             user_id=test_user.id,
-            cleaned_text=b"Second cleanup",
+            cleaned_text=encrypted_text2,
+            analysis=encrypted_analysis2,
             model_name="llama3.2:3b",
             prompt_template_id=sample_prompt_template.id,
             is_primary=False
@@ -533,6 +568,9 @@ class TestSetPrimaryCleanup:
         data = response.json()
         assert data["id"] == str(cleanup2.id)
         assert data["is_primary"] is True
+        # Verify cleaned_text and analysis are decrypted correctly
+        assert data["cleaned_text"] == "Second cleanup text"
+        assert data["analysis"] == {"themes": ["theme2"]}
         # Verify prompt template fields are included
         assert data["prompt_template_id"] == sample_prompt_template.id
         assert data["prompt_name"] == "Dream Analysis v1"

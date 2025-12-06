@@ -95,12 +95,15 @@ async def test_get_transcription_not_found(authenticated_client):
 
 
 @pytest.mark.asyncio
-async def test_list_transcriptions_for_entry(authenticated_client, sample_voice_entry, db_session):
-    """Test listing all transcriptions for an entry."""
+async def test_list_transcriptions_for_entry(authenticated_client, sample_voice_entry, db_session, test_user, encryption_service):
+    """Test listing all transcriptions for an entry with encrypted text."""
     from app.services.database import db_service
     from app.schemas.transcription import TranscriptionCreate
+    from app.utils.encryption_helpers import encrypt_text
 
-    # Create multiple transcriptions
+    # Create multiple transcriptions with encrypted text
+    expected_texts = ["First transcription text", "Second transcription text", None]
+    transcriptions = []
     for i in range(3):
         trans_data = TranscriptionCreate(
             entry_id=sample_voice_entry.id,
@@ -109,7 +112,24 @@ async def test_list_transcriptions_for_entry(authenticated_client, sample_voice_
             language_code="en",
             is_primary=(i == 0)
         )
-        await db_service.create_transcription(db_session, trans_data)
+        trans = await db_service.create_transcription(db_session, trans_data)
+        transcriptions.append(trans)
+
+        # Add encrypted text for completed transcriptions
+        if expected_texts[i] is not None:
+            encrypted_text = await encrypt_text(
+                encryption_service=encryption_service,
+                db=db_session,
+                text=expected_texts[i],
+                voice_entry_id=sample_voice_entry.id,
+                user_id=test_user.id,
+            )
+            await db_service.update_transcription_status(
+                db_session,
+                trans.id,
+                status="completed",
+                transcribed_text=encrypted_text,
+            )
     await db_session.commit()
 
     response = await authenticated_client.get(f"/api/v1/entries/{sample_voice_entry.id}/transcriptions")
@@ -118,8 +138,13 @@ async def test_list_transcriptions_for_entry(authenticated_client, sample_voice_
     data = response.json()
     assert data["total"] == 3
     assert len(data["transcriptions"]) == 3
-    # Should be ordered by created_at desc
+    # Should be ordered by created_at desc (newest first)
     assert data["transcriptions"][0]["model_used"] == "whisper-model-2"
+    # Pending transcription has no text
+    assert data["transcriptions"][0]["transcribed_text"] is None
+    # Completed transcriptions have decrypted text
+    assert data["transcriptions"][1]["transcribed_text"] == "Second transcription text"
+    assert data["transcriptions"][2]["transcribed_text"] == "First transcription text"
 
 
 @pytest.mark.asyncio
@@ -144,12 +169,13 @@ async def test_list_transcriptions_entry_not_found(authenticated_client):
 
 
 @pytest.mark.asyncio
-async def test_set_primary_transcription_success(authenticated_client, sample_voice_entry, db_session):
-    """Test setting a transcription as primary."""
+async def test_set_primary_transcription_success(authenticated_client, sample_voice_entry, db_session, test_user, encryption_service):
+    """Test setting a transcription as primary with encrypted text."""
     from app.services.database import db_service
     from app.schemas.transcription import TranscriptionCreate
+    from app.utils.encryption_helpers import encrypt_text
 
-    # Create two completed transcriptions
+    # Create two completed transcriptions with encrypted text
     trans1_data = TranscriptionCreate(
         entry_id=sample_voice_entry.id,
         status="completed",
@@ -158,6 +184,16 @@ async def test_set_primary_transcription_success(authenticated_client, sample_vo
         is_primary=True
     )
     trans1 = await db_service.create_transcription(db_session, trans1_data)
+    encrypted_text1 = await encrypt_text(
+        encryption_service=encryption_service,
+        db=db_session,
+        text="First transcription from whisper-base",
+        voice_entry_id=sample_voice_entry.id,
+        user_id=test_user.id,
+    )
+    await db_service.update_transcription_status(
+        db_session, trans1.id, status="completed", transcribed_text=encrypted_text1
+    )
 
     trans2_data = TranscriptionCreate(
         entry_id=sample_voice_entry.id,
@@ -167,6 +203,16 @@ async def test_set_primary_transcription_success(authenticated_client, sample_vo
         is_primary=False
     )
     trans2 = await db_service.create_transcription(db_session, trans2_data)
+    encrypted_text2 = await encrypt_text(
+        encryption_service=encryption_service,
+        db=db_session,
+        text="Second transcription from whisper-large",
+        voice_entry_id=sample_voice_entry.id,
+        user_id=test_user.id,
+    )
+    await db_service.update_transcription_status(
+        db_session, trans2.id, status="completed", transcribed_text=encrypted_text2
+    )
     await db_session.commit()
 
     # Set trans2 as primary
@@ -176,6 +222,8 @@ async def test_set_primary_transcription_success(authenticated_client, sample_vo
     data = response.json()
     assert data["id"] == str(trans2.id)
     assert data["is_primary"] is True
+    # Verify transcribed_text is decrypted correctly
+    assert data["transcribed_text"] == "Second transcription from whisper-large"
 
     # Verify trans1 is no longer primary
     await db_session.refresh(trans1)
