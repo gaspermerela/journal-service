@@ -158,7 +158,7 @@ class OllamaLLMCleanupService(LLMCleanupService):
         Get cleanup prompt template (plain text output, no JSON schema).
 
         Tries database first, falls back to hardcoded prompts.
-        For cleanup prompts, {output_format} placeholder is removed (not needed).
+        Cleanup prompts don't use {output_format} - it's simply replaced with empty string.
 
         Returns:
             Tuple of (prompt_text, template_id or None)
@@ -167,8 +167,8 @@ class OllamaLLMCleanupService(LLMCleanupService):
         db_result = await self._get_prompt_from_db(entry_type)
         if db_result:
             prompt_text, template_id = db_result
-            # Remove {output_format} placeholder if present (cleanup doesn't use it)
-            prompt_text = prompt_text.replace("{output_format}", "").strip()
+            # Cleanup prompts don't use {output_format} - just remove it
+            prompt_text = prompt_text.replace("{output_format}", "")
         else:
             # Fallback to hardcoded cleanup prompts
             logger.warning(
@@ -184,26 +184,29 @@ class OllamaLLMCleanupService(LLMCleanupService):
         """
         Get analysis prompt template with JSON schema instruction inserted.
 
+        Only replaces {output_format} if present - does NOT append if missing.
+
         Returns:
-            Complete prompt with JSON schema instruction
+            Complete prompt with JSON schema instruction (if placeholder exists)
         """
         prompt_text = self._get_hardcoded_analysis_prompt(entry_type)
 
-        # Generate JSON schema instruction based on entry_type
-        try:
-            schema_instruction = generate_json_schema_instruction(entry_type)
-        except ValueError:
-            logger.error(
-                f"Unknown entry_type for schema generation, using 'dream' fallback",
-                entry_type=entry_type
-            )
-            schema_instruction = generate_json_schema_instruction("dream")
-
-        # Replace {output_format} placeholder
+        # Only replace {output_format} if present in the prompt
         if "{output_format}" in prompt_text:
+            # Generate JSON schema instruction based on entry_type
+            try:
+                schema_instruction = generate_json_schema_instruction(entry_type)
+            except ValueError:
+                logger.error(
+                    f"Unknown entry_type for schema generation, using 'dream' fallback",
+                    entry_type=entry_type
+                )
+                schema_instruction = generate_json_schema_instruction("dream")
+
             return prompt_text.replace("{output_format}", schema_instruction)
         else:
-            return f"{prompt_text}\n\n{schema_instruction}"
+            # No placeholder - return prompt as-is (don't append schema)
+            return prompt_text
 
     async def cleanup_transcription(
         self,
@@ -295,9 +298,9 @@ class OllamaLLMCleanupService(LLMCleanupService):
         self,
         cleaned_text: str,
         entry_type: str = "dream",
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None,
-        model: Optional[str] = None
+        analysis_temperature: Optional[float] = None,
+        analysis_top_p: Optional[float] = None,
+        analysis_model: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Extract analysis from cleaned text (themes, emotions, etc.).
@@ -305,9 +308,9 @@ class OllamaLLMCleanupService(LLMCleanupService):
         Args:
             cleaned_text: Cleaned text to analyze
             entry_type: Type of entry for schema lookup
-            temperature: Temperature for LLM sampling
-            top_p: Top-p for nucleus sampling
-            model: Model to use. IGNORED for local Ollama.
+            analysis_temperature: Temperature for analysis LLM sampling (separate from cleanup)
+            analysis_top_p: Top-p for analysis nucleus sampling (separate from cleanup)
+            analysis_model: Model to use for analysis. IGNORED for local Ollama.
 
         Returns:
             Dict containing:
@@ -318,10 +321,10 @@ class OllamaLLMCleanupService(LLMCleanupService):
             LLMCleanupError: If analysis fails after retries
         """
         # Log warning if model selection requested but not supported
-        if model and model != self.model:
+        if analysis_model and analysis_model != self.model:
             logger.warning(
                 f"Model selection not supported for local Ollama. "
-                f"Requested: {model}, Using: {self.model}"
+                f"Requested: {analysis_model}, Using: {self.model}"
             )
 
         prompt_template = self._get_analysis_prompt(entry_type)
@@ -333,13 +336,13 @@ class OllamaLLMCleanupService(LLMCleanupService):
             try:
                 logger.info(
                     f"LLM analysis attempt {attempt + 1}/{self.max_retries + 1} "
-                    f"using model {self.model}, temperature={temperature}, top_p={top_p}"
+                    f"using model {self.model}, temperature={analysis_temperature}, top_p={analysis_top_p}"
                 )
                 result = await self._call_ollama_analysis(
                     prompt,
                     entry_type=entry_type,
-                    temperature=temperature,
-                    top_p=top_p
+                    temperature=analysis_temperature,
+                    top_p=analysis_top_p
                 )
                 return result
             except Exception as e:

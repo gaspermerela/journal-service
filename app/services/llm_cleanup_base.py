@@ -70,19 +70,22 @@ class LLMCleanupService(ABC):
         self,
         cleaned_text: str,
         entry_type: str = "dream",
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None,
-        model: Optional[str] = None
+        analysis_temperature: Optional[float] = None,
+        analysis_top_p: Optional[float] = None,
+        analysis_model: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Extract analysis from cleaned text (themes, emotions, etc.).
 
+        Analysis has separate LLM parameters from cleanup, allowing different
+        temperature/model settings for each step.
+
         Args:
             cleaned_text: Cleaned text to analyze
             entry_type: Type of entry for schema lookup
-            temperature: Temperature for LLM sampling
-            top_p: Top-p for nucleus sampling
-            model: Model to use for analysis
+            analysis_temperature: Temperature for analysis LLM sampling (separate from cleanup)
+            analysis_top_p: Top-p for analysis nucleus sampling (separate from cleanup)
+            analysis_model: Model to use for analysis (separate from cleanup model)
 
         Returns:
             Dict containing:

@@ -342,7 +342,7 @@ class TestLLMAnalyzeText:
 
     @pytest.mark.asyncio
     async def test_analyze_text_with_temperature(self, cleanup_service, mock_httpx_client, mock_analysis_response):
-        """Test analyze_text with custom temperature parameter."""
+        """Test analyze_text with custom analysis_temperature parameter."""
         mock_httpx_client.post.return_value = Mock(
             json=Mock(return_value=mock_analysis_response(themes=["test"]))
         )
@@ -350,7 +350,7 @@ class TestLLMAnalyzeText:
         await cleanup_service.analyze_text(
             cleaned_text="Test text",
             entry_type="dream",
-            temperature=0.7
+            analysis_temperature=0.7
         )
 
         # Verify temperature was passed to Ollama API

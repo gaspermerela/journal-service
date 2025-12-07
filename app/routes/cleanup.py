@@ -68,7 +68,10 @@ async def process_cleanup_background(
     voice_entry_id: UUID,
     temperature: float = None,
     top_p: float = None,
-    llm_model: str = None
+    llm_model: str = None,
+    analysis_temperature: float = None,
+    analysis_top_p: float = None,
+    analysis_model: str = None
 ):
     """
     Background task to process LLM cleanup.
@@ -79,9 +82,12 @@ async def process_cleanup_background(
         entry_type: Type of entry (dream, journal, etc.)
         user_id: User ID (for auto-sync and encryption check)
         voice_entry_id: Voice entry ID (for auto-sync and DEK lookup)
-        temperature: Temperature for LLM sampling (0.0-2.0)
-        top_p: Top-p for nucleus sampling (0.0-1.0)
+        temperature: Temperature for cleanup LLM sampling (0.0-2.0)
+        top_p: Top-p for cleanup nucleus sampling (0.0-1.0)
         llm_model: Model to use for cleanup (optional, uses service default if None)
+        analysis_temperature: Temperature for analysis LLM sampling (separate from cleanup)
+        analysis_top_p: Top-p for analysis nucleus sampling (separate from cleanup)
+        analysis_model: Model to use for analysis (separate from cleanup model)
     """
     from app.database import get_session
     from app.models.notion_sync import SyncStatus as NotionSyncStatus
@@ -127,12 +133,13 @@ async def process_cleanup_background(
             )
 
             # Step 2: Analysis (separate LLM call for themes, emotions, etc.)
+            # Uses separate parameters from cleanup for flexibility
             analysis_result = await llm_service.analyze_text(
                 cleaned_text=cleanup_result["cleaned_text"],
                 entry_type=entry_type,
-                temperature=temperature,
-                top_p=top_p,
-                model=llm_model
+                analysis_temperature=analysis_temperature,
+                analysis_top_p=analysis_top_p,
+                analysis_model=analysis_model
             )
 
             logger.info(
