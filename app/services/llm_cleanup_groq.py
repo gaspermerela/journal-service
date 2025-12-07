@@ -146,7 +146,7 @@ class GroqLLMCleanupService(LLMCleanupService):
         Get cleanup prompt template (plain text output, no JSON schema).
 
         Tries database first, falls back to hardcoded prompts.
-        For cleanup prompts, {output_format} placeholder is removed (not needed).
+        Cleanup prompts don't use {output_format} - it's simply replaced with empty string.
 
         Returns:
             Tuple of (prompt_text, template_id or None)
@@ -155,8 +155,8 @@ class GroqLLMCleanupService(LLMCleanupService):
         db_result = await self._get_prompt_from_db(entry_type)
         if db_result:
             prompt_text, template_id = db_result
-            # Remove {output_format} placeholder if present (cleanup doesn't use it)
-            prompt_text = prompt_text.replace("{output_format}", "").strip()
+            # Cleanup prompts don't use {output_format} - just remove it
+            prompt_text = prompt_text.replace("{output_format}", "")
         else:
             # Fallback to hardcoded cleanup prompts
             logger.warning(
@@ -172,26 +172,29 @@ class GroqLLMCleanupService(LLMCleanupService):
         """
         Get analysis prompt template with JSON schema instruction inserted.
 
+        Only replaces {output_format} if present - does NOT append if missing.
+
         Returns:
-            Complete prompt with JSON schema instruction
+            Complete prompt with JSON schema instruction (if placeholder exists)
         """
         prompt_text = self._get_hardcoded_analysis_prompt(entry_type)
 
-        # Generate JSON schema instruction based on entry_type
-        try:
-            schema_instruction = generate_json_schema_instruction(entry_type)
-        except ValueError:
-            logger.error(
-                f"Unknown entry_type for schema generation, using 'dream' fallback",
-                entry_type=entry_type
-            )
-            schema_instruction = generate_json_schema_instruction("dream")
-
-        # Replace {output_format} placeholder
+        # Only replace {output_format} if present in the prompt
         if "{output_format}" in prompt_text:
+            # Generate JSON schema instruction based on entry_type
+            try:
+                schema_instruction = generate_json_schema_instruction(entry_type)
+            except ValueError:
+                logger.error(
+                    f"Unknown entry_type for schema generation, using 'dream' fallback",
+                    entry_type=entry_type
+                )
+                schema_instruction = generate_json_schema_instruction("dream")
+
             return prompt_text.replace("{output_format}", schema_instruction)
         else:
-            return f"{prompt_text}\n\n{schema_instruction}"
+            # No placeholder - return prompt as-is (don't append schema)
+            return prompt_text
 
     async def cleanup_transcription(
         self,
@@ -280,9 +283,9 @@ class GroqLLMCleanupService(LLMCleanupService):
         self,
         cleaned_text: str,
         entry_type: str = "dream",
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None,
-        model: Optional[str] = None
+        analysis_temperature: Optional[float] = None,
+        analysis_top_p: Optional[float] = None,
+        analysis_model: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Extract analysis from cleaned text (themes, emotions, etc.).
@@ -290,9 +293,9 @@ class GroqLLMCleanupService(LLMCleanupService):
         Args:
             cleaned_text: Cleaned text to analyze
             entry_type: Type of entry for schema lookup
-            temperature: Temperature for LLM sampling
-            top_p: Top-p for nucleus sampling
-            model: Model to use for analysis
+            analysis_temperature: Temperature for analysis LLM sampling (separate from cleanup)
+            analysis_top_p: Top-p for analysis nucleus sampling (separate from cleanup)
+            analysis_model: Model to use for analysis
 
         Returns:
             Dict containing:
@@ -302,7 +305,7 @@ class GroqLLMCleanupService(LLMCleanupService):
         Raises:
             LLMCleanupError: If analysis fails after retries
         """
-        effective_model = model if model else self.model
+        effective_model = analysis_model if analysis_model else self.model
 
         prompt_template = self._get_analysis_prompt(entry_type)
         prompt = prompt_template.format(cleaned_text=cleaned_text)
@@ -313,13 +316,13 @@ class GroqLLMCleanupService(LLMCleanupService):
             try:
                 logger.info(
                     f"LLM analysis attempt {attempt + 1}/{self.max_retries + 1} "
-                    f"using Groq model {effective_model}, temperature={temperature}, top_p={top_p}"
+                    f"using Groq model {effective_model}, temperature={analysis_temperature}, top_p={analysis_top_p}"
                 )
                 result = await self._call_groq_analysis(
                     prompt,
                     entry_type=entry_type,
-                    temperature=temperature,
-                    top_p=top_p,
+                    temperature=analysis_temperature,
+                    top_p=analysis_top_p,
                     model=effective_model
                 )
                 return result

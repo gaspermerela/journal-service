@@ -65,9 +65,9 @@ class NoOpLLMCleanupService(LLMCleanupService):
         self,
         cleaned_text: str,
         entry_type: str = "dream",
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None,
-        model: Optional[str] = None
+        analysis_temperature: Optional[float] = None,
+        analysis_top_p: Optional[float] = None,
+        analysis_model: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Return mock analysis data without calling any LLM.
@@ -75,9 +75,9 @@ class NoOpLLMCleanupService(LLMCleanupService):
         Args:
             cleaned_text: Cleaned text to analyze
             entry_type: Type of entry (dream, journal, etc.)
-            temperature: Temperature parameter (unused in NoOp)
-            top_p: Top-p parameter (unused in NoOp)
-            model: Model to use (unused in NoOp)
+            analysis_temperature: Temperature parameter (unused in NoOp)
+            analysis_top_p: Top-p parameter (unused in NoOp)
+            analysis_model: Model to use (unused in NoOp)
 
         Returns:
             Dict with mock analysis data
@@ -85,7 +85,8 @@ class NoOpLLMCleanupService(LLMCleanupService):
         logger.info(
             f"NoOp analyze called for entry_type={entry_type}, "
             f"text_length={len(cleaned_text)}, "
-            f"temperature={temperature}, top_p={top_p}, model={model}"
+            f"analysis_temperature={analysis_temperature}, analysis_top_p={analysis_top_p}, "
+            f"analysis_model={analysis_model}"
         )
 
         return {
