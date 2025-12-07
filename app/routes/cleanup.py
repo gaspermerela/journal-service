@@ -113,8 +113,8 @@ async def process_cleanup_background(
                 top_p=top_p
             )
 
-            # Call LLM service
-            result = await llm_service.cleanup_transcription(
+            # Step 1: Cleanup (plain text with paragraph breaks)
+            cleanup_result = await llm_service.cleanup_transcription(
                 transcription_text=transcription_text,
                 entry_type=entry_type,
                 temperature=temperature,
@@ -122,18 +122,35 @@ async def process_cleanup_background(
                 model=llm_model
             )
 
-            # Encrypt cleaned text and analysis (encryption is always on)
+            logger.info(
+                f"Cleanup completed, starting analysis for entry {cleaned_entry_id}"
+            )
+
+            # Step 2: Analysis (separate LLM call for themes, emotions, etc.)
+            analysis_result = await llm_service.analyze_text(
+                cleaned_text=cleanup_result["cleaned_text"],
+                entry_type=entry_type,
+                temperature=temperature,
+                top_p=top_p,
+                model=llm_model
+            )
+
+            logger.info(
+                f"Analysis completed for entry {cleaned_entry_id}"
+            )
+
+            # Step 3: Encrypt results (encryption is always on)
             encrypted_cleaned_text = await encrypt_text(
                 encryption_service,
                 db,
-                result["cleaned_text"],
+                cleanup_result["cleaned_text"],
                 voice_entry_id,
                 user_id,
             )
             encrypted_analysis = await encrypt_json(
                 encryption_service,
                 db,
-                result["analysis"],
+                analysis_result["analysis"],
                 voice_entry_id,
                 user_id,
             )
@@ -144,19 +161,19 @@ async def process_cleanup_background(
                 encrypted_analysis_length=len(encrypted_analysis)
             )
 
-            # Update with encrypted results
+            # Step 4: Store encrypted results
             await db_service.update_cleaned_entry_processing(
                 db=db,
                 cleaned_entry_id=cleaned_entry_id,
                 cleanup_status=CleanupStatus.COMPLETED,
                 cleaned_text=encrypted_cleaned_text,
                 analysis=encrypted_analysis,
-                prompt_template_id=result.get("prompt_template_id"),
-                llm_raw_response=result.get("llm_raw_response") if settings.LLM_STORE_RAW_RESPONSE else None
+                prompt_template_id=cleanup_result.get("prompt_template_id"),
+                llm_raw_response=cleanup_result.get("llm_raw_response") if settings.LLM_STORE_RAW_RESPONSE else None
             )
             await db.commit()
 
-            logger.info(f"LLM cleanup completed for entry {cleaned_entry_id}")
+            logger.info(f"LLM cleanup and analysis completed for entry {cleaned_entry_id}")
 
             # Get the cleaned entry to retrieve voice_entry_id for auto-promotion
             cleaned_entry = await db_service.get_cleaned_entry_by_id(

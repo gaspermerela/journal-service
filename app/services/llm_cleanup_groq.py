@@ -13,13 +13,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings, get_output_schema, generate_json_schema_instruction
 from app.models.prompt_template import PromptTemplate
 from app.services.llm_cleanup_base import LLMCleanupService, LLMCleanupError
-from app.services.llm_cleanup_ollama import DREAM_CLEANUP_PROMPT, GENERIC_CLEANUP_PROMPT
+from app.services.llm_cleanup_ollama import (
+    DREAM_CLEANUP_PROMPT,
+    GENERIC_CLEANUP_PROMPT,
+    DREAM_ANALYSIS_PROMPT,
+    GENERIC_ANALYSIS_PROMPT,
+)
 from app.utils.logger import get_logger
 
 logger = get_logger("services.llm_cleanup_groq")
 
 INVALID_CHARS = (
-        r"[\x00-\x1F\x7F"  # ASCII control characters
+        r"[\x00-\x09\x0B-\x1F\x7F"  # ASCII control characters EXCEPT newline (\x0A)
         r"\u2028\u2029"  # Unicode line/paragraph separators
         r"\u200B\u200C\u200D"  # zero-width spaces
         r"\u00AD"  # soft hyphen
@@ -113,9 +118,9 @@ class GroqLLMCleanupService(LLMCleanupService):
             logger.error(f"Error fetching prompt from database: {str(e)}")
             return None
 
-    def _get_hardcoded_fallback_prompt(self, entry_type: str) -> str:
+    def _get_hardcoded_cleanup_prompt(self, entry_type: str) -> str:
         """
-        Get hardcoded fallback prompt when database lookup fails.
+        Get hardcoded cleanup prompt (plain text output with <break> markers).
 
         This ensures the service always works even if:
         - Database is unavailable
@@ -127,59 +132,66 @@ class GroqLLMCleanupService(LLMCleanupService):
         else:
             return GENERIC_CLEANUP_PROMPT
 
-    async def _get_prompt_template(self, entry_type: str) -> Tuple[str, Optional[int]]:
+    def _get_hardcoded_analysis_prompt(self, entry_type: str) -> str:
         """
-        Get complete prompt with JSON schema instruction inserted.
+        Get hardcoded analysis prompt (JSON output).
+        """
+        if entry_type == "dream":
+            return DREAM_ANALYSIS_PROMPT
+        else:
+            return GENERIC_ANALYSIS_PROMPT
+
+    async def _get_cleanup_prompt(self, entry_type: str) -> Tuple[str, Optional[int]]:
+        """
+        Get cleanup prompt template (plain text output, no JSON schema).
 
         Tries database first, falls back to hardcoded prompts.
-        Automatically replaces {output_format} placeholder with JSON schema instruction.
-
-        Fallback order:
-        1. Try to load active prompt from database
-        2. Fall back to hardcoded constants if DB fails
-        3. Replace {output_format} placeholder with JSON schema instruction
-        4. If {output_format} missing, append schema at the end (legacy fallback)
+        For cleanup prompts, {output_format} placeholder is removed (not needed).
 
         Returns:
-            Tuple of (complete_prompt, template_id or None)
+            Tuple of (prompt_text, template_id or None)
         """
         # Try database first
         db_result = await self._get_prompt_from_db(entry_type)
         if db_result:
             prompt_text, template_id = db_result
+            # Remove {output_format} placeholder if present (cleanup doesn't use it)
+            prompt_text = prompt_text.replace("{output_format}", "").strip()
         else:
-            # Fallback to hardcoded prompts
+            # Fallback to hardcoded cleanup prompts
             logger.warning(
-                f"Using hardcoded fallback prompt for entry_type '{entry_type}' "
+                f"Using hardcoded fallback cleanup prompt for entry_type '{entry_type}' "
                 f"(database lookup failed or no active template)"
             )
-            prompt_text = self._get_hardcoded_fallback_prompt(entry_type)
+            prompt_text = self._get_hardcoded_cleanup_prompt(entry_type)
             template_id = None
+
+        return (prompt_text, template_id)
+
+    def _get_analysis_prompt(self, entry_type: str) -> str:
+        """
+        Get analysis prompt template with JSON schema instruction inserted.
+
+        Returns:
+            Complete prompt with JSON schema instruction
+        """
+        prompt_text = self._get_hardcoded_analysis_prompt(entry_type)
 
         # Generate JSON schema instruction based on entry_type
         try:
             schema_instruction = generate_json_schema_instruction(entry_type)
-        except ValueError as e:
-            # Unknown entry_type - use generic schema
+        except ValueError:
             logger.error(
                 f"Unknown entry_type for schema generation, using 'dream' fallback",
-                entry_type=entry_type,
-                error=str(e)
+                entry_type=entry_type
             )
             schema_instruction = generate_json_schema_instruction("dream")
 
-        # Replace {output_format} placeholder if present, otherwise append
+        # Replace {output_format} placeholder
         if "{output_format}" in prompt_text:
-            complete_prompt = prompt_text.replace("{output_format}", schema_instruction)
+            return prompt_text.replace("{output_format}", schema_instruction)
         else:
-            logger.warning(
-                f"Prompt template missing {{output_format}} placeholder, appending at end",
-                entry_type=entry_type,
-                template_id=template_id
-            )
-            complete_prompt = f"{prompt_text}\n\n{schema_instruction}"
-
-        return (complete_prompt, template_id)
+            return f"{prompt_text}\n\n{schema_instruction}"
 
     async def cleanup_transcription(
         self,
@@ -192,15 +204,23 @@ class GroqLLMCleanupService(LLMCleanupService):
         """
         Clean up transcription text using Groq's chat completion API.
 
+        Returns plain text with paragraph breaks (no JSON, no analysis).
+        Use analyze_text() separately for analysis extraction.
+
         Args:
             transcription_text: Raw transcription text to clean
             entry_type: Type of entry (dream, journal, meeting, etc.)
-            temperature: Temperature for LLM sampling (0.0-2.0). If None, uses default (0.3).
+            temperature: Temperature for LLM sampling (0.0-2.0). If None, uses default.
             top_p: Top-p for nucleus sampling (0.0-1.0). If None, Groq uses default.
             model: Model to use for cleanup. If None, uses the service's default model.
 
         Returns:
-            Dict containing cleaned_text, analysis, prompt_template_id, temperature, and top_p
+            Dict containing:
+            - cleaned_text: str (plain text with paragraph breaks)
+            - prompt_template_id: Optional[int]
+            - temperature: Optional[float]
+            - top_p: Optional[float]
+            - llm_raw_response: str (original response with <break> markers)
 
         Raises:
             LLMCleanupError: If cleanup fails after retries (includes debug info)
@@ -208,7 +228,7 @@ class GroqLLMCleanupService(LLMCleanupService):
         # Use provided model or fall back to instance default
         effective_model = model if model else self.model
 
-        prompt_template, template_id = await self._get_prompt_template(entry_type)
+        prompt_template, template_id = await self._get_cleanup_prompt(entry_type)
         prompt = prompt_template.format(transcription_text=transcription_text)
 
         last_raw_response = None
@@ -219,9 +239,8 @@ class GroqLLMCleanupService(LLMCleanupService):
                     f"LLM cleanup attempt {attempt + 1}/{self.max_retries + 1} "
                     f"using Groq model {effective_model}, temperature={temperature}, top_p={top_p}"
                 )
-                result = await self._call_groq(
+                result = await self._call_groq_cleanup(
                     prompt,
-                    entry_type=entry_type,
                     temperature=temperature,
                     top_p=top_p,
                     model=effective_model
@@ -257,31 +276,95 @@ class GroqLLMCleanupService(LLMCleanupService):
             prompt_template_id=template_id
         )
 
-    async def _call_groq(
+    async def analyze_text(
         self,
-        prompt: str,
+        cleaned_text: str,
         entry_type: str = "dream",
         temperature: Optional[float] = None,
         top_p: Optional[float] = None,
         model: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Call Groq chat completion API to process the prompt.
+        Extract analysis from cleaned text (themes, emotions, etc.).
+
+        Args:
+            cleaned_text: Cleaned text to analyze
+            entry_type: Type of entry for schema lookup
+            temperature: Temperature for LLM sampling
+            top_p: Top-p for nucleus sampling
+            model: Model to use for analysis
+
+        Returns:
+            Dict containing:
+            - analysis: dict with entry_type-specific fields
+            - llm_raw_response: str
+
+        Raises:
+            LLMCleanupError: If analysis fails after retries
+        """
+        effective_model = model if model else self.model
+
+        prompt_template = self._get_analysis_prompt(entry_type)
+        prompt = prompt_template.format(cleaned_text=cleaned_text)
+
+        last_raw_response = None
+
+        for attempt in range(self.max_retries + 1):
+            try:
+                logger.info(
+                    f"LLM analysis attempt {attempt + 1}/{self.max_retries + 1} "
+                    f"using Groq model {effective_model}, temperature={temperature}, top_p={top_p}"
+                )
+                result = await self._call_groq_analysis(
+                    prompt,
+                    entry_type=entry_type,
+                    temperature=temperature,
+                    top_p=top_p,
+                    model=effective_model
+                )
+                return result
+            except Exception as e:
+                if hasattr(e, 'llm_raw_response'):
+                    last_raw_response = e.llm_raw_response
+
+                logger.warning(
+                    f"LLM analysis attempt {attempt + 1} failed: {str(e)}"
+                )
+                if attempt == self.max_retries:
+                    logger.error("All LLM analysis attempts failed")
+                    raise LLMCleanupError(
+                        message=str(e),
+                        llm_raw_response=last_raw_response,
+                        prompt_template_id=None
+                    ) from e
+
+        raise LLMCleanupError(
+            message="LLM analysis failed unexpectedly",
+            llm_raw_response=last_raw_response,
+            prompt_template_id=None
+        )
+
+    async def _call_groq_cleanup(
+        self,
+        prompt: str,
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        model: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Call Groq API for cleanup (plain text response with <break> markers).
 
         Args:
             prompt: Formatted prompt to send to LLM
-            entry_type: Entry type for schema-based parsing
-            temperature: Temperature for sampling (0.0-2.0). If None, uses default (0.3).
-            top_p: Top-p for nucleus sampling (0.0-1.0). If None, Groq uses default.
+            temperature: Temperature for sampling. If None, uses default.
+            top_p: Top-p for nucleus sampling. If None, Groq uses default.
             model: Model to use. If None, uses self.model.
 
         Returns:
-            Dict containing cleaned_text and analysis
+            Dict containing cleaned_text and llm_raw_response
 
         Raises:
             Exception: If API call fails
-            ValueError: If response is not valid JSON
-            KeyError: If response missing required fields
         """
         effective_model = model if model else self.model
 
@@ -310,12 +393,78 @@ class GroqLLMCleanupService(LLMCleanupService):
             # Extract response text
             response_text = response.choices[0].message.content
 
-            logger.debug(f"Raw Groq LLM response: {response_text[:200]}...")
+            logger.debug(f"Raw cleanup Groq response: {response_text[:200]}...")
+
+            # Process plain text response: convert <break> to paragraph breaks
+            cleaned_text = self._process_cleanup_response(response_text)
+
+            return {
+                "cleaned_text": cleaned_text,
+                "llm_raw_response": response_text
+            }
+
+        except Exception as e:
+            logger.error(f"Groq cleanup API call failed: {str(e)}", exc_info=True)
+            raise
+
+    async def _call_groq_analysis(
+        self,
+        prompt: str,
+        entry_type: str = "dream",
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        model: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Call Groq API for analysis (JSON response).
+
+        Args:
+            prompt: Formatted prompt to send to LLM
+            entry_type: Entry type for schema-based parsing
+            temperature: Temperature for sampling. If None, uses default.
+            top_p: Top-p for nucleus sampling. If None, Groq uses default.
+            model: Model to use. If None, uses self.model.
+
+        Returns:
+            Dict containing analysis and llm_raw_response
+
+        Raises:
+            Exception: If API call fails
+            ValueError: If response is not valid JSON
+        """
+        effective_model = model if model else self.model
+
+        try:
+            # Build API call parameters
+            api_params = {
+                "model": effective_model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "temperature": temperature,
+                "max_tokens": 5000,
+                "timeout": self.timeout
+            }
+
+            # Add top_p if provided
+            if top_p is not None:
+                api_params["top_p"] = top_p
+
+            # Call Groq chat completion API
+            response = await self.client.chat.completions.create(**api_params)
+
+            # Extract response text
+            response_text = response.choices[0].message.content
+
+            logger.debug(f"Raw analysis Groq response: {response_text[:200]}...")
 
             # Parse the JSON response with schema-based parsing
             try:
-                result = self._parse_llm_response(response_text, entry_type)
-            except (ValueError, KeyError, json.JSONDecodeError) as parse_error:
+                result = self._parse_analysis_response(response_text, entry_type)
+            except (ValueError, json.JSONDecodeError) as parse_error:
                 # Attach raw response to parsing exceptions for debugging
                 parse_error.llm_raw_response = response_text
                 raise
@@ -326,35 +475,46 @@ class GroqLLMCleanupService(LLMCleanupService):
             return result
 
         except Exception as e:
-            logger.error(f"Groq API call failed: {str(e)}", exc_info=True)
+            logger.error(f"Groq analysis API call failed: {str(e)}", exc_info=True)
             raise
 
-    def _sanitize_response(self, text: str) -> str:
-        import re
-        # Remove all control chars except normal whitespace
-        text = re.sub(r'[\x00-\x08\x0b-\x1f\x7f]', '', text)
+    def _process_cleanup_response(self, response_text: str) -> str:
+        """
+        Process cleanup response: convert <break> markers to paragraph breaks.
+
+        Args:
+            response_text: Raw LLM response with <break> markers
+
+        Returns:
+            Cleaned text with double newlines for paragraphs
+        """
+        text = response_text.strip()
+        # Convert <break> markers to double newlines
+        text = text.replace("<break>", "\n\n")
+        # Clean up any excessive whitespace
+        text = re.sub(r'\n{3,}', '\n\n', text)
         return text
 
     def sanitize_for_json(self, text: str) -> str:
+        """Remove invalid JSON characters from text."""
         return re.sub(INVALID_CHARS, "", text)
 
-    def _parse_llm_response(self, response_text: str, entry_type: str = "dream") -> Dict[str, Any]:
+    def _parse_analysis_response(self, response_text: str, entry_type: str = "dream") -> Dict[str, Any]:
         """
-        Parse and validate LLM JSON response using OUTPUT_SCHEMAS.
+        Parse and validate LLM JSON response for analysis using OUTPUT_SCHEMAS.
 
         Args:
-            response_text: Raw response from LLM
+            response_text: Raw response from LLM (should be JSON)
             entry_type: Entry type for schema lookup
 
         Returns:
-            Dict containing cleaned_text and analysis
+            Dict containing analysis fields
 
         Raises:
             ValueError: If response is not valid JSON
-            KeyError: If cleaned_text is missing
         """
         logger.debug(
-            "Parsing LLM response",
+            "Parsing analysis response",
             entry_type=entry_type,
             response_length=len(response_text)
         )
@@ -374,12 +534,8 @@ class GroqLLMCleanupService(LLMCleanupService):
             text = self.sanitize_for_json(text)
             parsed = json.loads(text)
         except json.JSONDecodeError as e:
-            logger.error("Failed to parse LLM response as JSON", error=str(e))
-            raise ValueError(f"LLM response is not valid JSON: {e}")
-
-        # Validate required field
-        if "cleaned_text" not in parsed:
-            raise KeyError("LLM response missing required 'cleaned_text' field")
+            logger.error("Failed to parse analysis response as JSON", error=str(e))
+            raise ValueError(f"Analysis response is not valid JSON: {e}")
 
         # Get schema for this entry_type
         try:
@@ -397,10 +553,7 @@ class GroqLLMCleanupService(LLMCleanupService):
             # Use .get() with default - tolerates missing fields
             analysis[field_name] = parsed.get(field_name, [])
 
-        return {
-            "cleaned_text": parsed["cleaned_text"],
-            "analysis": analysis
-        }
+        return {"analysis": analysis}
 
     async def test_connection(self) -> bool:
         """

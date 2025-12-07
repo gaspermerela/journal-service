@@ -1,5 +1,9 @@
 """
 Unit tests for LLM cleanup service.
+
+Tests the refactored two-step approach:
+1. cleanup_transcription() - returns plain text with <break> → \n\n conversion
+2. analyze_text() - returns JSON analysis (themes, emotions, etc.)
 """
 import json
 import pytest
@@ -17,13 +21,21 @@ def cleanup_service():
 
 
 @pytest.fixture
-def mock_ollama_response():
-    """Factory fixture to create mock Ollama API responses."""
-    def _create_response(cleaned_text: str, themes=None, emotions=None, characters=None, locations=None):
-        """Create a mock response with the given data."""
+def mock_cleanup_response():
+    """Factory fixture to create mock plain text cleanup responses."""
+    def _create_response(cleaned_text: str):
+        """Create a mock cleanup response with plain text and <break> markers."""
+        return {"response": cleaned_text}
+    return _create_response
+
+
+@pytest.fixture
+def mock_analysis_response():
+    """Factory fixture to create mock JSON analysis responses."""
+    def _create_response(themes=None, emotions=None, characters=None, locations=None):
+        """Create a mock analysis response with JSON data."""
         return {
             "response": json.dumps({
-                "cleaned_text": cleaned_text,
                 "themes": themes or [],
                 "emotions": emotions or [],
                 "characters": characters or [],
@@ -48,14 +60,11 @@ class TestLLMCleanupService:
     """Test suite for LLM cleanup service."""
 
     @pytest.mark.asyncio
-    async def test_cleanup_transcription_success(self, cleanup_service, mock_httpx_client, mock_ollama_response):
-        """Test successful transcription cleanup."""
+    async def test_cleanup_transcription_success(self, cleanup_service, mock_httpx_client, mock_cleanup_response):
+        """Test successful transcription cleanup returns plain text."""
         mock_httpx_client.post.return_value = Mock(
-            json=Mock(return_value=mock_ollama_response(
-                cleaned_text="I dreamt about flying over mountains.",
-                themes=["flying", "nature", "freedom"],
-                emotions=["wonder", "excitement"],
-                locations=["mountains"]
+            json=Mock(return_value=mock_cleanup_response(
+                "I dreamt about flying over mountains.<break>It was an amazing experience."
             ))
         )
 
@@ -65,10 +74,12 @@ class TestLLMCleanupService:
         )
 
         assert "cleaned_text" in result
-        assert "analysis" in result
-        assert result["cleaned_text"] == "I dreamt about flying over mountains."
-        assert "themes" in result["analysis"]
-        assert "flying" in result["analysis"]["themes"]
+        # No analysis in cleanup result - that's a separate call
+        assert "analysis" not in result
+        # <break> should be converted to \n\n
+        assert "\n\n" in result["cleaned_text"]
+        assert "<break>" not in result["cleaned_text"]
+        assert result["cleaned_text"] == "I dreamt about flying over mountains.\n\nIt was an amazing experience."
 
     @pytest.mark.asyncio
     async def test_cleanup_transcription_timeout(self, cleanup_service, mock_httpx_client):
@@ -84,19 +95,22 @@ class TestLLMCleanupService:
         assert "timeout" in str(exc_info.value).lower() or "timed out" in str(exc_info.value).lower()
 
     @pytest.mark.asyncio
-    async def test_cleanup_transcription_invalid_json(self, cleanup_service, mock_httpx_client):
-        """Test handling of invalid JSON response."""
+    async def test_cleanup_transcription_plain_text(self, cleanup_service, mock_httpx_client, mock_cleanup_response):
+        """Test cleanup returns plain text without requiring JSON parsing."""
+        # Cleanup now returns plain text, not JSON
         mock_httpx_client.post.return_value = Mock(
-            json=Mock(return_value={"response": "This is not valid JSON!"})
+            json=Mock(return_value=mock_cleanup_response(
+                "This is plain text without any special markers."
+            ))
         )
 
-        with pytest.raises(Exception) as exc_info:
-            await cleanup_service.cleanup_transcription(
-                transcription_text="Test text",
-                entry_type="dream"
-            )
+        result = await cleanup_service.cleanup_transcription(
+            transcription_text="Test text",
+            entry_type="dream"
+        )
 
-        assert "json" in str(exc_info.value).lower() or "parse" in str(exc_info.value).lower()
+        assert "cleaned_text" in result
+        assert result["cleaned_text"] == "This is plain text without any special markers."
 
     @pytest.mark.asyncio
     async def test_cleanup_transcription_http_error(self, cleanup_service, mock_httpx_client):
@@ -114,16 +128,12 @@ class TestLLMCleanupService:
             )
 
     @pytest.mark.asyncio
-    async def test_cleanup_different_entry_types(self, cleanup_service, mock_httpx_client, mock_ollama_response):
-        """Test cleanup with different entry types."""
+    async def test_cleanup_different_entry_types(self, cleanup_service, mock_httpx_client, mock_cleanup_response):
+        """Test cleanup with different entry types returns plain text."""
         entry_types = ["dream", "journal", "meeting", "note"]
 
         mock_httpx_client.post.return_value = Mock(
-            json=Mock(return_value=mock_ollama_response(
-                cleaned_text="Cleaned text",
-                themes=["test"],
-                emotions=["neutral"]
-            ))
+            json=Mock(return_value=mock_cleanup_response("Cleaned text"))
         )
 
         for entry_type in entry_types:
@@ -133,13 +143,14 @@ class TestLLMCleanupService:
             )
 
             assert "cleaned_text" in result
-            assert "analysis" in result
+            # No analysis - that's handled by analyze_text()
+            assert "analysis" not in result
 
     @pytest.mark.asyncio
-    async def test_cleanup_empty_text(self, cleanup_service, mock_httpx_client, mock_ollama_response):
+    async def test_cleanup_empty_text(self, cleanup_service, mock_httpx_client, mock_cleanup_response):
         """Test cleanup with empty transcription text."""
         mock_httpx_client.post.return_value = Mock(
-            json=Mock(return_value=mock_ollama_response(cleaned_text=""))
+            json=Mock(return_value=mock_cleanup_response(""))
         )
 
         result = await cleanup_service.cleanup_transcription(
@@ -150,14 +161,10 @@ class TestLLMCleanupService:
         assert result is not None
 
     @pytest.mark.asyncio
-    async def test_cleanup_very_long_text(self, cleanup_service, mock_httpx_client, mock_ollama_response):
+    async def test_cleanup_very_long_text(self, cleanup_service, mock_httpx_client, mock_cleanup_response):
         """Test cleanup with very long transcription text."""
         mock_httpx_client.post.return_value = Mock(
-            json=Mock(return_value=mock_ollama_response(
-                cleaned_text="Summarized long text",
-                themes=["repetition"],
-                emotions=["neutral"]
-            ))
+            json=Mock(return_value=mock_cleanup_response("Summarized long text"))
         )
 
         result = await cleanup_service.cleanup_transcription(
@@ -168,15 +175,10 @@ class TestLLMCleanupService:
         assert "cleaned_text" in result
 
     @pytest.mark.asyncio
-    async def test_cleanup_special_characters(self, cleanup_service, mock_httpx_client, mock_ollama_response):
-        """Test cleanup with special characters in text."""
+    async def test_cleanup_special_characters(self, cleanup_service, mock_httpx_client, mock_cleanup_response):
+        """Test cleanup with special characters returns plain text."""
         mock_httpx_client.post.return_value = Mock(
-            json=Mock(return_value=mock_ollama_response(
-                cleaned_text="I dreamt about stars and galaxies.",
-                themes=["space", "astronomy"],
-                emotions=["wonder"],
-                locations=["space"]
-            ))
+            json=Mock(return_value=mock_cleanup_response("I dreamt about stars and galaxies."))
         )
 
         result = await cleanup_service.cleanup_transcription(
@@ -185,36 +187,14 @@ class TestLLMCleanupService:
         )
 
         assert "cleaned_text" in result
-        assert "analysis" in result
+        # No analysis in cleanup result
+        assert "analysis" not in result
 
     @pytest.mark.asyncio
-    async def test_cleanup_missing_analysis_fields(self, cleanup_service, mock_httpx_client, mock_ollama_response):
-        """Test handling of incomplete analysis in response."""
-        mock_httpx_client.post.return_value = Mock(
-            json=Mock(return_value=mock_ollama_response(
-                cleaned_text="Cleaned text",
-                themes=["test"]
-                # emotions, characters, locations missing - will use defaults
-            ))
-        )
-
-        result = await cleanup_service.cleanup_transcription(
-            transcription_text="Test text",
-            entry_type="dream"
-        )
-
-        # Should still work, even with incomplete analysis
-        assert "cleaned_text" in result
-        assert "analysis" in result
-
-    @pytest.mark.asyncio
-    async def test_cleanup_with_temperature(self, cleanup_service, mock_httpx_client, mock_ollama_response):
+    async def test_cleanup_with_temperature(self, cleanup_service, mock_httpx_client, mock_cleanup_response):
         """Test cleanup with custom temperature parameter."""
         mock_httpx_client.post.return_value = Mock(
-            json=Mock(return_value=mock_ollama_response(
-                cleaned_text="Cleaned text with custom temperature",
-                themes=["test"]
-            ))
+            json=Mock(return_value=mock_cleanup_response("Cleaned text with custom temperature"))
         )
 
         result = await cleanup_service.cleanup_transcription(
@@ -232,13 +212,10 @@ class TestLLMCleanupService:
         assert result["temperature"] == 0.7
 
     @pytest.mark.asyncio
-    async def test_cleanup_with_top_p(self, cleanup_service, mock_httpx_client, mock_ollama_response):
+    async def test_cleanup_with_top_p(self, cleanup_service, mock_httpx_client, mock_cleanup_response):
         """Test cleanup with custom top_p parameter."""
         mock_httpx_client.post.return_value = Mock(
-            json=Mock(return_value=mock_ollama_response(
-                cleaned_text="Cleaned text with custom top_p",
-                themes=["test"]
-            ))
+            json=Mock(return_value=mock_cleanup_response("Cleaned text with custom top_p"))
         )
 
         result = await cleanup_service.cleanup_transcription(
@@ -256,14 +233,10 @@ class TestLLMCleanupService:
         assert result["top_p"] == 0.9
 
     @pytest.mark.asyncio
-    async def test_cleanup_with_temperature_and_top_p(self, cleanup_service, mock_httpx_client, mock_ollama_response):
+    async def test_cleanup_with_temperature_and_top_p(self, cleanup_service, mock_httpx_client, mock_cleanup_response):
         """Test cleanup with both temperature and top_p parameters."""
         mock_httpx_client.post.return_value = Mock(
-            json=Mock(return_value=mock_ollama_response(
-                cleaned_text="Cleaned text with both parameters",
-                themes=["test"],
-                emotions=["neutral"]
-            ))
+            json=Mock(return_value=mock_cleanup_response("Cleaned text with both parameters"))
         )
 
         result = await cleanup_service.cleanup_transcription(
@@ -284,13 +257,10 @@ class TestLLMCleanupService:
         assert result["top_p"] == 0.8
 
     @pytest.mark.asyncio
-    async def test_cleanup_default_temperature_when_not_provided(self, cleanup_service, mock_httpx_client, mock_ollama_response):
+    async def test_cleanup_default_temperature_when_not_provided(self, cleanup_service, mock_httpx_client, mock_cleanup_response):
         """Test cleanup uses default temperature when not provided."""
         mock_httpx_client.post.return_value = Mock(
-            json=Mock(return_value=mock_ollama_response(
-                cleaned_text="Cleaned text",
-                themes=["test"]
-            ))
+            json=Mock(return_value=mock_cleanup_response("Cleaned text"))
         )
 
         result = await cleanup_service.cleanup_transcription(
@@ -303,14 +273,95 @@ class TestLLMCleanupService:
         payload = call_args[1]["json"]
         assert payload["options"]["temperature"] == 0.3
 
-        # Verify temperature is in result
-        assert result["temperature"] == 0.3
+        # Temperature in result should be None (indicates default was used)
+        assert result["temperature"] is None
+
+
+class TestLLMAnalyzeText:
+    """Test suite for analyze_text() method."""
 
     @pytest.mark.asyncio
-    async def test_cleanup_invalid_json_preserves_debug_info(self, cleanup_service, mock_httpx_client):
-        """Test that invalid JSON errors preserve raw response and template ID for debugging."""
-        # Mock response with invalid JSON (contains control characters)
-        invalid_json_response = '{"cleaned_text": "test\x01with\x02control\x03chars"}'
+    async def test_analyze_text_success(self, cleanup_service, mock_httpx_client, mock_analysis_response):
+        """Test successful text analysis returns JSON analysis."""
+        mock_httpx_client.post.return_value = Mock(
+            json=Mock(return_value=mock_analysis_response(
+                themes=["flying", "nature", "freedom"],
+                emotions=["wonder", "excitement"],
+                locations=["mountains"]
+            ))
+        )
+
+        result = await cleanup_service.analyze_text(
+            cleaned_text="I dreamt about flying over mountains. It was amazing.",
+            entry_type="dream"
+        )
+
+        assert "analysis" in result
+        assert "themes" in result["analysis"]
+        assert "flying" in result["analysis"]["themes"]
+        assert "emotions" in result["analysis"]
+        assert "wonder" in result["analysis"]["emotions"]
+
+    @pytest.mark.asyncio
+    async def test_analyze_text_invalid_json(self, cleanup_service, mock_httpx_client):
+        """Test handling of invalid JSON in analysis response."""
+        mock_httpx_client.post.return_value = Mock(
+            json=Mock(return_value={"response": "This is not valid JSON!"})
+        )
+
+        with pytest.raises(LLMCleanupError) as exc_info:
+            await cleanup_service.analyze_text(
+                cleaned_text="Test text",
+                entry_type="dream"
+            )
+
+        assert "json" in str(exc_info.value).lower() or "parse" in str(exc_info.value).lower()
+
+    @pytest.mark.asyncio
+    async def test_analyze_text_missing_fields(self, cleanup_service, mock_httpx_client):
+        """Test handling of incomplete analysis response."""
+        # Response with only themes, missing other fields
+        mock_httpx_client.post.return_value = Mock(
+            json=Mock(return_value={
+                "response": json.dumps({"themes": ["test"]})
+            })
+        )
+
+        result = await cleanup_service.analyze_text(
+            cleaned_text="Test text",
+            entry_type="dream"
+        )
+
+        # Should still work with graceful degradation
+        assert "analysis" in result
+        assert result["analysis"]["themes"] == ["test"]
+        # Missing fields should default to empty lists
+        assert result["analysis"]["emotions"] == []
+        assert result["analysis"]["characters"] == []
+        assert result["analysis"]["locations"] == []
+
+    @pytest.mark.asyncio
+    async def test_analyze_text_with_temperature(self, cleanup_service, mock_httpx_client, mock_analysis_response):
+        """Test analyze_text with custom temperature parameter."""
+        mock_httpx_client.post.return_value = Mock(
+            json=Mock(return_value=mock_analysis_response(themes=["test"]))
+        )
+
+        await cleanup_service.analyze_text(
+            cleaned_text="Test text",
+            entry_type="dream",
+            temperature=0.7
+        )
+
+        # Verify temperature was passed to Ollama API
+        call_args = mock_httpx_client.post.call_args
+        payload = call_args[1]["json"]
+        assert payload["options"]["temperature"] == 0.7
+
+    @pytest.mark.asyncio
+    async def test_analyze_invalid_json_preserves_debug_info(self, cleanup_service, mock_httpx_client):
+        """Test that invalid JSON errors preserve raw response for debugging."""
+        invalid_json_response = '{"themes": "invalid - should be array"'  # malformed JSON
 
         mock_httpx_client.post.return_value = Mock(
             json=Mock(return_value={"response": invalid_json_response})
@@ -318,8 +369,8 @@ class TestLLMCleanupService:
 
         # Should raise LLMCleanupError with debug info
         with pytest.raises(LLMCleanupError) as exc_info:
-            await cleanup_service.cleanup_transcription(
-                transcription_text="Test text with issues",
+            await cleanup_service.analyze_text(
+                cleaned_text="Test text with issues",
                 entry_type="dream"
             )
 
@@ -327,8 +378,4 @@ class TestLLMCleanupService:
         error = exc_info.value
         assert error.llm_raw_response is not None
         assert error.llm_raw_response == invalid_json_response
-        assert "json" in str(error).lower() or "control character" in str(error).lower()
-
-        # Note: prompt_template_id may be None if using hardcoded fallback prompt
-        # but the field should exist
         assert hasattr(error, 'prompt_template_id')

@@ -31,7 +31,8 @@ class NoOpLLMCleanupService(LLMCleanupService):
         transcription_text: str,
         entry_type: str = "dream",
         temperature: Optional[float] = None,
-        top_p: Optional[float] = None
+        top_p: Optional[float] = None,
+        model: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Return mock cleaned data without calling any LLM.
@@ -41,28 +42,60 @@ class NoOpLLMCleanupService(LLMCleanupService):
             entry_type: Type of entry (dream, journal, etc.)
             temperature: Temperature parameter (unused in NoOp)
             top_p: Top-p parameter (unused in NoOp)
+            model: Model to use (unused in NoOp)
 
         Returns:
-            Dict with mock cleaned data
+            Dict with mock cleaned data (plain text, no analysis)
         """
         logger.info(
             f"NoOp cleanup called for entry_type={entry_type}, "
             f"text_length={len(transcription_text)}, "
-            f"temperature={temperature}, top_p={top_p}"
+            f"temperature={temperature}, top_p={top_p}, model={model}"
         )
 
         return {
             "cleaned_text": f"[NoOp Cleaned] {transcription_text}",
+            "prompt_template_id": None,
+            "llm_raw_response": f"[NoOp Cleaned] {transcription_text}",
+            "temperature": temperature,
+            "top_p": top_p
+        }
+
+    async def analyze_text(
+        self,
+        cleaned_text: str,
+        entry_type: str = "dream",
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        model: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Return mock analysis data without calling any LLM.
+
+        Args:
+            cleaned_text: Cleaned text to analyze
+            entry_type: Type of entry (dream, journal, etc.)
+            temperature: Temperature parameter (unused in NoOp)
+            top_p: Top-p parameter (unused in NoOp)
+            model: Model to use (unused in NoOp)
+
+        Returns:
+            Dict with mock analysis data
+        """
+        logger.info(
+            f"NoOp analyze called for entry_type={entry_type}, "
+            f"text_length={len(cleaned_text)}, "
+            f"temperature={temperature}, top_p={top_p}, model={model}"
+        )
+
+        return {
             "analysis": {
                 "themes": ["test", "mock"],
                 "emotions": ["neutral"],
                 "characters": [],
                 "locations": []
             },
-            "prompt_template_id": None,
-            "llm_raw_response": '{"cleaned_text": "[NoOp Cleaned] ' + transcription_text + '"}',
-            "temperature": temperature,
-            "top_p": top_p
+            "llm_raw_response": '{"themes": ["test", "mock"], "emotions": ["neutral"], "characters": [], "locations": []}'
         }
 
     async def test_connection(self) -> bool:

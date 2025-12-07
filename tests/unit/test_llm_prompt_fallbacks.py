@@ -1,5 +1,11 @@
 """
 Tests for LLM cleanup service prompt loading and fallback mechanisms.
+
+After refactoring, we have separate prompts for:
+1. Cleanup prompts - plain text output with <break> markers
+2. Analysis prompts - JSON output with schema
+
+This test file covers the _get_prompt_from_db and hardcoded fallback mechanisms.
 """
 import pytest
 from unittest.mock import AsyncMock, MagicMock
@@ -27,7 +33,7 @@ class TestPromptFallbackMechanisms:
             id=1,
             name="test_prompt",
             entry_type="dream",
-            prompt_text="Test prompt with {transcription_text} placeholder\n\n{output_format}",
+            prompt_text="Test prompt with {transcription_text} placeholder",
             description="Test prompt",
             is_active=True,
             version=1
@@ -127,35 +133,57 @@ class TestPromptFallbackMechanisms:
         # Should return None on exception
         assert result is None
 
-    def test_hardcoded_fallback_prompt_dream(self):
-        """Test hardcoded fallback for dream entry type."""
+    def test_hardcoded_cleanup_prompt_dream(self):
+        """Test hardcoded cleanup prompt for dream entry type."""
         service = LLMCleanupService()
 
-        prompt = service._get_hardcoded_fallback_prompt("dream")
+        prompt = service._get_hardcoded_cleanup_prompt("dream")
 
         assert "dream journal assistant" in prompt.lower()
         assert "{transcription_text}" in prompt
+        assert "<break>" in prompt  # Should mention <break> markers
 
-    def test_hardcoded_fallback_prompt_generic(self):
-        """Test hardcoded fallback for non-dream entry types."""
+    def test_hardcoded_cleanup_prompt_generic(self):
+        """Test hardcoded cleanup prompt for non-dream entry types."""
         service = LLMCleanupService()
 
         for entry_type in ["journal", "meeting", "note"]:
-            prompt = service._get_hardcoded_fallback_prompt(entry_type)
+            prompt = service._get_hardcoded_cleanup_prompt(entry_type)
 
             assert "transcription cleanup assistant" in prompt.lower()
             assert "{transcription_text}" in prompt
+            assert "<break>" in prompt
+
+    def test_hardcoded_analysis_prompt_dream(self):
+        """Test hardcoded analysis prompt for dream entry type."""
+        service = LLMCleanupService()
+
+        prompt = service._get_hardcoded_analysis_prompt("dream")
+
+        assert "{cleaned_text}" in prompt
+        assert "{output_format}" in prompt
+        assert "dream" in prompt.lower()
+
+    def test_hardcoded_analysis_prompt_generic(self):
+        """Test hardcoded analysis prompt for non-dream entry types."""
+        service = LLMCleanupService()
+
+        for entry_type in ["journal", "meeting", "note"]:
+            prompt = service._get_hardcoded_analysis_prompt(entry_type)
+
+            assert "{cleaned_text}" in prompt
+            assert "{output_format}" in prompt
 
     @pytest.mark.asyncio
-    async def test_get_prompt_template_with_db_success(self):
-        """Test full prompt template chain with successful DB lookup."""
+    async def test_get_cleanup_prompt_with_db_success(self):
+        """Test full cleanup prompt chain with successful DB lookup."""
         mock_session = AsyncMock(spec=AsyncSession)
 
         mock_template = PromptTemplate(
             id=5,
             name="custom_prompt",
             entry_type="journal",
-            prompt_text="Custom prompt for {transcription_text}\n\n{output_format}",
+            prompt_text="Custom cleanup prompt for {transcription_text}",
             description="Custom",
             is_active=True,
             version=2
@@ -172,14 +200,14 @@ class TestPromptFallbackMechanisms:
 
         service = LLMCleanupService(db_session=mock_session)
 
-        prompt_text, template_id = await service._get_prompt_template("journal")
+        prompt_text, template_id = await service._get_cleanup_prompt("journal")
 
-        assert "Custom prompt for" in prompt_text
+        assert "Custom cleanup prompt for" in prompt_text
         assert template_id == 5
 
     @pytest.mark.asyncio
-    async def test_get_prompt_template_fallback_to_hardcoded(self):
-        """Test fallback to hardcoded prompt when DB lookup fails."""
+    async def test_get_cleanup_prompt_fallback_to_hardcoded(self):
+        """Test fallback to hardcoded cleanup prompt when DB lookup fails."""
         mock_session = AsyncMock(spec=AsyncSession)
 
         # Mock no results: execute() -> scalars() -> first() returns None
@@ -193,22 +221,34 @@ class TestPromptFallbackMechanisms:
 
         service = LLMCleanupService(db_session=mock_session)
 
-        prompt_text, template_id = await service._get_prompt_template("dream")
+        prompt_text, template_id = await service._get_cleanup_prompt("dream")
 
         # Should fall back to hardcoded prompt
         assert "dream journal assistant" in prompt_text.lower()
         assert template_id is None  # No DB template used
 
     @pytest.mark.asyncio
-    async def test_get_prompt_template_no_session_uses_fallback(self):
+    async def test_get_cleanup_prompt_no_session_uses_fallback(self):
         """Test using hardcoded fallback when no session provided."""
         service = LLMCleanupService(db_session=None)
 
-        prompt_text, template_id = await service._get_prompt_template("journal")
+        prompt_text, template_id = await service._get_cleanup_prompt("journal")
 
         # Should use hardcoded fallback
         assert "transcription cleanup assistant" in prompt_text.lower()
         assert template_id is None
+
+    def test_get_analysis_prompt_uses_schema(self):
+        """Test that analysis prompt has correct structure."""
+        service = LLMCleanupService(db_session=None)
+
+        prompt_text = service._get_analysis_prompt("dream")
+
+        # Analysis prompt should have cleaned_text placeholder (not transcription_text)
+        assert "{cleaned_text}" in prompt_text  # Placeholder for cleaned text
+        assert "{transcription_text}" not in prompt_text  # Not using transcription placeholder
+        # Should mention JSON output
+        assert "json" in prompt_text.lower() or "JSON" in prompt_text
 
 
 class TestPromptTemplateValidation:
@@ -220,7 +260,7 @@ class TestPromptTemplateValidation:
             id=1,
             name="valid",
             entry_type="dream",
-            prompt_text="Valid prompt with {transcription_text} placeholder\n\n{output_format}",
+            prompt_text="Valid prompt with {transcription_text} placeholder",
             is_active=True,
             version=1
         )
