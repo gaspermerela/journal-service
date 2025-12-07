@@ -152,7 +152,7 @@ async def process_cleanup_background(
                 cleaned_text=encrypted_cleaned_text,
                 analysis=encrypted_analysis,
                 prompt_template_id=result.get("prompt_template_id"),
-                llm_raw_response=result.get("llm_raw_response")
+                llm_raw_response=result.get("llm_raw_response") if settings.LLM_STORE_RAW_RESPONSE else None
             )
             await db.commit()
 
@@ -268,7 +268,7 @@ async def process_cleanup_background(
                     cleaned_entry_id=cleaned_entry_id,
                     cleanup_status=CleanupStatus.FAILED,
                     error_message=str(e),
-                    llm_raw_response=llm_raw_response,
+                    llm_raw_response=llm_raw_response if settings.LLM_STORE_RAW_RESPONSE else None,
                     prompt_template_id=prompt_template_id
                 )
                 await db.commit()

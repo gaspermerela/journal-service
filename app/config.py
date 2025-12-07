@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     # Groq API Configuration (for both transcription and LLM)
     GROQ_API_KEY: Optional[str] = None  # Required when using Groq provider
     GROQ_TRANSCRIPTION_MODEL: str = "whisper-large-v3"  # Groq's Whisper model
-    GROQ_LLM_MODEL: str = "llama-3.3-70b-versatile"  # Groq's chat model
+    GROQ_LLM_MODEL: str = "meta-llama/llama-4-maverick-17b-128e-instruct"  # Groq's chat model
 
     # CORS Configuration
     CORS_ORIGINS: str = "*"
@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     # Development/Debug
     DEBUG: bool = False
     RELOAD: bool = False
+    LLM_STORE_RAW_RESPONSE: bool = False  # Store raw LLM responses for debugging (disable in prod)
 
     # Authentication & JWT Configuration
     JWT_SECRET_KEY: str  # Required - no default for security
