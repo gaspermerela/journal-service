@@ -42,6 +42,9 @@ class LLMCleanupService(ABC):
         """
         Clean up transcription text using an LLM.
 
+        Returns plain text with paragraph breaks (no JSON, no analysis).
+        Use analyze_text() separately for analysis extraction.
+
         Args:
             transcription_text: Raw transcription text to clean
             entry_type: Type of entry (dream, journal, meeting, etc.)
@@ -51,15 +54,43 @@ class LLMCleanupService(ABC):
 
         Returns:
             Dict containing:
-                - cleaned_text: str
-                - analysis: dict with themes, emotions, characters, locations
+                - cleaned_text: str (plain text with paragraph breaks)
                 - prompt_template_id: Optional[int]
-                - llm_raw_response: str
-                - temperature: Optional[float] - temperature used
-                - top_p: Optional[float] - top_p used
+                - llm_raw_response: str (original response with <break> markers)
+                - temperature: Optional[float]
+                - top_p: Optional[float]
 
         Raises:
-            Exception: If cleanup fails after retries
+            LLMCleanupError: If cleanup fails after retries
+        """
+        pass
+
+    @abstractmethod
+    async def analyze_text(
+        self,
+        cleaned_text: str,
+        entry_type: str = "dream",
+        temperature: Optional[float] = None,
+        top_p: Optional[float] = None,
+        model: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Extract analysis from cleaned text (themes, emotions, etc.).
+
+        Args:
+            cleaned_text: Cleaned text to analyze
+            entry_type: Type of entry for schema lookup
+            temperature: Temperature for LLM sampling
+            top_p: Top-p for nucleus sampling
+            model: Model to use for analysis
+
+        Returns:
+            Dict containing:
+                - analysis: dict with entry_type-specific fields
+                - llm_raw_response: str
+
+        Raises:
+            LLMCleanupError: If analysis fails after retries
         """
         pass
 
