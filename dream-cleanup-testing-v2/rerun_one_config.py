@@ -70,7 +70,7 @@ sys.path.insert(0, str(project_root))
 load_dotenv(project_root / ".env")
 
 # Configuration
-TRANSCRIPTION_ID = "5beeaea1-967a-4569-9c84-eccad8797b95"
+TRANSCRIPTION_ID = "70cfb2c5-89c1-4486-a752-bd7cba980d3d"
 API_BASE_URL = "http://localhost:8000/api/v1"
 POLL_INTERVAL = 2  # seconds
 MAX_POLL_TIME = 120  # seconds
@@ -419,7 +419,7 @@ async def execute_cleanup(
         }
 
 
-def print_result_for_evaluation(config_name: str, result: Dict[str, Any], version: int):
+def print_result_for_evaluation(config_name: str, result: Dict[str, Any], version: int, prompt_name: str):
     """Print result in format ready for manual scoring."""
     print(f"\n{'='*80}")
     print(f"RESULT FOR EVALUATION: {config_name} (version {version})")
@@ -454,7 +454,7 @@ def print_result_for_evaluation(config_name: str, result: Dict[str, Any], versio
     print(f"   Locations: {result.get('locations', [])}")
 
     # Load raw transcription for comparison
-    data_file = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / "fetched_data.json"
+    data_file = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / prompt_name / "fetched_data.json"
     if data_file.exists():
         with open(data_file, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -572,7 +572,7 @@ Examples:
 
         version = args.version if args.version else max(find_all_versions(config_name, cache_dir))
         print(f"   ✅ Loaded version {version}")
-        print_result_for_evaluation(config_name, result, version)
+        print_result_for_evaluation(config_name, result, version, prompt_name)
         return
 
     # Execute mode
@@ -628,7 +628,7 @@ Examples:
         print(f"   💽 Also saved to database (cleanup_id: {result.get('cleanup_id', 'N/A')})")
 
         # Print for evaluation
-        print_result_for_evaluation(config_name, result, next_version)
+        print_result_for_evaluation(config_name, result, next_version, prompt_name)
 
         print(f"\n🌐 View in frontend or via API:")
         print(f"   GET {API_BASE_URL}/entries/{TRANSCRIPTION_ID}/cleaned")
