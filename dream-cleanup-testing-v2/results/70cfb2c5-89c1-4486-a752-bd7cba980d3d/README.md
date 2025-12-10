@@ -9,49 +9,61 @@
 
 | Prompt | Model | Config | Score | Status |
 |--------|-------|--------|-------|--------|
-| dream_v11_nojson | maverick | T1 | 86/100 | PASS |
-
----
-
-## Comparison with Previous Transcription (5beeaea1)
-
-| Metric | Old (5beeaea1) | New (70cfb2c5) |
-|--------|----------------|----------------|
-| Raw length | 5,051 chars | 5,013 chars |
-| Best score | 94/100 (T1) | 86/100 (T1) |
-| Status | PASS | PASS |
-
-### Score Drop Analysis (-8 points)
-
-| Category | Old | New | Delta | Cause |
-|----------|-----|-----|-------|-------|
-| Length | 4 | 1 | -3 | Over-compression (58% vs 72%) |
-| Hallucinations | 10 | 6 | -4 | 2 inventions ("Skupaj", "nazaj") |
-| Content | 42 | 41 | -1 | 4 detail losses (no voice penalty) |
-| Grammar | 23 | 23 | 0 | Same |
-| Readability | 15 | 15 | 0 | Same |
-
-### Transcription Quality
-
-Both transcriptions capture all criteria details identically. **No transcription-level failures.**
-
-All content losses are **cleanup failures** - the LLM did not preserve details that were present in the input.
+| **dream_v13** | maverick | T1 | **91/100** | EXCELLENT |
 
 ---
 
 ## Prompt Comparison
 
-| Prompt | Best Model | Config | Score | G | C | R | H | L |
-|--------|------------|--------|-------|---|---|---|---|---|
-| dream_v11_nojson | maverick | T1 | 86/100 | 23 | 41 | 15 | 6 | 1 |
-| dream_v12 | maverick | T1 | 85/100 | 22 | 37 | 15 | 6 | 5 |
+| Prompt | Best Model | Config | Score | G | C | R | H | L | Key Finding |
+|--------|------------|--------|-------|---|---|---|---|---|-------------|
+| [dream_v13](./dream_v13/) | maverick | T1 | **91** | 23 | 40 | 15 | 8 | 5 | Voice fixed, no header |
+| [dream_v12](./dream_v12/) | maverick | T1 | 85 | 22 | 37 | 15 | 6 | 5 | Length OK, past tense |
+| [dream_v11_nojson](./dream_v11_nojson/) | maverick | T1 | 86 | 23 | 41 | 15 | 6 | 1 | Over-compressed (58%) |
 
-**dream_v12 notes:** Length constraint (>=75%) worked - 82% vs 58%. But model switched to past tense (-7 voice penalty). More content preserved (43/44 vs 40/44 C_passed).
+---
+
+## Prompt Evolution
+
+| Version | Key Change | Score | Result |
+|---------|-----------|-------|--------|
+| v11_nojson | Baseline (no JSON) | 86 | PASS - Over-compressed to 58% |
+| v12 | Added >=75% length requirement | 85 | PASS - Length fixed, but past tense |
+| **v13** | Added present tense instruction + OUTPUT FORMAT | **91** | **EXCELLENT** - Production ready |
+
+### v13 Improvements
+
+1. **Voice penalty:** -3 (minor) vs -7 (major) in v12
+2. **No header artifact:** "Here is the cleaned..." removed
+3. **Tighter variance:** 2.2% length range vs 7.5%
+4. **All EXCELLENT:** 90-91 across 4 runs
+
+---
+
+## Variance Testing Summary
+
+| Prompt | Length Range | Score Range | Best | Worst |
+|--------|--------------|-------------|------|-------|
+| dream_v13 | 73.7%-75.9% (2.2%) | 90-91 (1pt) | 91 | 90 |
+| dream_v12 | 74.9%-82.4% (7.5%) | 82-85 (3pt) | 85 | 82 |
+
+---
+
+## Comparison with Previous Transcription (5beeaea1)
+
+| Metric | Old (5beeaea1) | New (70cfb2c5) v11 | New (70cfb2c5) v13 |
+|--------|----------------|--------------------|--------------------|
+| Raw length | 5,051 chars | 5,013 chars | 5,013 chars |
+| Best score | 94/100 | 86/100 | **91/100** |
+| Status | PASS | PASS | **EXCELLENT** |
+
+v13 closes the gap from 94→86 to 94→91 (-3 pts vs -8 pts).
 
 ---
 
 ## Next Steps
 
-1. Test T2-T7 configs to see if different temperatures reduce over-compression
-2. Consider P1-P6 (top-p only) configs
-3. Compare with llama-3.3-70b-versatile on same transcription
+1. ✅ ~~Test T2-T7 configs~~ - T1 at temp=0.0 produces best results
+2. ✅ ~~Fix voice/tense~~ - v13 fixes this with CRITICAL section instruction
+3. Consider testing on other transcriptions to verify generalization
+4. Optional: Add STT mishearings for "nazdolj→navzdol", "obhodnikov→hodnikov"
