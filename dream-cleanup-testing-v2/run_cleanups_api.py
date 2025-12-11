@@ -36,7 +36,7 @@ sys.path.insert(0, str(project_root))
 load_dotenv(project_root / ".env")
 
 # Configuration
-TRANSCRIPTION_ID = "5beeaea1-967a-4569-9c84-eccad8797b95"
+TRANSCRIPTION_ID = "70cfb2c5-89c1-4486-a752-bd7cba980d3d"
 API_BASE_URL = "http://localhost:8000/api/v1"
 POLL_INTERVAL = 2  # seconds
 MAX_POLL_TIME = 180  # seconds (increased for larger models)

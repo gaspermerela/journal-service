@@ -4,44 +4,90 @@
 
 ---
 
-**Prompt:** dream_v13 (Fixed present tense + output format)
+**Prompt:** dream_v13 (Present tense + output format)
 **Test Date:** 2025-12-10
 **Transcription ID:** 70cfb2c5-89c1-4486-a752-bd7cba980d3d
 **Raw Length:** 5,013 characters
 
 ---
 
-## Best Results Summary
+## Summary
 
-| Model | Best Config | Score | Status | Key Finding |
-|-------|-------------|-------|--------|-------------|
-| **[maverick-17b](./meta-llama-llama-4-maverick-17b-128e-instruct.md)** | T1_v1/v2 | **91/100** | EXCELLENT | Voice fixed, no header artifact |
-
----
-
-## Variance Testing Results
-
-**Key finding:** Very consistent results - all runs in EXCELLENT range (90-91).
-
-| Run | Length | Score | Status |
-|-----|--------|-------|--------|
-| T1_v1 | 74.6% | **91** | EXCELLENT |
-| T1_v2 | 75.9% | **91** | EXCELLENT |
-| T1_v3 | 75.7% | **90** | EXCELLENT |
-| T1_v4 | 73.7% | **90** | EXCELLENT |
-
-| Metric | Min | Max | Range |
-|--------|-----|-----|-------|
-| Length | 73.7% | 75.9% | 2.2% |
-| Score | 90 | 91 | 1 pt |
+| Metric | Value |
+|--------|-------|
+| **Best Score** | 93/100 (T1_v7) |
+| **Worst Score** | 79/100 (T1_v5) |
+| **EXCELLENT Rate** | 64% (9/14 runs) |
+| **Status** | **NOT PRODUCTION READY** |
 
 ---
 
-## Key Changes from v12
+## Critical Finding: High Variance at temp=0.0
 
-1. **Added present tense in CRITICAL:** `⚠️ DO write in present tense, first person singular ("jaz")`
-2. **Added OUTPUT FORMAT:** `Respond ONLY with the cleaned text.`
-3. **Reorganized REMOVE section:** Clearer structure
+Initial testing (4 runs) showed tight 2.2% variance. Extended testing (14 runs) reveals:
+
+| Metric | Initial (v1-v4) | Extended (v1-v14) |
+|--------|-----------------|-------------------|
+| Length Variance | 2.2% | **23%** |
+| Score Variance | 1 pt | **14 pts** |
+| EXCELLENT Rate | 100% | **64%** |
+| Failure Rate | 0% | **36%** |
+
+**Conclusion:** Initial results were statistically lucky. True model behavior is highly variable.
+
+---
+
+## Extended Variance Testing (14 Runs)
+
+| Run | Ratio | G | C | R | H | L | Total | Status |
+|-----|-------|---|---|---|---|---|-------|--------|
+| T1_v1 | 74.6% | 23 | 40 | 15 | 8 | 5 | **91** | EXCELLENT |
+| T1_v2 | 75.9% | 23 | 40 | 15 | 8 | 5 | **91** | EXCELLENT |
+| T1_v3 | 75.7% | 23 | 39 | 15 | 8 | 5 | **90** | EXCELLENT |
+| T1_v4 | 73.7% | 22 | 40 | 15 | 8 | 5 | **90** | EXCELLENT |
+| T1_v5 | 57.0% | 23 | 34 | 15 | 6 | 1 | **79** | REVIEW |
+| T1_v6 | 74.8% | 18 | 39 | 15 | 8 | 5 | **85** | CYRILLIC |
+| T1_v7 | 73.7% | 23 | 40 | 15 | 10 | 5 | **93** | EXCELLENT |
+| T1_v8 | 75.7% | 23 | 40 | 15 | 8 | 5 | **91** | EXCELLENT |
+| T1_v9 | 59.3% | 23 | 36 | 15 | 6 | 1 | **81** | PASS |
+| T1_v10 | 75.3% | 23 | 40 | 15 | 8 | 5 | **91** | EXCELLENT |
+| T1_v11 | 61.5% | 23 | 37 | 15 | 8 | 3 | **86** | PASS |
+| T1_v12 | 74.6% | 23 | 40 | 15 | 8 | 5 | **91** | EXCELLENT |
+| T1_v13 | 55.4% | 23 | 35 | 15 | 8 | 1 | **82** | PASS |
+| T1_v14 | 78.4% | 23 | 41 | 15 | 8 | 5 | **92** | EXCELLENT |
+
+---
+
+## Critical Issues Found
+
+### 1. Cyrillic Character Bug (v6)
+
+v6 contains Russian/Cyrillic characters:
+```
+preden ljudje приходят v službo  ← Russian "приходят"
+```
+
+This is a severe Groq/model bug. Output is **UNACCEPTABLE** despite scoring 85.
+
+### 2. Over-compression (36% of runs)
+
+| Run | Ratio | Impact |
+|-----|-------|--------|
+| v5 | 57.0% | 8 content failures |
+| v9 | 59.3% | 4 content failures |
+| v11 | 61.5% | 3 content failures |
+| v13 | 55.4% | 8 content failures |
+
+### 3. Consistent Failures (100% of runs)
+
+- **G13:** "nazdolj" not fixed to "navzdol"
+- **G21:** "obhodnikov" not fixed to "hodnikov"
+- **C23:** Flat areas + corridors detail always missing
+
+### 4. Hallucination (93% of runs)
+
+- **H1:** "smo prišli" / "Skupaj pridemo" - implies walking together
+- Original says he MET her, not walked with her
 
 ---
 
@@ -82,56 +128,24 @@ TRANSCRIPTION:
 
 ---
 
-## Key Findings
-
-### What Worked
-- **Voice fixed:** Present tense instruction in CRITICAL section worked (-3 penalty vs -7 in v12)
-- **No header artifact:** OUTPUT FORMAT instruction prevented "Here is the cleaned..."
-- **Tight variance:** 2.2% length range vs 7.5% in v12
-- **All EXCELLENT:** Every run scores 90-91
-
-### Remaining Issues
-- **C23:** Flat areas + corridors still missing (all runs)
-- **G13/G20/G21:** Same STT fixes still failing ("nazdolj", "obhodnikov")
-- **H1:** "smo prišli" hallucination (implies walked together)
-
----
-
-## Comparison: v12 vs v13
-
-| Metric | v12 (best) | v13 (best) | Delta |
-|--------|------------|------------|-------|
-| **Total** | 85 | **91** | **+6** |
-| Content | 37 | 40 | +3 |
-| Grammar | 22 | 23 | +1 |
-| Readability | 15 | 15 | 0 |
-| Voice penalty | -7 | -3 | **+4** |
-| Length variance | 7.5% | 2.2% | **-5.3%** |
-| Score variance | 3 pts | 1 pt | **-2 pts** |
-
----
-
-## Scoring Comparison (All Runs)
-
-| Model | Run | Length | G | C | R | H | L | Total | Status |
-|-------|-----|--------|---|---|---|---|---|-------|--------|
-| [maverick](./meta-llama-llama-4-maverick-17b-128e-instruct.md) | T1_v1 | 74.6% | 23 | 40 | 15 | 8 | 5 | **91** | EXCELLENT |
-| [maverick](./meta-llama-llama-4-maverick-17b-128e-instruct.md) | T1_v2 | 75.9% | 23 | 40 | 15 | 8 | 5 | **91** | EXCELLENT |
-| [maverick](./meta-llama-llama-4-maverick-17b-128e-instruct.md) | T1_v3 | 75.7% | 23 | 39 | 15 | 8 | 5 | **90** | EXCELLENT |
-| [maverick](./meta-llama-llama-4-maverick-17b-128e-instruct.md) | T1_v4 | 73.7% | 22 | 40 | 15 | 8 | 5 | **90** | EXCELLENT |
-
----
-
 ## Recommendations
 
-1. **Production ready:** v13 achieves EXCELLENT threshold consistently
-2. **Optional improvements:**
+### Not Production Ready
+
+With 36% failure rate (over-compression + Cyrillic bug), dream_v13 is **NOT suitable for production**.
+
+### Potential Mitigations
+
+1. **Retry Logic:** Run 2-3 times, select best by length ratio
+2. **Cyrillic Detection:** Reject outputs containing Cyrillic characters
+3. **Length Validation:** Reject outputs below 70% ratio
+4. **Prompt Fixes:**
    - Add "nazdolj→navzdol" to STT mishearings
    - Add "obhodnikov→hodnikov" to STT mishearings
-   - Add instruction about preserving individual agency
+   - Add instruction about preserving individual encounters
 
 ---
 
 ## Model Files
 
-- [meta-llama-llama-4-maverick-17b-128e-instruct.md](./meta-llama-llama-4-maverick-17b-128e-instruct.md) - Detailed scoring for all T1 runs
+- [meta-llama-llama-4-maverick-17b-128e-instruct.md](./meta-llama-llama-4-maverick-17b-128e-instruct.md) - Full 14-run analysis
