@@ -81,10 +81,24 @@ async def lifespan(app: FastAPI):
                 f"Groq transcription service initialized: model={settings.GROQ_TRANSCRIPTION_MODEL}"
             )
 
+        elif settings.TRANSCRIPTION_PROVIDER.lower() == "assemblyai":
+            # Create AssemblyAI API transcription service
+            if not settings.ASSEMBLYAI_API_KEY:
+                raise ValueError("ASSEMBLYAI_API_KEY is required when TRANSCRIPTION_PROVIDER is 'assemblyai'")
+
+            app.state.transcription_service = create_transcription_service(
+                provider="assemblyai",
+                model_name=settings.ASSEMBLYAI_MODEL,
+                api_key=settings.ASSEMBLYAI_API_KEY
+            )
+            logger.info(
+                f"AssemblyAI transcription service initialized: model={settings.ASSEMBLYAI_MODEL}"
+            )
+
         else:
             raise ValueError(
                 f"Unsupported TRANSCRIPTION_PROVIDER: {settings.TRANSCRIPTION_PROVIDER}. "
-                f"Supported: whisper, groq"
+                f"Supported: whisper, groq, assemblyai"
             )
 
     except Exception as e:

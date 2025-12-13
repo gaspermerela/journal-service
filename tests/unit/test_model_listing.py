@@ -5,6 +5,7 @@ import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from app.services.transcription import WhisperLocalService
 from app.services.transcription_groq import GroqTranscriptionService
+from app.services.transcription_assemblyai import AssemblyAITranscriptionService
 from app.services.transcription_noop import NoOpTranscriptionService
 from app.services.llm_cleanup_ollama import OllamaLLMCleanupService
 from app.services.llm_cleanup_groq import GroqLLMCleanupService
@@ -128,6 +129,49 @@ class TestGroqTranscriptionServiceModels:
 
             with pytest.raises(RuntimeError, match="Failed to fetch Groq models"):
                 await service.list_available_models()
+
+
+class TestAssemblyAITranscriptionServiceModels:
+    """Test AssemblyAITranscriptionService.list_available_models()"""
+
+    @pytest.mark.asyncio
+    async def test_list_available_models_returns_assemblyai_models(self):
+        """Test that AssemblyAI service returns expected models."""
+        service = AssemblyAITranscriptionService(
+            api_key="test-api-key",
+            model="universal"
+        )
+
+        models = await service.list_available_models()
+
+        # Should return only universal model
+        assert isinstance(models, list)
+        assert len(models) == 1
+
+        # Check structure of models
+        assert models[0]["id"] == "universal"
+        assert "name" in models[0]
+        assert "description" in models[0]
+
+    @pytest.mark.asyncio
+    async def test_list_available_models_cached(self):
+        """Test that models are cached after first call."""
+        service = AssemblyAITranscriptionService(
+            api_key="test-api-key",
+            model="universal"
+        )
+
+        # First call
+        models1 = await service.list_available_models()
+
+        # Cache should be populated
+        assert service._models_cache is not None
+        assert service._models_cache_timestamp is not None
+
+        # Second call should return same data from cache
+        models2 = await service.list_available_models()
+
+        assert models1 == models2
 
 
 class TestNoOpTranscriptionServiceModels:

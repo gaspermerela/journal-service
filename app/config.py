@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     GROQ_TRANSCRIPTION_MODEL: str = "whisper-large-v3"  # Groq's Whisper model
     GROQ_LLM_MODEL: str = "meta-llama/llama-4-maverick-17b-128e-instruct"  # Groq's chat model
 
+    # AssemblyAI API Configuration
+    ASSEMBLYAI_API_KEY: Optional[str] = None  # Required when using AssemblyAI provider
+    ASSEMBLYAI_MODEL: str = "universal"
+    ASSEMBLYAI_POLL_INTERVAL: float = 3.0  # Seconds between status polls
+    ASSEMBLYAI_TIMEOUT: int = 1000  # Max seconds to wait for transcription
+
     # CORS Configuration
     CORS_ORIGINS: str = "*"
 
@@ -163,6 +169,7 @@ TRANSCRIPTION_PROVIDER_PARAMETERS = {
             "description": "Temperature for transcription sampling (0.0-1.0, higher = more random)"
         }
     },
+    "assemblyai": {},  # AssemblyAI - no configurable parameters (no beam_size/temperature support)
     "noop": {}  # Test provider - no configurable parameters
 }
 

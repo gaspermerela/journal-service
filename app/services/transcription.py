@@ -318,12 +318,12 @@ def create_transcription_service(
     Factory function to create transcription service based on provider.
 
     Args:
-        provider: Provider name ("whisper" for local, "groq" for API)
+        provider: Provider name ("whisper" for local, "groq" or "assemblyai" for API)
         model: Loaded Whisper model instance (only for local whisper)
-        model_name: Name of the model (e.g., 'large-v3')
+        model_name: Name of the model (e.g., 'large-v3', 'universal')
         device: Device to use for local whisper ('cpu' or 'cuda')
         num_threads: Number of CPU threads for local whisper
-        api_key: API key for Groq (required if provider is "groq")
+        api_key: API key for Groq/AssemblyAI (required if provider is "groq" or "assemblyai")
 
     Returns:
         TranscriptionService implementation
@@ -360,8 +360,29 @@ def create_transcription_service(
                 f"Groq provider selected but groq package not installed. "
                 f"Install with: pip install groq"
             ) from e
+    elif provider == "assemblyai":
+        if api_key is None:
+            raise ValueError("api_key is required for assemblyai provider")
+        if model_name is None:
+            raise ValueError("model_name is required for assemblyai provider")
+
+        try:
+            from app.services.transcription_assemblyai import AssemblyAITranscriptionService
+            from app.config import settings
+
+            return AssemblyAITranscriptionService(
+                api_key=api_key,
+                model=model_name,
+                poll_interval=settings.ASSEMBLYAI_POLL_INTERVAL,
+                timeout=settings.ASSEMBLYAI_TIMEOUT
+            )
+        except ImportError as e:
+            raise ValueError(
+                f"AssemblyAI provider selected but httpx package not installed. "
+                f"Install with: pip install httpx"
+            ) from e
     else:
         raise ValueError(
             f"Unsupported transcription provider: {provider}. "
-            f"Supported providers: whisper, groq"
+            f"Supported providers: whisper, groq, assemblyai"
         )
