@@ -292,6 +292,33 @@ class TestAssemblyAITranscriptionService:
             result = await service.transcribe_audio(audio_file)
             assert result["text"] == "Test transcription"
 
+    @pytest.mark.asyncio
+    async def test_auto_delete_disabled_skips_deletion(self, tmp_path):
+        """Verify that deletion is skipped when auto_delete=False."""
+        audio_file = tmp_path / "test.mp3"
+        audio_file.write_bytes(b"fake audio")
+
+        # Create service with auto_delete disabled
+        service = AssemblyAITranscriptionService(api_key="test-key", auto_delete=False)
+
+        # Mock internal methods
+        with patch.object(service, "_upload_audio") as mock_upload, \
+                patch.object(service, "_submit_transcription") as mock_submit, \
+                patch.object(service, "_poll_transcription") as mock_poll, \
+                patch.object(service, "_delete_transcript") as mock_delete:
+            mock_upload.return_value = "https://cdn.assemblyai.com/test"
+            mock_submit.return_value = "tx123"
+            mock_poll.return_value = {
+                "text": "Test transcription",
+                "language_code": "en"
+            }
+
+            result = await service.transcribe_audio(audio_file)
+
+            # Verify delete was NOT called
+            mock_delete.assert_not_called()
+            assert result["text"] == "Test transcription"
+
     def test_get_model_name(self):
         """Test model name format."""
         service = AssemblyAITranscriptionService(
@@ -409,20 +436,23 @@ class TestAssemblyAITranscriptionServiceInit:
         assert service.model == "universal"
         assert service.poll_interval == 3.0
         assert service.timeout == 300
+        assert service.auto_delete is True
 
     def test_custom_values(self):
         """Test custom initialization values."""
         service = AssemblyAITranscriptionService(
             api_key="custom-key",
-            model="best",
+            model="universal",
             poll_interval=5.0,
-            timeout=600
+            timeout=600,
+            auto_delete=False
         )
 
         assert service.api_key == "custom-key"
-        assert service.model == "best"
+        assert service.model == "universal"
         assert service.poll_interval == 5.0
         assert service.timeout == 600
+        assert service.auto_delete is False
 
     def test_cache_initialized_empty(self):
         """Test that cache is initialized as empty."""
