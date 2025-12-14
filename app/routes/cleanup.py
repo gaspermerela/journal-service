@@ -71,7 +71,8 @@ async def process_cleanup_background(
     llm_model: str = None,
     analysis_temperature: float = None,
     analysis_top_p: float = None,
-    analysis_model: str = None
+    analysis_model: str = None,
+    enable_chunking: bool = False
 ):
     """
     Background task to process LLM cleanup.
@@ -88,6 +89,7 @@ async def process_cleanup_background(
         analysis_temperature: Temperature for analysis LLM sampling (separate from cleanup)
         analysis_top_p: Top-p for analysis nucleus sampling (separate from cleanup)
         analysis_model: Model to use for analysis (separate from cleanup model)
+        enable_chunking: Enable smart text chunking for long texts (Groq only)
     """
     from app.database import get_session
     from app.models.notion_sync import SyncStatus as NotionSyncStatus
@@ -120,12 +122,14 @@ async def process_cleanup_background(
             )
 
             # Step 1: Cleanup (plain text with paragraph breaks)
-            cleanup_result = await llm_service.cleanup_transcription(
+            # Use chunking wrapper if enabled (handles chunking internally)
+            cleanup_result = await llm_service.cleanup_transcription_with_chunking(
                 transcription_text=transcription_text,
                 entry_type=entry_type,
                 temperature=temperature,
                 top_p=top_p,
-                model=llm_model
+                model=llm_model,
+                enable_chunking=enable_chunking
             )
 
             logger.info(
@@ -408,7 +412,8 @@ async def trigger_cleanup(
         voice_entry_id=voice_entry.id,
         temperature=request.temperature,
         top_p=request.top_p,
-        llm_model=request.llm_model
+        llm_model=request.llm_model,
+        enable_chunking=request.enable_chunking or False
     )
 
     logger.info(

@@ -82,7 +82,8 @@ async def transcription_then_cleanup_task(
     transcription_model: Optional[str] = None,
     cleanup_temperature: Optional[float] = None,
     cleanup_top_p: Optional[float] = None,
-    llm_model: Optional[str] = None
+    llm_model: Optional[str] = None,
+    enable_chunking: bool = False
 ):
     """
     Background task that runs transcription, then triggers cleanup when done.
@@ -97,6 +98,7 @@ async def transcription_then_cleanup_task(
         cleanup_temperature: Temperature for LLM cleanup (0.0-2.0)
         cleanup_top_p: Top-p for LLM cleanup (0.0-1.0)
         llm_model: Model to use for LLM cleanup
+        enable_chunking: Enable smart text chunking for long texts (Groq only)
     """
     # Import here to avoid circular imports
     from app.routes.transcription import process_transcription_task
@@ -158,7 +160,8 @@ async def transcription_then_cleanup_task(
                     voice_entry_id=entry_id,
                     temperature=cleanup_temperature,
                     top_p=cleanup_top_p,
-                    llm_model=llm_model
+                    llm_model=llm_model,
+                    enable_chunking=enable_chunking
                 )
             else:
                 # Decryption failed
@@ -607,6 +610,7 @@ async def upload_transcribe_and_cleanup(
     cleanup_temperature: Optional[float] = Form(None, ge=0.0, le=2.0, description="Temperature for LLM cleanup (0.0-2.0, higher = more creative). If not provided, uses default."),
     cleanup_top_p: Optional[float] = Form(None, ge=0.0, le=1.0, description="Top-p for LLM cleanup (0.0-1.0, nucleus sampling). If not provided, uses default."),
     llm_model: Optional[str] = Form(None, description="LLM model to use for cleanup (e.g., 'llama-3.3-70b-versatile'). If not provided, uses configured default."),
+    enable_chunking: Optional[bool] = Form(False, description="Enable smart text chunking for long transcriptions (>500 words). Splits text at sentence boundaries to prevent LLM hallucination."),
     db: AsyncSession = Depends(get_db),
     transcription_service: TranscriptionService = Depends(get_transcription_service),
     current_user: User = Depends(get_current_user),
@@ -790,7 +794,8 @@ async def upload_transcribe_and_cleanup(
             transcription_model=transcription_model,
             cleanup_temperature=cleanup_temperature,
             cleanup_top_p=cleanup_top_p,
-            llm_model=llm_model
+            llm_model=llm_model,
+            enable_chunking=enable_chunking or False
         )
 
         logger.info(

@@ -36,6 +36,11 @@ class CleanupTriggerRequest(BaseModel):
         default=None,
         description="LLM model to use for cleanup (e.g., 'llama-3.3-70b-versatile'). If not provided, uses configured default."
     )
+    enable_chunking: Optional[bool] = Field(
+        default=False,
+        description="Enable smart text chunking for long transcriptions (>500 words). "
+                    "When enabled, long texts are split at sentence boundaries to prevent LLM hallucination."
+    )
 
 
 class CleanupResponse(BaseModel):
@@ -100,6 +105,11 @@ class UploadTranscribeCleanupRequest(BaseModel):
         ge=0.0,
         le=1.0,
         description="Top-p sampling for LLM cleanup (0.0-1.0)"
+    )
+    enable_chunking: Optional[bool] = Field(
+        default=False,
+        description="Enable smart text chunking for long transcriptions (>500 words). "
+                    "Splits text at sentence boundaries to prevent LLM hallucination."
     )
 
 

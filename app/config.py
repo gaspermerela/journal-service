@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # LLM Cleanup Configuration
     LLM_PROVIDER: str = "groq"  # Options: ollama (local), groq (API)
 
+    # Text Chunking Configuration (for long transcriptions)
+    CHUNK_MAX_WORDS: int = 500  # Max words per chunk before splitting
+
     # Ollama (Local) LLM Configuration
     OLLAMA_BASE_URL: str = "http://localhost:11434"
     OLLAMA_MODEL: str = "llama3.2:3b"
