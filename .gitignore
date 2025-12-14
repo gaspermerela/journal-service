@@ -62,6 +62,6 @@ alembic/versions/*.pyc
 
 worktree
 
-dream-cleanup-testing-v2/criteria/
-dream-cleanup-testing-v2/cache/
-dream-cleanup-testing-v2/reference/
+dream-cleanup-testing/criteria/
+dream-cleanup-testing/cache/
+dream-cleanup-testing/reference/

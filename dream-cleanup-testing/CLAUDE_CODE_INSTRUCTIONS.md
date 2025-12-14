@@ -1,54 +1,64 @@
-# Dream Transcription Cleanup Optimization
+# Dream Cleanup Testing - Claude Code Instructions
 
 ## Overview
-You are optimizing Slovenian dream transcription cleanup. You have database access to:
-- Raw Whisper transcriptions
-- Cleanup prompts (fetch active prompt dynamically)
-- Previous cleanup attempts and scores
 
-## Models to Test
+You are optimizing Slovenian dream transcription cleanup. This guide explains the **checklist-based scoring system** designed for rapid prompt iteration.
 
-**Note:** Model IDs must use exact Groq format (e.g., `openai/gpt-oss-120b`, not `gpt-oss-120b`).
+**Key principle:** Score by checking specific checkpoints, not by subjective prose evaluation.
 
-### Tier 1 - Priority Testing
-| Model ID (Groq) | Why | Watch For |
-|-----------------|-----|-----------|
-| `openai/gpt-oss-120b` | Best grammar, largest | Content changes |
-| `moonshotai/kimi-k2-instruct` | Strong multilingual, 262K context | Unknown Slovenian quality |
-| `qwen/qwen3-32b` | 100+ languages | May be too creative |
+---
 
-### Tier 2 - Secondary Testing
-| Model ID (Groq) | Why | Watch For |
-|-----------------|-----|-----------|
-| `openai/gpt-oss-20b` | Cheaper, good balance | Slightly worse grammar |
-| `llama-3.3-70b-versatile` | Large, general purpose | Less multilingual focus |
-| `meta-llama/llama-4-maverick-17b-128e-instruct` | Newer architecture | Unknown quality |
+## Test Target
 
-### Skip These Models
-- playai-tts, playai-tts-arabic (TTS only)
-- allam-2-7b (Arabic focused)
-- meta-llama/llama-guard-* (safety classification)
-- meta-llama/llama-prompt-guard-* (prompt injection detection)
-- openai/gpt-oss-safeguard-20b (content moderation)
-- groq/compound, groq/compound-mini (tool-use systems)
+**Transcription ID (will change in the future):** `5beeaea1-967a-4569-9c84-eccad8797b95`
+
+All testing uses this single transcription for consistency.
+
+**Scoring criteria:** `criteria/{transcription_id}.md` (gitignored - contains dream content)
+
+---
+
+## Cache Structure
+
+```
+cache/{transcription_id}/
+└── {prompt_name}/
+    ├── fetched_data.json                    # Raw transcription + prompt text for THIS version
+    └── {model_name}/
+        ├── T1.json, T2.json, ... T7.json    # Temperature configs
+        ├── P1.json, P2.json, ... P6.json    # Top-p configs
+        ├── T3_v2.json, T3_v3.json           # Re-run versions
+        └── _summary.json                     # Batch metadata
+```
+
+**Example:** `cache/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v8/llama-3.3-70b-versatile/T1.json`
+
+### Why fetched_data.json is per-prompt
+
+The `fetched_data.json` is stored per prompt version (not per transcription) because:
+1. Different prompt versions have different prompt text
+2. Results depend on the exact prompt used
+3. Each prompt version's README should reference its actual prompt text
+
+**To fetch:** `python fetch_data.py --prompt dream_v8`
 
 ---
 
 ## Parameter Test Grid
 
-### Case 1: Temperature Only (top_p = null/unset)
+### Case 1: Temperature Only (top_p = null)
 
 | Config | Temperature | Expected Behavior |
 |--------|-------------|-------------------|
-| T1 | 0.0 | Most deterministic, may over-correct |
-| T2 | 0.3 | Focused, conservative |
+| T1 | 0.0 | Most deterministic |
+| T2 | 0.3 | Conservative |
 | T3 | 0.5 | Balanced |
 | T4 | 0.8 | Slightly creative |
 | T5 | 1.0 | Default |
 | T6 | 1.5 | More random |
 | T7 | 2.0 | Maximum randomness |
 
-### Case 2: Top-p Only (temperature = null/unset)
+### Case 2: Top-p Only (temperature = null)
 
 | Config | Top-p | Expected Behavior |
 |--------|-------|-------------------|
@@ -59,582 +69,357 @@ You are optimizing Slovenian dream transcription cleanup. You have database acce
 | P5 | 0.9 | Minimal restriction |
 | P6 | 1.0 | Default (no restriction) |
 
-### Case 3: Both Set (not recommended by Groq, but worth testing)
+### Case 3: Both Parameters (if needed)
 
-| Config | Temperature | Top-p | Expected Behavior |
-|--------|-------------|-------|-------------------|
-| B1 | 0.3 | 0.9 | Conservative + slight restriction |
-| B2 | 0.5 | 0.5 | Balanced both |
-| B3 | 0.5 | 0.9 | Balanced temp + minimal top-p |
-| B4 | 0.8 | 0.5 | Creative temp + moderate top-p |
-
-### Recommended Test Order
-
-1. **First:** Test Case 1 (Temperature only) - find best temperature
-2. **Second:** Test Case 2 (Top-p only) - find best top-p
-3. **Third:** Test Case 3 (Both) - only if Cases 1 & 2 don't reach target score
-4. **Compare:** Best from each case against each other
+| Config | Temperature | Top-p |
+|--------|-------------|-------|
+| B1 | 0.3 | 0.9 |
+| B2 | 0.5 | 0.5 |
+| B3 | 0.5 | 0.9 |
+| B4 | 0.8 | 0.5 |
 
 ---
 
-## Testing Workflow
+## Scoring System (100 Points)
 
-### Target Transcription
-**Transcription ID:** `5beeaea1-967a-4569-9c84-eccad8797b95`
+### Point Distribution
 
-All testing will be performed on this specific transcription for consistency.
+| Criterion | Points | What It Measures |
+|-----------|--------|------------------|
+| **Content** | 45 | Scene details preserved (C1-Cn) |
+| **Grammar** | 25 | Spelling/transcription fixes (G1-Gn) |
+| **Readability** | 15 | Paragraphs, flow, coherence (R1-R4) |
+| **Hallucinations** | 10 | Invented/incorrect content (none = 10) |
+| **Length** | 5 | Compression ratio (70-95% optimal) |
 
-**Raw Transcription Location:** `cache/prompt_{prompt_name}/fetched_data.json`
-- Contains the raw Whisper transcription text and prompt used for this test
-- Example: `cache/prompt_dream_v7/fetched_data.json`
-- **CRITICAL:** Always score cleanup results by comparing against THIS raw transcription
-- The reference example (`reference/reference-cleanup-example.md`) is for understanding what good cleanup quality looks like, but do NOT make hard comparisons against it
+**Artifacts (A1-A3):** Pass/fail gate, not scored. Flag if "Hvala" remains.
+
+### Scoring Formulas
+
+#### Content (45 points)
+
+```
+Content = 45 × (C_preserved / C_total) - voice_penalty
+
+Where:
+- C_preserved = C_total - C_failures
+- voice_penalty:
+  - Correct (1st person + present tense): 0
+  - Minor issues (occasional shifts): -3
+  - Major issues (wrong throughout): -7
+
+Minimum: 0
+```
+
+#### Grammar (25 points)
+
+```
+Grammar = 25 × (G_passed / G_total) - language_penalties
+
+Where:
+- G_passed = G_total - G_failures
+- language_penalties:
+  - G+ (English words present): -3
+  - G++ (Russian/Cyrillic present): -5
+
+Minimum: 0
+```
+
+#### Readability (15 points)
+
+```
+Readability = 15 × (R_score / 4)
+
+Where R_score (0-4) is sum of:
+- R1: Paragraph breaks at scene changes (0 or 1)
+- R2: Sentences flow logically (0 or 1)
+- R3: Personal voice preserved (0 or 1)
+- R4: Dream coherence maintained (0 or 1)
+```
+
+#### Hallucinations (10 points)
+
+```
+Hallucinations = max(0, 10 - (H_count × 2))
+
+Where H_count = number of hallucinated/invented details
+- 0 hallucinations: 10 points
+- 1 hallucination: 8 points
+- 2 hallucinations: 6 points
+- 5+ hallucinations: 0 points
+
+Record each hallucination found:
+- H1: [what was added/changed]
+- H2: [what was added/changed]
+```
+
+#### Length (5 points)
+
+```
+Based on: cleaned_length / raw_length
+
+| Ratio | Points | Status |
+|-------|--------|--------|
+| 70-95% | 5 | Optimal |
+| 60-69% or 96-100% | 3 | Minor issue |
+| 50-59% or 101-110% | 1 | Problematic |
+| <50% or >110% | 0 | Severe |
+```
+
+#### Artifacts (Pass/Fail Gate)
+
+```
+NOT scored, but noted:
+- A1: "Hvala" removed? (required - flag if any remain)
+- A2: Intro artifacts removed? (optional)
+- A3: Fillers reduced? (optional)
+```
+
+---
+
+## How to Score
+
+### Step 1: Automated Checks
+
+```
+[ ] No "Hvala" in output (A1 - flag if present)
+[ ] No English words (and, the, but, with, for)
+[ ] No Russian/Cyrillic words
+[ ] Length ratio calculated
+[ ] First person (jaz/sem) preserved
+[ ] Present tense (sedanjik) used
+```
+
+### Step 2: Count Grammar Failures (G1-Gn)
+
+- Open criteria file, check each G checkpoint
+- Count failures: `G1❌, G5❌, G12❌` = 3 failures
+- Note language violations: G+ (English), G++ (Russian)
+
+### Step 3: Count Content Failures (C1-Cn)
+
+- Check each scene's checkpoints against cleaned text
+- Count failures: `C3❌, C17❌, C22❌` = 3 failures
+- Assess narrative voice (C+): minor or major issues?
+
+### Step 4: Count Hallucinations (H)
+
+- Read cleaned text carefully
+- List any invented/changed content not in original
+- Record: `H1: added "polna svetlobe" (original was dark)`
+
+### Step 5: Score Readability (R1-R4)
+
+- R1: Are there paragraph breaks? (0 or 1)
+- R2: Do sentences flow? (0 or 1)
+- R3: Is "jaz" voice preserved? (0 or 1)
+- R4: Is dream logic coherent? (0 or 1)
+
+### Step 6: Calculate Total
+
+```
+Content:       45 × (passed/total) - voice_penalty = ___
+Grammar:       25 × (passed/total) - lang_penalty  = ___
+Readability:   15 × (R_score/4)                    = ___
+Hallucinations: 10 - (H_count × 2)                 = ___
+Length:        [table lookup]                      = ___
+─────────────────────────────────────────────────────────
+TOTAL:                                             ___/100
+```
+
+---
+
+## Thresholds
+
+```
+≥90: EXCELLENT - Production ready, minimal issues
+≥80: PASS      - Acceptable for production
+70-79: REVIEW  - Usable with manual review
+60-69: ITERATE - Needs prompt improvements
+<60: FAIL      - Not usable
+```
+
+---
+
+## Results Format
+
+### Per-Model Results File
+
+Location: `results/{transcription_id}/{prompt_name}/{model}.md`
+
+```markdown
+# {model} on {prompt}
+
+**Best:** T1 | Score: 85/100 | Status: PASS
+
+## All Configs
+
+| Config | Params | Len% | G/25 | C/45 | R/15 | H/10 | L/5 | Total | Status |
+|--------|--------|------|------|------|------|------|-----|-------|--------|
+| T1 | t=0.0 | 82% | 21 | 38 | 11 | 10 | 5 | 85 | PASS |
+| T2 | t=0.3 | 85% | 19 | 37 | 11 | 10 | 5 | 82 | PASS |
+
+## Failures Summary (Best Config Only)
+
+**IMPORTANT:** Analyze failures for the BEST configuration only.
+
+**RULES:**
+1. List EVERY specific checkpoint ID that failed (C8, C23, etc.)
+2. The number of listed failures MUST match the failure count in the header
+3. NEVER say "all preserved" or "minor loss" - be specific about what failed
+4. For each failure, explain what was MISSING or WRONG
+
+### Grammar (G) - Specific G* failures in best config
+- G1: polnica NOT fixed to bolnica
+- G5: stapo NOT fixed to stavbo
+
+### Content (C) - Specific C* failures in best config
+- C8: "hodim naprej in naprej" repetition - MISSING (just "hodim naprej" once)
+- C23: Flat areas + corridors mixed with stairs - MISSING (only describes stair variation)
+- C30: "hodnik levo-desno" at landing - MISSING
+  - Original: "je bil tudi hodnik, levo-desno"
+  - Output: [what model produced instead]
+
+### Hallucinations (H) - Invented details in best config
+- None detected (or list specific H1, H2, etc.)
+
+### Readability (R) - Specific R* failures in best config
+- R1: No paragraph breaks
+```
+
+### Main Index File
+
+Location: `results/{transcription_id}/README.md`
+
+```markdown
+# Results: {transcription_id}
+
+## Best Result
+
+| Prompt | Model | Config | Score | Status |
+|--------|-------|--------|-------|--------|
+| dream_v8 | maverick | T5 | 88/100 | PASS |
+
+## Prompt Comparison
+
+| Prompt | Best Model | Config | Score | G | C | R | H | L |
+|--------|------------|--------|-------|---|---|---|---|---|
+| dream_v8 | maverick | T5 | 88/100 | 21 | 41 | 11 | 10 | 5 |
+```
+
+---
+
+## Workflow
 
 ### Phase 1: Parameter Optimization
 
-**IMPORTANT - Optimization Strategies:**
-
-1. **Token Optimization (Concurrent Processing):**
-   - Execute ALL cleanups for a case, THEN analyze all results in ONE response
-   - This saves 60-75% of Claude Code analysis tokens by sharing context once
-   - Groq API costs remain the same (same number of cleanup calls)
-
-2. **Caching Strategy (Resume Capability):**
-   - **Cache every cleanup result immediately** after receiving from Groq API
-   - Store as JSON files in **prompt-specific, model-specific directories**: `cache/prompt_{prompt_name}/{transcription_id}_{model_name}/{config_name}.json`
-   - If Claude Code session ends, **resume from cached results**
-   - Skip already-completed cleanups when resuming
-   - **Protects expensive Groq API calls** from being lost
-
-   **Cache Directory Structure:**
-   ```
-   cache/
-   ├── prompt_dream_v5/                                            # Prompt version directory
-   │   ├── fetched_data.json                                       # Raw transcription + v5 prompt
-   │   ├── 5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
-   │   │   ├── T1.json, T2.json, ... T7.json                      # Temperature tests
-   │   │   ├── P1.json, P2.json, ... P6.json                      # Top-p tests
-   │   │   ├── B1.json, T1_v2.json, T3_v2.json, ...               # Both params + re-runs
-   │   │   └── _summary.json                                       # Batch metadata
-   │   ├── 5beeaea1-967a-4569-9c84-eccad8797b95_openai-gpt-oss-120b/
-   │   │   └── ...
-   │   └── 5beeaea1-967a-4569-9c84-eccad8797b95_moonshotai-kimi-k2-instruct/
-   │       └── ...
-   └── prompt_dream_v7/                                            # New prompt version
-       ├── fetched_data.json                                       # Raw transcription + v7 prompt
-       └── 5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
-           └── ...
-   ```
-
-   **Cache File Structure:**
-   ```json
-   {
-     "config": "T1",
-     "model": "groq-llama-3.3-70b-versatile",
-     "temperature": 0.0,
-     "top_p": null,
-     "timestamp": "2025-11-29T10:30:00Z",
-     "processing_time_seconds": 4.09,
-     "prompt_id": 378,
-     "prompt_name": "dream_v5",
-     "transcription_id": "5beeaea1-967a-4569-9c84-eccad8797b95",
-     "raw_length": 5051,
-     "cleaned_length": 4234,
-     "cleaned_raw_ratio": 0.8382,
-     "cleaned_text": "...",
-     "themes": [...],
-     "emotions": [...],
-     "characters": [...],
-     "locations": [...],
-     "raw_response": "...",
-     "status": "success"
-   }
-   ```
-
-   **Length Metrics:**
-   - `raw_length`: Character count of the original raw transcription
-   - `cleaned_length`: Character count of the cleaned text output
-   - `cleaned_raw_ratio`: Ratio as 4-decimal float (e.g., 0.8382 = 83.82%)
-
-**Workflow:**
-
-1. **Setup:**
-   - Fetch transcription `5beeaea1-967a-4569-9c84-eccad8797b95` from DB (or use cached `fetched_data.json`)
-   - Fetch current active cleanup prompt from DB
-   - Specify model AND prompt version to test (both required arguments)
-   - Cache directory auto-created: `cache/prompt_{prompt_name}/{transcription_id}_{model_name}/`
-   - Check for existing cached results (resume if found)
-
-2. **Case 1 - Temperature Only (top_p = null):**
-   - **Execute:** Run cleanups T1-T7 (cache each immediately)
-   - **Check cache:** Skip configs that already have cached results
-   - **Collect:** Load all 7 results (from cache or fresh API calls)
-   - **Analyze:** Score all 7 results in ONE comprehensive response
-   - **Compare:** Identify best temperature-only config
-   - **Record:** Update results file with all 7 attempts
-
-3. **Case 2 - Top-p Only (temperature = null):**
-   - **Execute:** Run cleanups P1-P6 (cache each immediately)
-   - **Check cache:** Skip configs that already have cached results
-   - **Collect:** Load all 6 results (from cache or fresh API calls)
-   - **Analyze:** Score all 6 results in ONE comprehensive response
-   - **Compare:** Identify best top-p-only config
-   - **Record:** Update results file with all 6 attempts
-
-4. **Compare Best Results:**
-   - Compare best from Case 1 vs best from Case 2
-   - Determine if stopping criteria met (≥36/40)
-
-5. **Case 3 - Both (only if needed):**
-   - If neither Case 1 nor Case 2 reaches target score (≥36/40)
-   - **Execute:** Run cleanups B1-B4 (cache each immediately)
-   - **Check cache:** Skip configs that already have cached results
-   - **Collect:** Load all 4 results (from cache or fresh API calls)
-   - **Analyze:** Score all 4 results in ONE comprehensive response
-   - **Record:** Update results file with all 4 attempts
-
-6. **Final Analysis:**
-   - Identify overall best configuration
-   - Summarize findings at top of results file
-   - Prepare recommendations for Phase 2 (if needed)
+1. **Setup:** Run `python fetch_data.py --prompt {prompt}` to get transcription + prompt
+2. **Test Case 1:** `run_cleanups_api.py {model} --prompt {prompt} --case 1`
+3. **Score T1-T7:** Use criteria file checklist
+4. **Test Case 2:** `run_cleanups_api.py {model} --prompt {prompt} --case 2`
+5. **Score P1-P6:** Use criteria file checklist
+6. **Compare:** Identify best config (highest score)
 
 ### Phase 2: Prompt Optimization
-1. After finding best parameters, analyze common issues
-2. Suggest prompt modifications to address issues
-3. **WAIT FOR USER CONFIRMATION** before inserting new prompt
-4. Mark old prompt as inactive, insert new prompt as active
-5. Re-test with new prompt using best parameters
-6. Iterate until stopping criteria met
 
-### Phase 3: Model Comparison (Optional)
-1. Using best prompt + parameters, test across Tier 1 models
-2. Compare scores
-3. Recommend best model for production use
+1. **Analyze failures:** Which checkpoints consistently fail?
+2. **Identify patterns:** Same G/C checkpoints failing across configs?
+3. **Modify prompt:** Address specific issues
+4. **WAIT for user to manually insert the new prompt**
+5. **Re-test:** Use user instructions on what to re-test
 
 ---
 
-## Evaluation Criteria
+## Models to Test
 
-### Scoring (0-10 each, 40 total)
+### Tier 1 - Priority
 
-#### 1. Content Accuracy (0-10)
-**What it measures:** Whether the dream's actual content is preserved correctly
+| Model ID | Why Test |
+|----------|----------|
+| `llama-3.3-70b-versatile` | Baseline, general purpose |
+| `meta-llama/llama-4-maverick-17b-128e-instruct` | Best so far |
+| `openai/gpt-oss-120b` | Largest, best grammar potential |
 
-**Check for:**
-- ✅ Subject preserved (1st person "jaz" throughout)
-- ✅ Timeline preserved (temporal markers: "preden", "ko", "potem")
-- ✅ Details intact (specific terms, objects, people, places)
-- ✅ No hallucinations (nothing added that wasn't in original)
-- ✅ No over-summarization (all scenes/events present)
+### Tier 2 - Secondary
 
-**NOT content accuracy:**
-- ❌ Grammar errors in transcription (e.g., "polnica" vs "bolnica")
-- ❌ Misspellings from STT (e.g., "ronotežje" vs "ravnotežje")
-- ❌ Artifacts like "Hvala" (these are Artifact Removal)
+| Model ID | Why Test |
+|----------|----------|
+| `moonshotai/kimi-k2-instruct` | Strong multilingual |
+| `qwen/qwen3-32b` | 100+ languages |
 
-**Examples:**
-- **10/10:** All details preserved, no hallucinations, proper length (70-95%)
-- **9/10:** All details preserved, minor detail lost
-- **7/10:** One red flag (e.g., hallucination) = base 9 minus 2
-- **5/10:** Multiple red flags (hallucination + subject change) = base 9 minus 4
-- **3/10:** Severe content loss or multiple hallucinations
+### Skip
 
-#### 2. Artifact Removal (0-10)
-**What it measures:** STT-specific artifacts that shouldn't exist in final text
-
-**Artifacts (must be removed):**
-- "Hvala" (repeated throughout transcription)
-- "Zdravstveno, da ste pripravljeni" (YouTube intro - BONUS if removed, not penalized if kept)
-- Excessive filler: repetitive "torej", "v bistvu", "a ne", etc.
-
-**NOT artifacts:**
-- ❌ Grammar errors: "polnica", "ronotežje", "prublev" (these are Grammar Quality)
-- ❌ Garbled phrases: "ta ljena vzgor" (Grammar Quality)
-- ❌ Wrong words: "pretličju" vs "pritličju" (Grammar Quality)
-
-**Examples:**
-- **10/10:** All "Hvala" removed, "Zdravstveno" removed, minimal filler
-- **9/10:** All "Hvala" removed, "Zdravstveno" kept (acceptable)
-- **7/10:** One "Hvala" remains
-- **2/10:** Multiple "Hvala" remain throughout (e.g., T3 duplication case)
-
-**IMPORTANT:** Do NOT deduct artifact points for unfixed grammar errors! Those go in Grammar Quality.
-
-#### 3. Grammar Quality (0-10)
-**What it measures:** Correct Slovenian grammar, spelling, and word choice
-
-**Check for:**
-- ✅ Correct spelling: "bolnica" not "polnica", "ravnotežje" not "ronotežje"
-- ✅ Correct verb forms: "rekel" (masculine) not "rekla" (feminine) if subject is male
-- ✅ Correct case/number agreement
-- ✅ Clean phrases: "nadaljujem hojo" not "nadelujem hojo"
-- ✅ No garbled phrases: remove "ta ljena vzgor", "prublev čimprej"
-- ✅ No English words
-- ✅ Proper sentence structure
-
-**Examples:**
-- **10/10:** Perfect grammar, all transcription errors fixed
-- **9/10:** One minor error (e.g., "polnica" not fixed)
-- **7/10:** Several errors ("polnica" + "ronotežje" + garbled phrases)
-- **6/10:** Multiple errors across different categories
-- **3/10:** Many errors, barely readable
-
-#### 4. Readability (0-10)
-**What it measures:** Natural flow, paragraphing, and authentic voice
-
-**Check for:**
-- ✅ Appropriate paragraph breaks (scene changes, new topics)
-- ✅ Natural sentence flow
-- ✅ Authentic personal voice preserved
-- ✅ Not overly formal or robotic
-- ✅ Coherent narrative structure
-
-**Deduct points for:**
-- ❌ Wall of text (missing paragraph breaks)
-- ❌ Choppy or disjointed flow
-- ❌ Overly formal/academic tone
-- ❌ Lost personal voice
-
-**Examples:**
-- **10/10:** Perfect paragraph structure, natural flow, authentic voice
-- **9/10:** Good structure, very minor flow issues
-- **7/10:** Some paragraph issues or slightly stiff tone
-- **5/10:** Poor paragraphing (e.g., P3 wall of text)
-- **3/10:** Nearly unreadable due to structure issues
+- TTS models (playai-*)
+- Safety/guard models (llama-guard-*, safeguard-*)
+- Tool-use models (compound, compound-mini)
 
 ---
 
-### Red Flags (Automatic -2 points EACH, applied to relevant criterion)
+## Quick Reference
 
-**How to apply:**
-1. Start with base score for criterion (usually 9-10)
-2. Apply -2 for EACH red flag in that category
-3. Red flags affect specific criteria, not total score directly
+### Scoring Template
 
-**Red Flags List:**
+```
+Config: T1 | Model: llama-3.3-70b | Prompt: dream_v8
 
-| Red Flag | Affects Criterion | Example | Penalty |
-|----------|------------------|---------|---------|
-| Subject changed (jaz → oni/ženske) | Content Accuracy | "Oni so hodili..." instead of "Jaz sem hodil..." | -2 |
-| Timing changed (preden → ko) | Content Accuracy | Changed "preden so prišli" to "ko so prišli" | -2 |
-| Specific terms altered | Content Accuracy | "centrifugacijska sila" instead of "centrifugacija krvi" | -2 |
-| Content hallucinated/added | Content Accuracy | Added ending not in original (P4, P6) | -2 |
-| Content duplicated | Content Accuracy | Repeated dream 4x (T3) | -2 |
-| English words present | Grammar Quality | "and", "the", "building" in Slovenian text | -2 |
-| "Hvala" artifacts remaining | Artifact Removal | "Hvala" appears in cleaned text | -2 each |
+AUTOMATED CHECKS:
+[x] No "Hvala" (A1)
+[x] No English (G+)
+[x] No Russian (G++)
+[x] Length: 82%
 
-**Example Scoring with Red Flags:**
+CRITERIA COUNTS:
+G_total: 28 | G_failed: 4 | G_passed: 24
+C_total: 44 | C_failed: 4 | C_passed: 40
+H_count: 0
+R_score: 3/4 (R1 failed - no paragraphs)
+Voice: OK (no penalty)
+Language: OK (no penalty)
 
-**P4 (hallucinated ending):**
-- Base Content Accuracy: 9/10 (details preserved)
-- Red flag (hallucination): -2
-- **Final Content Accuracy: 7/10**
+CALCULATION:
+Content:       45 × (40/44) - 0 = 40.9
+Grammar:       25 × (24/28) - 0 = 21.4
+Readability:   15 × (3/4)       = 11.25
+Hallucinations: 10 - (0 × 2)    = 10
+Length:        5 (82% optimal)  = 5
+─────────────────────────────────────
+TOTAL:                          88.55 → 89/100
 
-**P6 (hallucination + gender error):**
-- Base Content Accuracy: 9/10
-- Red flag (hallucination): -2
-- **Final Content Accuracy: 7/10**
-- Base Grammar Quality: 9/10
-- Red flag (gender error): -2
-- **Final Grammar Quality: 7/10**
+STATUS: PASS
+```
 
-**Consistent Penalty:** Each red flag = exactly -2 points, no more, no less.
+### Penalty Reference
 
-### Green Flags (Confirm these are present)
-- First person preserved throughout
-- Timeline matches original
-- Specific details intact
-- Clean paragraph breaks at scene changes
-- No artifacts
-- Natural Slovenian
+| Penalty | Points | Applied To |
+|---------|--------|------------|
+| G+ (English words) | -3 | Grammar |
+| G++ (Russian/Cyrillic) | -5 | Grammar |
+| Voice minor (occasional shifts) | -3 | Content |
+| Voice major (wrong throughout) | -7 | Content |
+| Each hallucination | -2 | Hallucinations |
 
 ---
 
-## Automated Checks (Before Scoring)
+## Avoiding Double-Counts (Grammar vs Content)
 
-Run these checks BEFORE assigning scores to catch obvious issues:
+**IMPORTANT:** Do NOT count the same error in both Grammar (G) and Content (C).
 
-### 1. Artifact Search
-**Command:** Search cleaned text for "Hvala"
+### Rule: Spelling/STT errors = Grammar ONLY
 
-**Result:**
-- ✅ None found → Artifact Removal likely 9-10/10
-- ⚠️ 1-2 found → Artifact Removal 7-8/10, apply red flag (-2 each)
-- ❌ Multiple found → Artifact Removal 2-5/10, severe issue
+If a word is misspelled due to speech-to-text error (e.g., "polnica" instead of "bolnica"):
+- **Grammar (G):** Count as failure if NOT fixed
+- **Content (C):** Do NOT count - the meaning/content IS present (just misspelled)
 
-**Note:** "Zdravstveno" in transcription - removing is BONUS, keeping is acceptable (no penalty)
+### Examples
 
-### 2. English Detection
-**Command:** Search for common English words (and, the, but, with, for, building, etc.)
+| Error | Category | Reasoning |
+|-------|----------|-----------|
+| "polnica" not fixed to "bolnica" | **G only** | Meaning "hospital" is preserved, just wrong spelling |
+| "stavo" not fixed to "stavbo" | **G only** | Meaning "building" is preserved |
+| "10m width detail" missing entirely | **C only** | Content/detail is lost, not a spelling issue |
+| "hodnik levo-desno" simplified away | **C only** | Specific detail is lost |
 
-**Result:**
-- ✅ None found → Grammar Quality likely high
-- ❌ Any found → Grammar Quality red flag (-2 per occurrence)
+### Test: Ask "Is the meaning/detail preserved?"
 
-### 3. Length Ratio Check
-**Formula:** `cleaned_length / raw_length = ratio%`
-
-**Expected:** 70-95% (cleanup should be 3500-4800 chars for 5051 raw)
-
-**Result:**
-- ✅ 70-95% → Appropriate cleanup
-- ⚠️ 95-110% → Possible duplication (check for repeated content)
-- ⚠️ 50-70% → Possible over-summarization (check for lost details)
-- ❌ >110% → Severe duplication (e.g., T3 at 143%)
-- ❌ <50% → Severe content loss (e.g., T6 at 52%)
-
-**Impact on scoring:**
-- Too long (>110%) → Content Accuracy -3 to -5 (duplication)
-- Too short (<70%) → Content Accuracy -2 to -4 (summarization)
-
-### 4. Person Consistency
-**Command:** Check for first-person markers (jaz, sem) vs third-person (oni, ona)
-
-**Result:**
-- ✅ Consistent 1st person → No issues
-- ❌ Shifted to 3rd person → Content Accuracy red flag (-2)
-
-### 5. Timeline Markers Check
-**Command:** Verify temporal sequence preserved
-
-**Look for:**
-- "preden" (before) should not become "ko" (when) or "potem" (after)
-- Event order should match original
-
-**Result:**
-- ✅ Timeline preserved → No issues
-- ❌ Timeline changed → Content Accuracy red flag (-2)
-
----
-
-## Scoring Workflow (Step-by-Step)
-
-1. **Run Automated Checks** (above) - note any red flags
-2. **Read cleaned text** vs raw transcription side-by-side
-3. **Score each criterion** (0-10) using guidelines above
-4. **Apply red flag penalties** (-2 each) to relevant criterion
-5. **Calculate total** (sum of 4 criteria, max 40)
-6. **Document issues** in notes section
-
-**Example:**
-
-```
-Automated Checks:
-- ✅ No "Hvala" found
-- ✅ No English words
-- ⚠️ Length: 52% (too short!)
-- ✅ First person preserved
-- ✅ Timeline preserved
-
-Scoring:
-- Content Accuracy: 9/10 base, -3 for over-summarization = 6/10
-- Artifact Removal: 10/10 (all artifacts removed)
-- Grammar Quality: 9/10 ("polnica" not fixed) = 9/10
-- Readability: 8/10 (good flow despite being short)
-- TOTAL: 33/40 (82.5%)
-
-Red Flags: Over-summarization (length 52%)
-```
-
----
-
-## Stopping Criteria
-
-### Stop Parameter Testing When:
-- Total score ≥ 36/40 (90%)
-- OR Content Accuracy = 10 AND Artifact Removal ≥ 9
-- OR 3 consecutive tests show no improvement
-
-### Stop Prompt Iteration When:
-- Total score ≥ 38/40 (95%)
-- AND no red flags present
-- OR user confirms quality is acceptable
-
----
-
-## Output Requirements
-
-For each transcription/prompt, create/update results using the multi-file directory structure documented in `templates/RESULT_TEMPLATE.md`.
-
-### Directory Structure
-```
-results/{transcription_id}/
-├── README.md                    # Main index + best result summary (~500 tokens)
-├── source-data.md               # Transcription metadata + scoring criteria
-├── prompt_{name}/               # One directory per prompt version
-│   ├── README.md                # Prompt summary + model comparison table
-│   └── {model-slug}.md          # Detailed per-model results (T1-T7 scores, analysis)
-```
-
-### Why Multi-File?
-- Single-file results grew to 35k+ tokens, exceeding Claude Code's 25k read limit
-- Each file now stays under ~4k tokens for efficient updates
-- Only update affected files (e.g., add new model → add one .md file)
-
-### Content Requirements
-- **Main README.md:** Best result summary, prompt comparison table, quick links
-- **source-data.md:** Raw transcription metadata, artifacts list, scoring criteria
-- **prompt_{name}/README.md:** Prompt changes, model comparison for this prompt
-- **{model-slug}.md:** Full T1-T7/P1-P6 results, automated checks, config analysis
-
-### Model Slug Naming
-- `llama-3.3-70b-versatile` → `llama-3.3-70b-versatile.md`
-- `openai/gpt-oss-120b` → `openai-gpt-oss-120b.md`
-- `meta-llama/llama-4-maverick-17b-128e-instruct` → `meta-llama-llama-4-maverick.md`
-
-### Navigation
-Every file must have navigation links (using relative paths):
-- `← [Back to Index](../README.md)` at top
-- Cross-links in tables to related files
-
----
-
-## Reference examples
-You can find reference examples in directory `dream-cleanup-testing/reference`. You MUST check all of them.
-
----
-
-## Database Operations
-This section serves as a knowledge base of the correct way to fetch data from the DB and insert new prompts!
-
-**IMPORTANT:** You MUST change/update this section with all necessary instructions for minimal friction with DB commands in the future.
-
-### Database Setup
-
-```python
-from app.database import get_session
-from sqlalchemy import select
-from app.models.transcription import Transcription
-from app.models.prompt_template import PromptTemplate
-
-# Use get_session() context manager for async operations
-async with get_session() as db:
-    # Your database operations here
-    await db.commit()  # Don't forget to commit!
-```
-
-### Fetching Latest Raw Transcription
-
-```python
-async with get_session() as db:
-    # Get the most recent completed transcription
-    stmt = (
-        select(Transcription)
-        .where(Transcription.status == "completed")
-        .order_by(Transcription.created_at.desc())
-        .limit(1)
-    )
-    result = await db.execute(stmt)
-    latest_transcription = result.scalar_one_or_none()
-
-    if latest_transcription:
-        transcription_id = latest_transcription.id
-        transcribed_text = latest_transcription.transcribed_text
-        model_used = latest_transcription.model_used
-```
-
-### Fetching Active Cleanup Prompt
-
-```python
-async with get_session() as db:
-    # Get active prompt template for a specific entry_type (e.g., "dream")
-    entry_type = "dream"
-
-    stmt = (
-        select(PromptTemplate)
-        .where(
-            PromptTemplate.entry_type == entry_type,
-            PromptTemplate.is_active == True
-        )
-        .order_by(PromptTemplate.updated_at.desc())
-    )
-    result = await db.execute(stmt)
-    active_prompt = result.scalars().first()
-
-    if active_prompt:
-        prompt_text = active_prompt.prompt_text
-        prompt_id = active_prompt.id
-        prompt_version = active_prompt.version
-        prompt_name = active_prompt.name
-```
-
-### Creating a New Prompt Template
-
-**CRITICAL:** Always wait for user confirmation before inserting a new prompt!
-
-```python
-from app.models.prompt_template import PromptTemplate
-from datetime import datetime
-
-async with get_session() as db:
-    # First, deactivate all existing prompts for this entry_type
-    entry_type = "dream"
-    stmt = (
-        select(PromptTemplate)
-        .where(
-            PromptTemplate.entry_type == entry_type,
-            PromptTemplate.is_active == True
-        )
-    )
-    result = await db.execute(stmt)
-    old_prompts = result.scalars().all()
-
-    for old_prompt in old_prompts:
-        old_prompt.is_active = False
-        old_prompt.updated_at = datetime.utcnow()
-
-    # Determine next version number
-    stmt = (
-        select(PromptTemplate)
-        .where(PromptTemplate.entry_type == entry_type)
-        .order_by(PromptTemplate.version.desc())
-        .limit(1)
-    )
-    result = await db.execute(stmt)
-    latest_prompt = result.scalar_one_or_none()
-    next_version = (latest_prompt.version + 1) if latest_prompt else 1
-
-    # Create new prompt template
-    new_prompt = PromptTemplate(
-        name=f"Dream Cleanup v{next_version}",
-        entry_type=entry_type,
-        prompt_text="Your prompt text here with {transcription_text} placeholder",
-        description="Description of changes in this version",
-        is_active=True,
-        version=next_version,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow()
-    )
-
-    db.add(new_prompt)
-    await db.commit()
-    await db.refresh(new_prompt)
-
-    print(f"Created new prompt template: {new_prompt.name} (ID: {new_prompt.id})")
-```
-
-### Fetching Previous Cleanup Attempts
-
-```python
-from app.models.cleaned_entry import CleanedEntry
-
-async with get_session() as db:
-    # Get all cleanup attempts for a specific transcription
-    transcription_id = "your-transcription-uuid"
-
-    stmt = (
-        select(CleanedEntry)
-        .where(CleanedEntry.transcription_id == transcription_id)
-        .order_by(CleanedEntry.created_at.desc())
-    )
-    result = await db.execute(stmt)
-    cleanup_attempts = result.scalars().all()
-
-    for attempt in cleanup_attempts:
-        cleaned_text = attempt.cleaned_text
-        model_name = attempt.model_name
-        temperature = attempt.temperature
-        top_p = attempt.top_p
-        prompt_template_id = attempt.prompt_template_id
-``` 
-
+- **YES** (just misspelled) → Grammar only
+- **NO** (detail is lost/changed) → Content only

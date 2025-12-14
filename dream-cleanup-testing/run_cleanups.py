@@ -9,7 +9,8 @@ Examples:
     python run_cleanups.py --prompt dream_v5
 
 Cache Structure:
-    cache/prompt_{prompt_name}/{transcription_id}_{model_name}/
+    cache/{transcription_id}/{prompt_name}/{model_name}/
+    Example: cache/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v7/llama-3.3-70b-versatile/
 """
 import argparse
 import json
@@ -36,13 +37,13 @@ GROQ_MODEL = "llama-3.3-70b-versatile"
 
 def get_cache_dir(prompt_name: str) -> Path:
     """
-    Get prompt-specific, model-specific cache directory.
+    Get cache directory for a specific transcription, prompt, and model.
 
-    Format: cache/prompt_{prompt_name}/{transcription_id}_{sanitized_model_name}/
+    Format: cache/{transcription_id}/{prompt_name}/{sanitized_model_name}/
+    Example: cache/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v7/llama-3.3-70b-versatile/
     """
-    base_dir = Path(__file__).parent / "cache" / f"prompt_{prompt_name}"
     safe_model_name = GROQ_MODEL.replace("/", "-").replace(":", "-")
-    cache_dir = base_dir / f"{TRANSCRIPTION_ID}_{safe_model_name}"
+    cache_dir = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / prompt_name / safe_model_name
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
 
@@ -249,13 +250,23 @@ def main(prompt_name: str):
     cache_dir = get_cache_dir(prompt_name)
 
     # Load fetched data from prompt-specific directory
-    data_file = Path(__file__).parent / "cache" / f"prompt_{prompt_name}" / "fetched_data.json"
+    # Structure: cache/{transcription_id}/{prompt_name}/fetched_data.json
+    data_file = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / prompt_name / "fetched_data.json"
     if not data_file.exists():
-        print(f"❌ Error: {data_file} not found. Run fetch_data.py first!")
+        print(f"❌ Error: {data_file} not found.")
+        print(f"\n📝 Run fetch_data.py first:")
+        print(f"   python fetch_data.py --prompt {prompt_name}")
         return
 
     with open(data_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
+
+    # Verify the fetched prompt matches the requested prompt
+    fetched_prompt_name = data["prompt"]["name"]
+    if fetched_prompt_name != prompt_name:
+        print(f"⚠️  Warning: fetched_data.json contains prompt '{fetched_prompt_name}' but you requested '{prompt_name}'")
+        print(f"   Re-run: python fetch_data.py --prompt {prompt_name}")
+        return
 
     transcription_text = data["transcription"]["text"]
     prompt_text = data["prompt"]["text"]

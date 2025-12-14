@@ -1,159 +1,160 @@
-# Dream Cleanup Testing
+# Dream Cleanup Testing v2
 
 ## Purpose
-The purpose of this "subproject" is to document and implement 
-a **deterministic** and **automatic** way to test the success of different prompts 
-and parameters (`temperature`, `p_top`) for transcription cleanup using LLMs. 
-I use `claude-code` to execute batch cleanups with different parameters for specific 
-transcription and evaluate their success based on pre-determined scoring criteria (see [CLAUDE_CODE_INSTRUCTIONS.md](CLAUDE_CODE_INSTRUCTIONS.md)). 
 
-With this approach I hope to understand how different prompts and parameters behave in regards to cleanup quality and hopefully get the optimal configuration for production.
+Deterministic testing framework for optimizing Slovenian dream transcription cleanup using LLMs. 
 
-**NOTE:** Keep in mind that raw transcription and cleanup data is not persisted in git versioning.
+The process described below is meant to be done on a regular basis for different transcriptions to identify the strengths/weaknesses of different models, prompts and their configurations. 
 
-## Table of Contents
-
-- [Quick Start](#quick-start)
-- [Core Workflow](#core-workflow)
-- [Test Target](#test-target)
-- [Scoring](#scoring-0-40-total)
-- [Scripts](#scripts)
-- [Cache Strategy](#cache-strategy)
-- [Re-running Configs](#re-running-configs)
-- [Results](#results)
-- [Current Status](#current-status-see-planmd)
-- [Environment Setup](#environment-setup)
-- [Key Files](#key-files)
+**Key improvements in v2:**
+- **Checklist-based scoring** - Per-transcription criteria files with specific checkpoints (G1-G28, C1-C44)
+- **Faster iteration** - Score by checking boxes, not re-reading entire text
+- **Cleaner cache structure** - `cache/{transcription_id}/{prompt_name}/{model_name}/`
+- **Privacy-aware** - Criteria files contain dream content but are gitignored; results only reference checkpoint IDs
 
 ## Quick Start
 
 ```bash
-# 1. Fetch transcription + prompt from database (saves to cache/prompt_{prompt_name}/)
-python fetch_data.py
+# 1. Fetch transcription + prompt from database (specify prompt version!)
+cd dream-cleanup-testing-v2
+set -a && source ../.env && set +a
+python fetch_data.py --prompt dream_v8
 
-# 2. Run parameter tests (saves to DB + cache)
-python run_cleanups_api.py llama-3.3-70b-versatile --prompt dream_v7 --case 1
+# 2. Run parameter tests (results saved to DB + cache)
+python run_cleanups_api.py llama-3.3-70b-versatile --prompt dream_v8 --case 1
 
-# 3. Score results manually using criteria in CLAUDE_CODE_INSTRUCTIONS.md
-# Results saved to: results/cleanup_{transcription_id}_{date}.md
+# 3. Score using checklist in criteria/{transcription_id}.md
+# Results saved to: results/{transcription_id}/{prompt_name}/{model}.md
 ```
 
-## Core Workflow
+## Directory Structure
 
-**Phase 1: Parameter Optimization**
-1. Test temperature-only configs (T1-T7)
-2. Test top-p-only configs (P1-P6)
-3. Compare winners, identify best parameters
+```
+dream-cleanup-testing-v2/
+├── cache/                          # Cached API results (gitignored)
+│   └── {transcription_id}/
+│       └── {prompt_name}/
+│           ├── fetched_data.json   # Raw transcription + prompt text for this version
+│           └── {model_name}/
+│               ├── T1.json ... T7.json
+│               ├── P1.json ... P6.json
+│               └── _summary.json
+│
+├── criteria/                       # Scoring criteria (gitignored - contains dream content)
+│   └── {transcription_id}.md       # G1-G28, C1-C44, A1-A3, R1-R4 checkpoints
+│
+├── results/                        # Scored results (committed - no dream content)
+│   └── {transcription_id}/
+│       ├── README.md               # Best result summary
+│       └── {prompt_name}/
+│           ├── README.md           # Prompt summary + actual prompt text
+│           └── {model}.md          # Checklist scores per config
+│
+├── fetch_data.py                   # Fetch transcription + prompt from DB
+├── run_cleanups_api.py             # Run batch tests via API
+├── run_cleanups.py                 # Run batch tests via Groq (legacy)
+├── rerun_one_config.py             # Re-run single config
+└── CLAUDE_CODE_INSTRUCTIONS.md     # Full testing guide
+```
 
-**Phase 2: Prompt Optimization**
-1. Analyze issues from best parameters
-2. Modify prompt, test improvements
-3. Iterate until target score reached
+### Cache Structure Rationale
 
-**Phase 3: Model Comparison** (optional)
-1. Test different models with best params/prompt
-2. Select production configuration
+The `fetched_data.json` is stored **per prompt version** (not per transcription) because:
+1. Different prompt versions have different prompt text
+2. Results depend on the exact prompt used
+3. Each prompt version's README should reference its actual prompt text
 
-## Test Target
+## Scoring System
 
-**Transcription ID:** `5beeaea1-967a-4569-9c84-eccad8797b95`
+### Four Criteria (10 points each, 40 total)
 
-All tests use this single transcription for consistency. Raw text cached in `cache/prompt_{prompt_name}/etched_data.json`.
+| Criterion | Checkpoints | What it measures |
+|-----------|-------------|------------------|
+| **Grammar** | G1-G28, G+, G++ | Spelling fixes, garbled phrases, no English/Russian |
+| **Content** | C1-C44, C+/++/+++ | Scene details preserved, narrative voice, no hallucinations |
+| **Artifacts** | A1-A3 | "Hvala" removed, fillers reduced |
+| **Readability** | R1-R4 | Paragraph breaks, flow, personal voice |
 
-## Scoring (0-40 total)
+### How Scoring Works
 
-- **Content Accuracy** (0-10): Dream details preserved, no hallucinations
-- **Artifact Removal** (0-10): "Hvala", fillers, intro removed
-- **Grammar Quality** (0-10): Correct Slovenian spelling/grammar
-- **Readability** (0-10): Natural flow, paragraphing, authentic voice
-
-**Target:** ≥36/40 (90%) for parameters, ≥38/40 (95%) for final
-
-**Red flags:** -2 points each (subject changes, hallucinations, English words, etc.)
-
-Full criteria: `CLAUDE_CODE_INSTRUCTIONS.md`
+1. **Before testing:** Create criteria file for the transcriptio with manual interventionn (one-time setup)
+2. **After each cleanup:** Check boxes against criteria, count failures
+3. **Record results:** `G: 8 | C: 9 | A: 10 | R: 9 | Total: 36/40 | Failed: G1, G5, C3`
 
 ## Scripts
 
 | Script | Purpose | DB Persistence |
 |--------|---------|----------------|
-| `fetch_data.py` | Get transcription + prompt from DB | Read-only |
-| `run_cleanups_api.py` | Run batch tests via backend API | ✅ Yes |
-| `run_cleanups.py` | Run batch tests directly with Groq | ❌ No |
-| `rerun_one_config.py` | Re-run or re-evaluate single config | ✅ Yes |
+| `fetch_data.py --prompt <name>` | Fetch transcription + specific prompt | Read-only |
+| `run_cleanups_api.py` | Batch tests via backend API | Yes |
+| `run_cleanups.py` | Batch tests via Groq directly | No |
+| `rerun_one_config.py` | Re-run or re-evaluate single config | Yes |
 
-**Recommended:** Use `run_cleanups_api.py` for all testing (results visible in frontend).
-
-## Cache Strategy
-
-**Why cache?** Protects Groq API calls from being lost if claude session ends.
-
-**Structure:**
-```
-cache/
-├── prompt_dream_v5/                           # Prompt version directory
-│   ├── fetched_data.json                      # Raw transcription + v5 prompt
-│   └── 5beeaea1-967a-4569-9c84..._llama.../
-│       ├── T1.json, T2.json, ...              # Temperature tests
-│       └── _summary.json                      # Batch test metadata
-├── prompt_dream_v7/                           # New prompt version
-│   ├── fetched_data.json                      # Raw transcription + v7 prompt
-│   └── 5beeaea1-967a-4569-9c84..._llama.../
-│       └── ...
-```
-
-**Versioning:** Re-running a config creates new version (T3_v2.json), never overwrites.
-
-## Re-running Configs
+### Usage Examples
 
 ```bash
-# Re-execute T3 (fresh API call, creates T3_v2.json)
-python rerun_one_config.py T3
+# Fetch prompt data first (required before running tests)
+python fetch_data.py --prompt dream_v8
 
-# Re-evaluate T3 (load cached result, no API call)
-python rerun_one_config.py T3 --evaluate
+# Run temperature tests (T1-T7)
+python run_cleanups_api.py llama-3.3-70b-versatile --prompt dream_v8 --case 1
 
-# List all versions
-python rerun_one_config.py T3 --list-versions
+# Run top-p tests (P1-P6)
+python run_cleanups_api.py llama-3.3-70b-versatile --prompt dream_v8 --case 2
+
+# Re-run single config
+python rerun_one_config.py T3 llama-3.3-70b-versatile --prompt dream_v8
+
+# Re-evaluate without API call
+python rerun_one_config.py T3 llama-3.3-70b-versatile --prompt dream_v8 --evaluate
 ```
 
-**Use case:** T3 showed catastrophic duplication (temp=0.5 anomaly) - re-run to verify reproducibility.
+## Test Configurations
 
-## Results
+### Case 1: Temperature Only (top_p = null)
 
-**Location:** `results/{transcription_id}/` (multi-file directory structure)
+| Config | Temperature | Expected |
+|--------|-------------|----------|
+| T1 | 0.0 | Most deterministic |
+| T2 | 0.3 | Conservative |
+| T3 | 0.5 | Balanced |
+| T4 | 0.8 | Slightly creative |
+| T5 | 1.0 | Default |
+| T6 | 1.5 | More random |
+| T7 | 2.0 | Maximum randomness |
 
-**Format:** Uses templates from `templates/RESULT_TEMPLATE.md`
+### Case 2: Top-p Only (temperature = null)
 
-**Structure:**
-```
-results/{transcription_id}/
-├── README.md                    # Main index + best result summary
-├── source-data.md               # Transcription metadata + scoring criteria
-├── prompt_dream_v5/             # Results per prompt version
-│   ├── README.md                # Prompt summary + model comparison
-│   └── {model-slug}.md          # Detailed per-model results
-├── prompt_dream_v7/
-└── prompt_dream_v8/
-```
+| Config | Top-p | Expected |
+|--------|-------|----------|
+| P1 | 0.1 | Very narrow |
+| P2 | 0.3 | Narrow |
+| P3 | 0.5 | Moderate |
+| P4 | 0.7 | Slight restriction |
+| P5 | 0.9 | Minimal restriction |
+| P6 | 1.0 | No restriction |
 
-**Why multi-file?** Single-file results grew to 35k+ tokens, exceeding Claude Code's read limits. Each file now stays under ~4k tokens.
+## Workflow
 
-**Reference:** `reference/reference-cleanup-example.md` shows target quality level.
+### Phase 1: Parameter Optimization
+1. Test Case 1 (T1-T7) - find best temperature
+2. Test Case 2 (P1-P6) - find best top-p
+3. Compare winners
+4. Optionally mix temperature with top-p parameters and re-evaluate
 
-## Current Status (see PLAN.md)
+### Phase 2: Prompt Optimization
+1. Analyze failures from best config
+2. Modify prompt to fix issues
+3. Re-test
 
-✅ **Phase 1 Complete**
-- Case 1 (Temperature): Winner = T1 (temp=0.0, 37/40)
-- Case 2 (Top-p): Winner = P2 (top_p=0.3, 36/40)
-- **Production config:** temp=0.0, top_p=null
-
-🔒 **Phase 2 Pending:** Prompt optimization to reach ≥38/40
+### Phase 3: Model Comparison
+1. Test different models with different prompt and params
+2. Select production configuration
 
 ## Environment Setup
 
+Required in `.env`:
 ```bash
-# Required in .env:
 TEST_USER_EMAIL=your-email@example.com
 TEST_USER_PASSWORD=your-password
 GROQ_API_KEY=gsk_xxxxx
@@ -161,7 +162,41 @@ GROQ_API_KEY=gsk_xxxxx
 
 ## Key Files
 
-- **CLAUDE_CODE_INSTRUCTIONS.md** - Complete testing instructions + scoring criteria
-- **PLAN.md** - Current status, results summary, next actions
-- **templates/RESULT_TEMPLATE.md** - Results file format
-- **reference/reference-cleanup-example.md** - Example of target quality
+| File | Purpose |
+|------|---------|
+| [CLAUDE_CODE_INSTRUCTIONS.md](./CLAUDE_CODE_INSTRUCTIONS.md) | Complete testing guide |
+| `criteria/{id}.md` | Per-transcription scoring checklist (gitignored) |
+| `reference/reference-cleanup-example.md` | Example of target quality |
+
+---
+
+## Results
+
+| Transcription | Best Prompt | Best Model | Score | Status |
+|---------------|-------------|------------|-------|--------|
+| [5beeaea1...](./results/5beeaea1-967a-4569-9c84-eccad8797b95/) | [dream_v8](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v8/) | maverick T5 / llama P4 | 87/100 | PASS |
+| | [dream_v9_slo](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v9_slo/) | llama-3.3-70b T3 | 86/100 | PASS |
+| | [dream_v10](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10/) | **maverick T1** | **94/100** | EXCELLENT |
+| | [dream_v10_slo](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10_slo/) | llama T1 / maverick P2 | 82/100 | PASS |
+
+### Latest: dream_v10 (English prompt with Slovenian STT patterns)
+
+| Rank | Model | Config | Score | Notes |
+|------|-------|--------|-------|-------|
+| 1 | **[maverick-17b-128e](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10/meta-llama-llama-4-maverick-17b-128e-instruct.md)** | T1 (temp=0.0) | **94** | Best STT fixes, only model to fix "bolnica" |
+| 2 | [scout-17b-16e](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10/meta-llama-llama-4-scout-17b-16e-instruct.md) | T1 (temp=0.0) | 91 | Best content, minimal cleanup |
+| 3 | [llama-3.3-70b](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10/llama-3.3-70b-versatile.md) | P3 (top_p=0.5) | 84 | Good balance, grammar unfixed |
+| 4 | [gpt-oss-120b](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10/openai-gpt-oss-120b.md) | T1 (temp=0.0) | 64 | Over-summarizes, hallucinations |
+
+**Key Finding:** maverick with temp=0.0 is the best combination for this Slovenian dream cleanup task.
+
+### dream_v10_slo (Slovenian prompt with STT patterns)
+
+| Rank | Model | Config | Score | Notes |
+|------|-------|--------|-------|-------|
+| 1 | [llama-3.3-70b](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10_slo/llama-3.3-70b-versatile.md) | T1 (temp=0.0) | 82 | Best with Slovenian prompt, consistent |
+| 1 | [maverick-17b-128e](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10_slo/meta-llama-llama-4-maverick-17b-128e-instruct.md) | P2 (top_p=0.3) | 82 | Tied, avoids T1 over-processing |
+| 3 | [scout-17b-16e](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10_slo/meta-llama-llama-4-scout-17b-16e-instruct.md) | T4 (temp=0.8) | 73 | Almost no cleanup (94-99% length) |
+| 4 | [gpt-oss-120b](./results/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v10_slo/openai-gpt-oss-120b.md) | P4 (top_p=0.7) | 60 | Over-summarizes, hallucinations |
+
+**Key Finding:** English prompt (dream_v10) significantly outperforms Slovenian (dream_v10_slo). Use dream_v10 with maverick T1 for production.

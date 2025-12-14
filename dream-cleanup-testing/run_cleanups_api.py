@@ -13,8 +13,8 @@ Examples:
     python run_cleanups_api.py gpt-oss-120b --prompt dream_v7 --case all
 
 Cache Structure:
-    cache/prompt_{prompt_name}/{transcription_id}_{model_name}/
-    Example: cache/prompt_dream_v7/5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
+    cache/{transcription_id}/{prompt_name}/{model_name}/
+    Example: cache/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v7/llama-3.3-70b-versatile/
 """
 import asyncio
 import json
@@ -36,7 +36,7 @@ sys.path.insert(0, str(project_root))
 load_dotenv(project_root / ".env")
 
 # Configuration
-TRANSCRIPTION_ID = "5beeaea1-967a-4569-9c84-eccad8797b95"
+TRANSCRIPTION_ID = "70cfb2c5-89c1-4486-a752-bd7cba980d3d"
 API_BASE_URL = "http://localhost:8000/api/v1"
 POLL_INTERVAL = 2  # seconds
 MAX_POLL_TIME = 180  # seconds (increased for larger models)
@@ -71,15 +71,14 @@ BOTH_CONFIGS = [
 
 def get_cache_dir(model_name: str, prompt_name: str) -> Path:
     """
-    Get model-specific cache directory within prompt version directory.
+    Get cache directory for a specific transcription, prompt, and model.
 
-    Format: cache/prompt_{prompt_name}/{transcription_id}_{sanitized_model_name}/
-    Example: cache/prompt_dream_v7/5beeaea1-967a-4569-9c84-eccad8797b95_llama-3.3-70b-versatile/
+    Format: cache/{transcription_id}/{prompt_name}/{sanitized_model_name}/
+    Example: cache/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v7/llama-3.3-70b-versatile/
     """
-    base_dir = Path(__file__).parent / "cache" / f"prompt_{prompt_name}"
     # Sanitize model name for directory (replace / and : with -)
     safe_model_name = model_name.replace("/", "-").replace(":", "-")
-    cache_dir = base_dir / f"{TRANSCRIPTION_ID}_{safe_model_name}"
+    cache_dir = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / prompt_name / safe_model_name
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
 
@@ -427,14 +426,25 @@ async def main(model_name: str, prompt_name: str, case: str):
 
     cache_dir = get_cache_dir(model_name, prompt_name)
 
-    # Load fetched data to get raw transcription length
-    data_file = Path(__file__).parent / "cache" / f"prompt_{prompt_name}" / "fetched_data.json"
+    # Load fetched data from prompt-specific directory
+    # Structure: cache/{transcription_id}/{prompt_name}/fetched_data.json
+    data_file = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / prompt_name / "fetched_data.json"
     if not data_file.exists():
-        print(f"[ERROR] {data_file} not found. Run fetch_data.py first!")
+        print(f"[ERROR] {data_file} not found.")
+        print(f"\n📝 Run fetch_data.py first:")
+        print(f"   python fetch_data.py --prompt {prompt_name}")
         return
 
     with open(data_file, 'r', encoding='utf-8') as f:
         data = json.load(f)
+
+    # Verify the fetched prompt matches the requested prompt
+    fetched_prompt_name = data["prompt"]["name"]
+    if fetched_prompt_name != prompt_name:
+        print(f"⚠️  Warning: fetched_data.json contains prompt '{fetched_prompt_name}' but you requested '{prompt_name}'")
+        print(f"   Re-run: python fetch_data.py --prompt {prompt_name}")
+        return
+
     raw_length = len(data["transcription"]["text"])
 
     print(f"Transcription: {TRANSCRIPTION_ID}")
