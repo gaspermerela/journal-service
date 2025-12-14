@@ -15,8 +15,8 @@ from app.utils.logger import get_logger
 logger = get_logger("transcription.assemblyai")
 
 # AssemblyAI API endpoints
-ASSEMBLYAI_UPLOAD_URL = "https://api.assemblyai.com/v2/upload"
-ASSEMBLYAI_TRANSCRIPT_URL = "https://api.assemblyai.com/v2/transcript"
+ASSEMBLYAI_UPLOAD_URL = "https://api.eu.assemblyai.com/v2/upload"
+ASSEMBLYAI_TRANSCRIPT_URL = "https://api.eu.assemblyai.com/v2/transcript"
 
 
 class AssemblyAITranscriptionService(TranscriptionService):
@@ -34,7 +34,8 @@ class AssemblyAITranscriptionService(TranscriptionService):
         api_key: str,
         model: str = "universal",
         poll_interval: float = DEFAULT_POLL_INTERVAL,
-        timeout: float = DEFAULT_TIMEOUT
+        timeout: float = DEFAULT_TIMEOUT,
+        auto_delete: bool = True
     ):
         """
         Initialize AssemblyAI transcription service.
@@ -44,18 +45,20 @@ class AssemblyAITranscriptionService(TranscriptionService):
             model: Speech model (default: "universal" for 99+ languages)
             poll_interval: Seconds between status polls
             timeout: Maximum seconds to wait for transcription
+            auto_delete: Auto-delete transcript after extraction (GDPR compliance)
         """
         self.api_key = api_key
         self.model = model
         self.poll_interval = poll_interval
         self.timeout = timeout
+        self.auto_delete = auto_delete
 
         # 1-hour cache for available models (following Groq pattern)
         self._models_cache: Optional[list[Dict[str, Any]]] = None
         self._models_cache_timestamp: Optional[datetime] = None
         self._cache_ttl = timedelta(hours=1)
 
-        logger.info(f"AssemblyAITranscriptionService initialized with model={model}")
+        logger.info(f"AssemblyAITranscriptionService initialized with model={model}, auto_delete={auto_delete}")
 
     def _get_headers(self) -> Dict[str, str]:
         """Get authorization headers for API requests."""
@@ -319,8 +322,8 @@ class AssemblyAITranscriptionService(TranscriptionService):
             raise RuntimeError(f"AssemblyAI transcription failed: {str(e)}") from e
 
         finally:
-            # Step 4: GDPR delete (always, even on failure)
-            if transcript_id:
+            # Step 4: GDPR delete (if auto_delete is enabled)
+            if transcript_id and self.auto_delete:
                 await self._delete_transcript(transcript_id)
 
     def _words_to_segments(self, words: list[Dict]) -> list[Dict[str, Any]]:

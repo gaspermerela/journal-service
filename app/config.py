@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     ASSEMBLYAI_MODEL: str = "universal"
     ASSEMBLYAI_POLL_INTERVAL: float = 3.0  # Seconds between status polls
     ASSEMBLYAI_TIMEOUT: int = 1000  # Max seconds to wait for transcription
+    ASSEMBLYAI_AUTO_DELETE: bool = True  # Auto-delete transcript after extraction (GDPR compliance)
 
     # CORS Configuration
     CORS_ORIGINS: str = "*"

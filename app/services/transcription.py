@@ -374,7 +374,8 @@ def create_transcription_service(
                 api_key=api_key,
                 model=model_name,
                 poll_interval=settings.ASSEMBLYAI_POLL_INTERVAL,
-                timeout=settings.ASSEMBLYAI_TIMEOUT
+                timeout=settings.ASSEMBLYAI_TIMEOUT,
+                auto_delete=settings.ASSEMBLYAI_AUTO_DELETE
             )
         except ImportError as e:
             raise ValueError(
