@@ -1,0 +1,6 @@
+# Cached transcription results (contains text)
+cache/
+
+# Python cache
+__pycache__/
+*.pyc

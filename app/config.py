@@ -115,6 +115,8 @@ class Settings(BaseSettings):
     # Test Configuration (Optional - only used in E2E tests)
     NOTION_TEST_API_KEY: Optional[str] = None
     NOTION_TEST_DATABASE_ID: Optional[str] = None
+    TEST_USER_EMAIL: Optional[str] = None  # Used by testing scripts
+    TEST_USER_PASSWORD: Optional[str] = None  # Used by testing scripts
 
     # Logging Configuration (Optional - per-module log levels)
     APP_LOG_LEVEL: Optional[str] = None
