@@ -1,5 +1,16 @@
 # Cleanup Results: 5beeaea1-967a-4569-9c84-eccad8797b95
 
+> ⚠️ **WARNING: OUTDATED RESULTS - NO VARIANCE TESTING**
+>
+> This report is based on **single runs only**. Extended variance testing on other transcriptions (15 runs at temp=0.0) revealed:
+>
+> - **Maverick has 60% failure rate** (9/15 runs below 70% length)
+> - **40% severe failures** (<50% length - aggressive summarization)
+> - Results are non-deterministic despite temp=0.0 (MoE architecture)
+>
+> **Do not use these results for production decisions.**
+> See [70cfb2c5.../README.md](../70cfb2c5-89c1-4486-a752-bd7cba980d3d/README.md) for variance-tested results.
+
 **Criteria:** [criteria/5beeaea1-967a-4569-9c84-eccad8797b95.md](../../criteria/5beeaea1-967a-4569-9c84-eccad8797b95.md) (not committed)
 
 ---

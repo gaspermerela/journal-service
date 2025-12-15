@@ -23,84 +23,100 @@ Read transcriptions from cache (results only contains metrics):
 - **Time doesn't matter** - As long as transcription completes in reasonable time (<= 1 min per hour of audio for third-party providers), speed is not a scoring factor
 - Focus on **quality**, not performance
 
-## Scoring System /100
+## Scoring System /100 (LLM Cleanup Suitability)
 
-Score only what's **objectively verifiable** without audio:
+**Goal:** Score transcriptions for how well an LLM can clean them up, NOT raw transcription perfection.
 
-| Criterion | Points | Deduction |
-|-----------|--------|-----------|
-| STT artifacts | /30 | -1 per "Hvala" |
-| Spelling errors | /25 | -3 per error |
-| Word integrity | /25 | -2 per split/merge |
+| Criterion | Points | What it measures |
+|-----------|--------|------------------|
+| Hallucinations | /30 | -3 per "Hvala", -5 per inserted phrase |
+| Semantic recoverability | /30 | -5 per unrecoverable, -3 per borderline |
+| Vocabulary accuracy | /20 | -3 per wrong content word that misleads |
 | Punctuation | /20 | Good=20, Fair=10, Poor=0 |
 
-**NOT scoreable** (would need audio):
-- Missing content
-- Other hallucinations (can't prove they weren't said)
-- Overall accuracy
+### Priority Order (most to least important)
 
-## Scoring Criteria
+1. **HALLUCINATIONS** - Inserted words that weren't spoken
+   - "Hvala" at segment boundaries is common and severe
+   - Inserted phrases can mislead LLM cleanup
 
-When analyzing transcriptions, evaluate these specific categories:
+2. **SEMANTIC RECOVERABILITY** - Can an LLM reconstruct meaning?
+   - A phrase is "unrecoverable" if the original meaning cannot be guessed
+   - Example: "bibre dko" → "bile tako" (unrecoverable without context)
 
-### 1. Diacritics (č, š, ž)
-- Are Slovenian diacritics used correctly?
-- Missing diacritics: "c" instead of "č", "s" instead of "š", "z" instead of "ž"
-- Incorrect diacritics in wrong places
-- **Example error:** "cas" instead of "čas", "ze" instead of "že"
+3. **VOCABULARY ACCURACY** - Are content words correct?
+   - Wrong words that could mislead the LLM
+   - Example: "Marlo" instead of "malo" (looks like proper noun)
 
-### 2. Grammar
-- Correct Slovenian grammar and sentence structure
-- Proper verb conjugations
-- Correct noun cases
+4. **PUNCTUATION** - LOW priority
+   - LLMs handle missing punctuation well
+   - Commas provide clause structure = "Fair" (10)
+   - No structure at all = "Poor" (0)
 
-### 3. Punctuation
-- Appropriate sentence boundaries
-- Correct use of commas, periods, question marks
-- Missing or excessive punctuation
+### DO NOT penalize for:
+- Simple phonetic variations (š↔s, g↔gi, r↔l)
+- Missing punctuation (if commas exist)
+- Dialect variations
+- Spacing issues easily fixed ("spetnova" → "spet nova")
 
-### 4. Hallucinated Words
-- Words inserted that weren't spoken
-- **Common issue:** "Hvala" (Thank you) hallucinated at end of segments
-- Random filler words added by the model
+### DO penalize heavily for:
+- Phrases where meaning is completely lost
+- Wrong words that could mislead the LLM
+- Inserted content (hallucinations)
+- "Hvala" artifacts
 
-### 5. Merged Words
-- Two words incorrectly joined together
-- **Example:** "je bil" → "jebil"
-- **Example:** "na nek" → "nanek"
+### What counts as an error?
 
-### 6. Split Words
-- Single word incorrectly split into multiple
-- **Example:** "stopnice" → "stop nice"
-- **Example:** "praktično" → "prakti čno"
+**Spelling - Only count if it MISLEADS:**
+- ❌ "groskopom" → NOT an error (phonetic g/gi, LLM recovers)
+- ❌ "konecu" → NOT an error (phonetic, trivially recoverable)
+- ✓ "Marlo" → ERROR (looks like proper noun, should be "malo")
 
-### 7. Repeated Phrases
-- Stuttering artifacts from audio repeated in text
-- Same phrase transcribed multiple times
-- Looping/stuck transcription segments
+**Word integrity - Only count if UNRECOVERABLE:**
+- ❌ "spetnova" → NOT an error (spacing issue, trivial)
+- ❌ "straniker" → NOT an error (spacing, easily recoverable)
+- ✓ "bibre dko" → ERROR (garbled, meaning unclear without context)
 
-### 8. Missing Words
-- Words clearly spoken but not transcribed
-- Dropped syllables or word endings
+**Punctuation thresholds:**
+- **Good (20):** Sentence breaks exist, readable structure
+- **Fair (10):** Commas provide clause structure, no sentence breaks
+- **Poor (0):** No structure at all, completely run-on
+
+### Unrecoverable Phrase Test
+
+Ask: **"If I showed ONLY this phrase to a native speaker (no surrounding context), could they guess the meaning?"**
+- If no → Count as unrecoverable (-5)
+- If no alone, but yes with surrounding context → Borderline (-3)
+- If yes (even with effort) → Don't count
+
+### 5 Worst Errors Test
+
+For each transcription, identify the **5 worst errors** and assess:
+1. Can an LLM recover the intended meaning?
+2. Would this error mislead the LLM?
+3. Is this a hallucination (inserted content)?
+
+If most of the 5 worst errors are recoverable, the transcription is suitable for LLM cleanup.
 
 ## Scoring Template
 
 When analyzing, provide a summary like:
 
 ```
-## Transcription Quality Analysis
+## Transcription Quality Analysis (LLM Cleanup Suitability)
 
 ### Groq (temp=0.0)
 | Criterion | Score | Notes |
 |-----------|-------|-------|
-| Diacritics | Good/Fair/Poor | specific issues... |
-| Grammar | Good/Fair/Poor | ... |
-| Punctuation | Good/Fair/Poor | ... |
-| Hallucinations | None/Few/Many | ... |
-| Merged words | None/Few/Many | ... |
-| Split words | None/Few/Many | ... |
-| Repeated phrases | None/Few/Many | ... |
-| Missing words | None/Few/Many | ... |
+| Hallucinations /30 | XX | X "Hvala" instances |
+| Semantic recoverability /30 | XX | X unrecoverable phrases |
+| Vocabulary accuracy /20 | XX | X misleading words |
+| Punctuation /20 | XX | Good/Fair/Poor |
+| **Total** | **XX/100** | |
+
+### 5 Worst Errors
+1. "error phrase" → should be "correct" - Recoverable? Yes/No
+2. ...
 
 ### AssemblyAI
 | Criterion | Score | Notes |
@@ -108,7 +124,7 @@ When analyzing, provide a summary like:
 | ... | ... | ... |
 
 ### Recommendation
-[Which provider performed better and why]
+[Which provider is better for LLM cleanup and why]
 ```
 
 ## IMPORTANT: Provide Specific Examples
@@ -232,16 +248,19 @@ results/{audio_id}/
 
 {Deterministic or not}
 
-### Score: XX/100
+### Score: XX/100 (LLM Cleanup Suitability)
 
 | Criterion | Score | Details |
 |-----------|-------|---------|
-| STT artifacts /30 | XX | ... |
-| Spelling /25 | XX | ... |
-| Word integrity /25 | XX | ... |
-| Punctuation /20 | XX | ... |
+| Hallucinations /30 | XX | X "Hvala", X inserted phrases |
+| Semantic recoverability /30 | XX | X unrecoverable phrases |
+| Vocabulary accuracy /20 | XX | X misleading words |
+| Punctuation /20 | XX | Good/Fair/Poor |
 
-### Errors
-- **{Error type}:**
-  - "error" → "correct"
+### 5 Worst Errors
+1. "error" → "correct" - Recoverable? Yes/No
+2. ...
+
+### Notes
+- Key strengths/weaknesses for LLM cleanup
 ```

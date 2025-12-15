@@ -4,36 +4,63 @@
 
 ---
 
-**Status:** EXCELLENT (best run) | **Best Score:** 94/100 (T1 v2)
+**Status:** UNRELIABLE | **Best Score:** 94/100 (T1 v2)
 **Cache:** `cache/70cfb2c5-89c1-4486-a752-bd7cba980d3d/dream_v18/meta-llama-llama-4-maverick-17b-128e-instruct/`
-**Test Date:** 2025-12-11
+**Test Dates:** 2025-12-11 (5 runs), 2025-12-16 (10 runs)
 **Raw Length:** 5,013 characters
-**Test Type:** Variance testing (5x T1 runs)
+**Test Type:** Extended variance testing (15x T1 runs, non-chunked)
 
 ---
 
-## Variance Testing: 5x T1 Runs (temp=0.0)
+## Summary Table (15 Runs)
 
-### Summary Table
+### Original Runs (Dec 11)
 
-| Run | Temp | Length | Ratio | G/25 | C/45 | R/15 | H/10 | L/5 | Total | Status |
-|-----|------|--------|-------|------|------|------|------|-----|-------|--------|
-| v1 | 0.0 | 3872 | 77.2% | 23 | 43 | 15 | 8 | 5 | ~92 | EXCELLENT |
-| **v2** | 0.0 | 4210 | **84.0%** | 23 | 43 | 15 | 8 | 5 | **94** | EXCELLENT |
-| v3 | 0.0 | 2584 | 51.5% | - | - | - | - | 0 | ~60 | **FAIL** |
-| v4 | 0.0 | 2569 | 51.2% | - | - | - | - | 0 | ~60 | **FAIL** |
-| v5 | 0.0 | 3895 | 77.7% | 23 | 43 | 15 | 8 | 5 | ~92 | EXCELLENT |
+| Run | Temp | Length | Ratio | Status |
+|-----|------|--------|-------|--------|
+| v1 | 0.0 | 3872 | 77.2% | ✅ PASS |
+| **v2** | 0.0 | 4210 | **84.0%** | ✅ **BEST** |
+| v3 | 0.0 | 2584 | 51.5% | ❌ FAIL |
+| v4 | 0.0 | 2569 | 51.2% | ❌ FAIL |
+| v5 | 0.0 | 3895 | 77.7% | ✅ PASS |
 
-### Variance Analysis
+### Extended Runs (Dec 16)
 
-**Critical Finding:** Maverick shows **bimodal behavior** at temp=0.0:
+| Run | Temp | Length | Ratio | Status |
+|-----|------|--------|-------|--------|
+| v6 | 0.0 | 1822 | 36.4% | ❌ SEVERE |
+| v7 | 0.0 | 3210 | 64.0% | ❌ FAIL |
+| v8 | 0.0 | 2372 | 47.3% | ❌ SEVERE |
+| v9 | 0.0 | 3783 | 75.5% | ✅ PASS |
+| v10 | 0.0 | 4298 | 85.7% | ✅ PASS |
+| v11 | 0.0 | 2433 | 48.5% | ❌ SEVERE |
+| v12 | 0.0 | 2411 | 48.1% | ❌ SEVERE |
+| v13 | 0.0 | 3093 | 61.7% | ❌ FAIL |
+| v14 | 0.0 | 2582 | 51.5% | ❌ FAIL |
+| v15 | 0.0 | 3667 | 73.2% | ✅ PASS |
+
+---
+
+## Variance Analysis (15 Runs)
+
+**Pass Rate: 40% (6/15)** - Only 6 runs in acceptable 70-95% range
 
 | Outcome | Runs | Percentage | Length Range |
 |---------|------|------------|--------------|
-| Good | 3 | 60% | 77-84% |
-| Over-summarized | 2 | **40%** | 51-52% |
+| Pass (70-95%) | 6 | **40%** | 73-86% |
+| Fail (60-69%) | 3 | 20% | 61-64% |
+| Severe (<60%) | 6 | **40%** | 36-52% |
 
-**Implication:** Cannot reliably use maverick without retry logic or length validation.
+**Distribution:**
+```
+<50%:  ████████ 5 runs (33%) - SEVERE
+50-59%: ██ 1 run (7%)
+60-69%: ████ 3 runs (20%)
+70-79%: ██████ 4 runs (27%)
+80-95%: ████ 2 runs (13%) - OPTIMAL
+```
+
+**Key Finding:** Extended testing reveals failure rate is **60%**, not 40% as originally estimated.
 
 ---
 
@@ -41,125 +68,85 @@
 
 ### Automated Checks
 
-- [x] No "Hvala" (A1) - All removed
-- [x] No English (G+) - Clean
-- [x] No Russian (G++) - Clean
+- [x] No "Hvala" (A1)
+- [x] No English (G+)
+- [x] No Russian (G++)
 - [x] Length: 84% - Optimal range
 
 ### Grammar (G) - 26/28 passed = 23/25 points
 
-**Passed (26):**
-- G1: polnica → bolnica ✓ (ONLY model to fix this!)
-- G2: pretličju → pritličju ✓
-- G3: uspodbudo → spodbud ✓
-- G4: ronotežje → ravnotežje ✓
-- G5: stapo → stavbo ✓
-- G6: praktyčno → praktično ✓
-- G7: vzpodguja → vzpodbudi ✓
-- G8: okruh → okoli ✓
-- G9: stave → stavbe ✓
-- G10: stopenice → stopnice ✓
-- G11: splohk → sploh ✓
-- G12: dnova → druga ✓
-- G13: nazdolj → navzdol ✓
-- G15: zdrževanju → vzdrževanju ✓
-- G16: kmalo → kmalu ✓
-- G17: mogo → moral ✓
-- G18: porastor → prostor ✓
-- G19: sečnem → začnem ✓
-- G20: predem → preden ✓
-- G22: Vzpomnim → Spomnim ✓
-- G23: prublev → poskušal ✓
-- G24: nadelujem → nadaljujem ✓
-- G25: hori → hodita ✓
-- G27: nadreval → nadaljeval ✓
-- G28: notakrat → potem ✓
+**Passed (26):** G1 (polnica→bolnica - ONLY model to fix!), G2-G13, G15-G20, G22-G25, G27-G28
 
 **Failed (2):**
-- **G21:** "obhodnikov" NOT fixed (should be "hodnikov")
-- **G26:** Uses past tense "razpršili" (should be present "špricam")
+- **G21:** "obhodnikov" NOT fixed
+- **G26:** Past tense "razpršili" instead of present
 
 ### Content (C) - 42/44 passed = 43/45 points
 
-**Passed:** C1-C29, C31-C33, C35-C44 (42 total)
-
 **Failed (2):**
 - **C30:** "hodnik levo-desno" at landing - MISSING
-  - Original: "je bil tudi hodnik, levo-desno"
-  - Output: Just mentions "hodnik" without direction detail
-- **C34:** "deset metrov široke" (10m wide stairs) - MISSING entirely
+- **C34:** "deset metrov široke" (10m wide) - MISSING
 
 ### Hallucinations (H) - 1 found = 8/10 points
 
 - **H1:** "smo prišli" (we came) instead of singular
-  - Original: "so prišla do enega dela" (garbled grammar)
-  - Output: "smo prišli do enega dela" (we came)
-  - Impact: Changes actor from ambiguous to "we"
 
-### Readability (R) - 4/4 = 15/15 points
-
-- R1: Paragraph breaks at scene changes ✓ (6 paragraphs)
-- R2: Sentences flow logically ✓
-- R3: Personal voice preserved ✓
-- R4: Dream coherence maintained ✓
-
-### Length (L) - 84% = 5/5 points
-
-Optimal range (70-95%).
-
----
-
-## Score Calculation (T1 v2)
+### Score Calculation
 
 ```
-Content:       45 × (42/44) - 0     = 42.95 → 43
-Grammar:       25 × (26/28) - 0     = 23.21 → 23
-Readability:   15 × (4/4)           = 15
-Hallucinations: 10 - (1 × 2)        = 8
-Length:        84% optimal          = 5
-───────────────────────────────────────────
-TOTAL:                              = 94/100 EXCELLENT
+Grammar:       23/25
+Content:       43/45
+Readability:   15/15
+Hallucinations: 8/10
+Length:         5/5
+─────────────────────
+TOTAL:         94/100 EXCELLENT
 ```
 
 ---
 
-## Failed Runs Analysis (v3, v4)
+## Failed Runs Analysis
 
-Both v3 and v4 over-summarized to ~51% length despite identical prompt and temp=0.0.
+### Severe Failures (<50%)
 
-### Characteristics of Failed Runs
+v6 (36.4%), v8 (47.3%), v11 (48.5%), v12 (48.1%) all show:
+- Aggressive summarization (lost 50%+ content)
+- Combined multiple scenes into single sentences
+- Lost specific details (numbers, measurements, descriptions)
 
-- Length: 2569-2584 chars (51%)
-- Aggressive condensation of descriptions
-- Combined multiple scenes
-- Lost significant detail
-
-### Example Comparison
+### Example: v6 vs v2
 
 **Original detail (C22):**
 > "ene so bile ožje, ene daljše, ene globje, ene plitvejše"
 
-**Good run (v2):**
+**Good run (v2, 84%):**
 > "ene so bile ožje, ene daljše, ene globje, ene plitvejše" ✓
 
-**Failed run (v3):**
-> "bile so neenakomerne in težke za premagovanje" ❌ (condensed)
+**Failed run (v6, 36%):**
+> "stopnice so bile neenakomerne in težke za hoditi" ❌
 
 ---
 
 ## Key Finding
 
-**Maverick produces EXCELLENT results (94/100) when it works, but fails 40% of the time.**
-
-The "MANDATORY REQUIREMENT" box in dream_v18 prompt did NOT prevent over-summarization.
+**Maverick is UNRELIABLE for production:**
+- 60% failure rate (9/15 runs below 70%)
+- 33% severe failure rate (5/15 runs below 50%)
+- Best score (94/100) only achieved in 13% of runs
+- "MANDATORY REQUIREMENT" prompt box has NO effect
 
 ---
 
 ## Production Recommendation
 
-**DO NOT use maverick without safeguards:**
+**DO NOT use maverick without safeguards.**
 
-Option 1: **Retry logic**
+| Approach | Pass Rate | Recommendation |
+|----------|-----------|----------------|
+| Single run | 40% | ❌ Unacceptable |
+| 3x retry | ~78% | ⚠️ Acceptable with validation |
+
+**Retry logic:**
 ```python
 for attempt in range(3):
     result = run_cleanup(maverick, T1)
@@ -167,8 +154,3 @@ for attempt in range(3):
         return result  # Accept
 # All retries failed - fallback to llama
 ```
-
-Option 2: **Ensemble approach**
-- Run maverick + llama in parallel
-- Accept maverick if length ≥70%, else use llama
-
