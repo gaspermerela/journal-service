@@ -21,6 +21,7 @@
 
 ## Files
 
-- [analysis_temp_0.0.md](./analysis_temp_0.0.md) - Groq T=0.0 & AssemblyAI details
-- [analysis_temp_0.05.md](./analysis_temp_0.05.md) - Groq T=0.05 details
+- [analysis_assemblyai.md](./analysis_assemblyai.md)
+- [analysis_groq_temp_0.0.md](./analysis_groq_temp_0.0.md)
+- [analysis_groq_temp_0.05.md](./analysis_groq_temp_0.05.md)
 - Full text: `cache/db1b48a1/` (gitignored)

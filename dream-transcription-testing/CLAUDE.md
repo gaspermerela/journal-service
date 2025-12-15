@@ -171,19 +171,77 @@ cache/{audio_id}/
 └── assemblyai/
     ├── result.json          # First run
     └── result_v2.json       # Second run
-
-results/{audio_id}/
-├── README.md              # Summary with best results comparison
-├── compare_temp_0.0.md    # Automated metrics
-└── analysis_temp_0.0.md   # Detailed scoring
 ```
 
-## Results README Format
+## Results Structure
 
-Each `results/{audio_id}/README.md` should have:
+```
+results/{audio_id}/
+├── README.md                      # Comparison across all providers/temps
+├── analysis_assemblyai.md         # AssemblyAI detailed analysis
+├── analysis_groq_temp_0.0.md      # Groq temp=0.0 detailed analysis
+└── analysis_groq_temp_0.05.md     # Groq temp=0.05 detailed analysis
+```
 
-1. **Best Results Comparison** - Compare best Groq config vs AssemblyAI
-2. **All Tests** - List all configs tested with scores
-3. **Winner** - Clear verdict
+**File naming:** `analysis_<provider>[_temp_<temperature>].md`
+- Temperature suffix only for Groq (AssemblyAI doesn't support it)
 
-When multiple temperatures tested for Groq, pick the best score for comparison.
+## Result File Templates
+
+### README.md Template (Comparison)
+
+```markdown
+# Transcription Test: {audio_id}
+
+**Entry:** {entry_id}
+**Total runs:** {count}
+
+## Results
+
+| Provider | Score | Hvala | Notes |
+|----------|-------|-------|-------|
+| **AssemblyAI** | **XX/100** | 0 | ... |
+| Groq T=0.0 | XX/100 | X-X | ... |
+
+**Winner: {provider}** (+X points)
+
+## Key Findings
+
+- **AssemblyAI:** ...
+- **Groq:** ...
+
+## Files
+
+- [analysis_assemblyai.md](./analysis_assemblyai.md)
+- [analysis_groq_temp_0.0.md](./analysis_groq_temp_0.0.md)
+- Full text: `cache/{audio_id}/` (gitignored)
+```
+
+### analysis_*.md Template (Provider Details)
+
+```markdown
+# Analysis: {Provider} [temp={X}]
+
+## {Provider} [temp={X}] ({N} runs)
+
+### Variance
+| Run | Chars | Hvala |
+|-----|-------|-------|
+| v1 | XXXX | X |
+| v2 | XXXX | X |
+
+{Deterministic or not}
+
+### Score: XX/100
+
+| Criterion | Score | Details |
+|-----------|-------|---------|
+| STT artifacts /30 | XX | ... |
+| Spelling /25 | XX | ... |
+| Word integrity /25 | XX | ... |
+| Punctuation /20 | XX | ... |
+
+### Errors
+- **{Error type}:**
+  - "error" → "correct"
+```
