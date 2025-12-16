@@ -58,7 +58,7 @@ from app.models.prompt_template import PromptTemplate
 from app.models.notion_sync import NotionSync
 
 # Configuration
-TRANSCRIPTION_ID = "70cfb2c5-89c1-4486-a752-bd7cba980d3d"
+TRANSCRIPTION_ID = "50e135d5-5045-4bce-a36d-a72e316b782e"
 API_BASE_URL = "http://localhost:8000/api/v1"
 
 

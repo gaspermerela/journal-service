@@ -41,12 +41,17 @@ ARCHITECTURE:
 
 CACHE STRUCTURE:
 ----------------
-cache/{transcription_id}/{prompt_name}/{model_name}/
+cache/{transcription_id}/{prompt_name}/{model_name}/{nochunk|chunked}/
   - T3.json (first run)
   - T3_v2.json (second run)
   - T3_v3.json (third run)
 
-Example: cache/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v7/llama-3.3-70b-versatile/
+Example: cache/5beeaea1.../dream_v7/llama-3.3-70b-versatile/nochunk/
+         cache/5beeaea1.../dream_v7/llama-3.3-70b-versatile/chunked/
+
+Chunking:
+  - Default (no flag): Standard cleanup without text chunking → saves to nochunk/
+  - --chunking flag: Enable smart text chunking for long transcriptions → saves to chunked/
 
 Latest version = highest version number or base file (T3.json) if no versions exist
 """
@@ -76,16 +81,16 @@ POLL_INTERVAL = 2  # seconds
 MAX_POLL_TIME = 120  # seconds
 
 
-def get_cache_dir(prompt_name: str, model_name: str) -> Path:
+def get_cache_dir(prompt_name: str, model_name: str, enable_chunking: bool = False) -> Path:
     """
-    Get cache directory for a specific transcription, prompt, and model.
+    Get cache directory for a specific transcription, prompt, model, and chunking mode.
 
-    Format: cache/{transcription_id}/{prompt_name}/{sanitized_model_name}/
-    Example: cache/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v7/llama-3.3-70b-versatile/
+    Format: cache/{transcription_id}/{prompt_name}/{sanitized_model_name}/{nochunk|chunked}/
+    Example: cache/5beeaea1.../dream_v7/llama-3.3-70b-versatile/nochunk/
     """
-    # Sanitize model name for directory (replace / and : with -)
     safe_model_name = model_name.replace("/", "-").replace(":", "-")
-    cache_dir = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / prompt_name / safe_model_name
+    chunking_dir = "chunked" if enable_chunking else "nochunk"
+    cache_dir = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / prompt_name / safe_model_name / chunking_dir
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
 
@@ -241,10 +246,14 @@ async def trigger_cleanup_via_api(
     transcription_id: str,
     config: Dict[str, Any],
     model_name: str,
-    token: str
+    token: str,
+    enable_chunking: bool = False
 ) -> str:
     """
     Trigger cleanup via API endpoint.
+
+    Args:
+        enable_chunking: Whether to enable smart text chunking for long texts
 
     Returns:
         cleanup_id (UUID string)
@@ -253,10 +262,11 @@ async def trigger_cleanup_via_api(
     temperature = config["temperature"]
     top_p = config["top_p"]
 
-    print(f"🚀 Triggering {config_name} via API (model={model_name}, temp={temperature}, top_p={top_p})...")
+    chunking_str = ", chunking=ON" if enable_chunking else ""
+    print(f"🚀 Triggering {config_name} via API (model={model_name}, temp={temperature}, top_p={top_p}{chunking_str})...")
 
     # Build request body
-    request_body = {"llm_model": model_name}
+    request_body = {"llm_model": model_name, "enable_chunking": enable_chunking}
     if temperature is not None:
         request_body["temperature"] = temperature
     if top_p is not None:
@@ -342,10 +352,14 @@ async def execute_cleanup(
     model_name: str,
     client: httpx.AsyncClient,
     token: str,
-    raw_length: int
+    raw_length: int,
+    enable_chunking: bool = False
 ) -> Dict[str, Any]:
     """
     Execute cleanup via API and return result.
+
+    Args:
+        enable_chunking: Whether to enable smart text chunking
 
     Returns:
         Result dict in cache format.
@@ -358,7 +372,9 @@ async def execute_cleanup(
 
     try:
         # Trigger cleanup
-        cleanup_id = await trigger_cleanup_via_api(client, TRANSCRIPTION_ID, config, model_name, token)
+        cleanup_id = await trigger_cleanup_via_api(
+            client, TRANSCRIPTION_ID, config, model_name, token, enable_chunking
+        )
 
         # Poll for completion
         result = await poll_cleanup_status(client, cleanup_id, token, config_name)
@@ -396,7 +412,9 @@ async def execute_cleanup(
             "locations": analysis.get("locations", []),
             "raw_response": raw_response,
             "status": "success" if result["status"] == "completed" else "failed",
-            "error": result.get("error_message")
+            "error": result.get("error_message"),
+            "enable_chunking": enable_chunking,
+            "chunking_metadata": result.get("chunking_metadata")
         }
 
         return cached_result
@@ -415,7 +433,9 @@ async def execute_cleanup(
             "cleaned_raw_ratio": 0,
             "raw_response": raw_response,  # Will be None if polling failed before getting response
             "status": "failed",
-            "error": str(e)
+            "error": str(e),
+            "enable_chunking": enable_chunking,
+            "chunking_metadata": None
         }
 
 
@@ -478,16 +498,16 @@ async def main():
         epilog="""
 Examples:
   # Re-execute T3 (fresh API call, creates new version):
-  python rerun_one_config.py T3 --model llama-3.3-70b-versatile --prompt dream_v7
+  python rerun_one_config.py T3 llama-3.3-70b-versatile --prompt dream_v7
+
+  # Re-execute T3 with chunking enabled:
+  python rerun_one_config.py T3 llama-3.3-70b-versatile --prompt dream_v7 --chunking
 
   # Re-evaluate T3 using latest cached version (no API call):
-  python rerun_one_config.py T3 --model llama-3.3-70b-versatile --prompt dream_v7 --evaluate
+  python rerun_one_config.py T3 llama-3.3-70b-versatile --prompt dream_v7 --evaluate
 
-  # Re-evaluate specific version:
-  python rerun_one_config.py T3 --model llama-3.3-70b-versatile --prompt dream_v7 --evaluate --version 2
-
-  # List all versions:
-  python rerun_one_config.py T3 --model llama-3.3-70b-versatile --prompt dream_v7 --list-versions
+  # List all versions (in chunked mode):
+  python rerun_one_config.py T3 llama-3.3-70b-versatile --prompt dream_v7 --chunking --list-versions
         """
     )
     parser.add_argument("config_name", help="Config name (e.g., T3, P2, B1)")
@@ -501,6 +521,11 @@ Examples:
         type=str,
         required=True,
         help="Prompt version name (required). Examples: dream_v5, dream_v7"
+    )
+    parser.add_argument(
+        "--chunking",
+        action="store_true",
+        help="Enable smart text chunking for long transcriptions (>500 words)"
     )
     parser.add_argument(
         "--evaluate",
@@ -522,15 +547,17 @@ Examples:
     config_name = args.config_name.upper()
     model_name = args.model
     prompt_name = args.prompt
+    enable_chunking = args.chunking
 
-    # Get cache directory for this prompt and model
-    cache_dir = get_cache_dir(prompt_name, model_name)
+    # Get cache directory for this prompt, model, and chunking mode
+    cache_dir = get_cache_dir(prompt_name, model_name, enable_chunking)
 
     print("="*80)
     print("Re-run One Config - Parameter Optimization Testing")
     print("="*80)
     print(f"Model: {model_name}")
     print(f"Prompt: {prompt_name}")
+    print(f"Chunking: {'enabled' if enable_chunking else 'disabled'}")
     print(f"Cache directory: {cache_dir}")
 
     # Find config
@@ -620,7 +647,10 @@ Examples:
             return
 
         # Execute cleanup
-        result = await execute_cleanup(config_name, config, model_name, client, token, raw_length)
+        result = await execute_cleanup(
+            config_name, config, model_name, client, token, raw_length,
+            enable_chunking=enable_chunking
+        )
 
         # Save to cache with version
         cache_file = save_to_cache(config_name, result, next_version, cache_dir)

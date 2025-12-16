@@ -5,16 +5,16 @@ This version uses the existing API endpoints instead of calling Groq directly,
 which means results are automatically saved to the database and visible in the frontend.
 
 Usage:
-    python run_cleanups_api.py <model> --prompt <prompt_name> [--case <1|2|3|all>]
+    python run_cleanups_api.py <model> --prompt <prompt_name> [--case <1|2|3|all>] [--chunking]
 
 Examples:
     python run_cleanups_api.py llama-3.3-70b-versatile --prompt dream_v7 --case 1
-    python run_cleanups_api.py gpt-oss-120b --prompt dream_v5 --case 2
-    python run_cleanups_api.py gpt-oss-120b --prompt dream_v7 --case all
+    python run_cleanups_api.py llama-3.3-70b-versatile --prompt dream_v7 --case 1 --chunking
 
 Cache Structure:
-    cache/{transcription_id}/{prompt_name}/{model_name}/
-    Example: cache/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v7/llama-3.3-70b-versatile/
+    cache/{transcription_id}/{prompt_name}/{model_name}/{nochunk|chunked}/
+    Example: cache/5beeaea1.../dream_v7/llama-3.3-70b-versatile/nochunk/
+             cache/5beeaea1.../dream_v7/llama-3.3-70b-versatile/chunked/
 """
 import asyncio
 import json
@@ -69,16 +69,15 @@ BOTH_CONFIGS = [
 ]
 
 
-def get_cache_dir(model_name: str, prompt_name: str) -> Path:
+def get_cache_dir(model_name: str, prompt_name: str, enable_chunking: bool = False) -> Path:
     """
-    Get cache directory for a specific transcription, prompt, and model.
+    Get cache directory for a specific transcription, prompt, model, and chunking mode.
 
-    Format: cache/{transcription_id}/{prompt_name}/{sanitized_model_name}/
-    Example: cache/5beeaea1-967a-4569-9c84-eccad8797b95/dream_v7/llama-3.3-70b-versatile/
+    Format: cache/{transcription_id}/{prompt_name}/{sanitized_model_name}/{nochunk|chunked}/
     """
-    # Sanitize model name for directory (replace / and : with -)
     safe_model_name = model_name.replace("/", "-").replace(":", "-")
-    cache_dir = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / prompt_name / safe_model_name
+    chunking_dir = "chunked" if enable_chunking else "nochunk"
+    cache_dir = Path(__file__).parent / "cache" / TRANSCRIPTION_ID / prompt_name / safe_model_name / chunking_dir
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir
 
@@ -180,10 +179,14 @@ async def trigger_cleanup_via_api(
     transcription_id: str,
     config: Dict[str, Any],
     token: str,
-    model_name: str
+    model_name: str,
+    enable_chunking: bool = False
 ) -> str:
     """
     Trigger cleanup via API endpoint.
+
+    Args:
+        enable_chunking: Whether to enable smart text chunking for long texts
 
     Returns:
         cleanup_id (UUID string)
@@ -192,10 +195,11 @@ async def trigger_cleanup_via_api(
     temperature = config["temperature"]
     top_p = config["top_p"]
 
-    print(f"\n[TRIGGER] {config_name} (model={model_name}, temp={temperature}, top_p={top_p})...")
+    chunking_str = ", chunking=ON" if enable_chunking else ""
+    print(f"\n[TRIGGER] {config_name} (model={model_name}, temp={temperature}, top_p={top_p}{chunking_str})...")
 
     # Build request body
-    request_body = {"llm_model": model_name}
+    request_body = {"llm_model": model_name, "enable_chunking": enable_chunking}
     if temperature is not None:
         request_body["temperature"] = temperature
     if top_p is not None:
@@ -281,10 +285,14 @@ async def run_cleanup_via_api(
     config: Dict[str, Any],
     token: str,
     model_name: str,
-    raw_length: int
+    raw_length: int,
+    enable_chunking: bool = False
 ) -> Dict[str, Any]:
     """
     Execute a single cleanup via API and wait for completion.
+
+    Args:
+        enable_chunking: Whether to enable smart text chunking
 
     Returns dict with cleaned_text, analysis, and metadata.
     Always includes cleanup_id and raw_response when available (even for failures).
@@ -298,7 +306,7 @@ async def run_cleanup_via_api(
     try:
         # Trigger cleanup
         cleanup_id = await trigger_cleanup_via_api(
-            client, transcription_id, config, token, model_name
+            client, transcription_id, config, token, model_name, enable_chunking
         )
 
         # Poll for completion
@@ -337,7 +345,9 @@ async def run_cleanup_via_api(
             "locations": analysis.get("locations", []),
             "raw_response": raw_response,
             "status": "success" if result["status"] == "completed" else "failed",
-            "error": result.get("error_message")
+            "error": result.get("error_message"),
+            "enable_chunking": enable_chunking,
+            "chunking_metadata": result.get("chunking_metadata")
         }
 
         return cached_result
@@ -357,7 +367,9 @@ async def run_cleanup_via_api(
             "cleaned_raw_ratio": 0,
             "raw_response": raw_response,  # Will be None if polling failed before getting response
             "status": "failed",
-            "error": str(e)
+            "error": str(e),
+            "enable_chunking": enable_chunking,
+            "chunking_metadata": None
         }
 
 
@@ -369,7 +381,8 @@ async def run_test_case(
     token: str,
     cache_dir: Path,
     model_name: str,
-    raw_length: int
+    raw_length: int,
+    enable_chunking: bool = False
 ) -> Dict[str, Dict[str, Any]]:
     """
     Run all configs for a test case with automatic versioning.
@@ -377,10 +390,14 @@ async def run_test_case(
     Always executes fresh API calls. If previous versions exist,
     creates new versioned files (T1_v2.json, T1_v3.json, etc.)
 
+    Args:
+        enable_chunking: Whether to enable smart text chunking
+
     Returns: dict mapping config_name -> result
     """
+    chunking_str = " [CHUNKING]" if enable_chunking else ""
     print(f"\n{'='*60}")
-    print(f"  {case_name}")
+    print(f"  {case_name}{chunking_str}")
     print(f"  Model: {model_name}")
     print(f"{'='*60}")
 
@@ -397,7 +414,8 @@ async def run_test_case(
 
         # Execute cleanup via API
         result = await run_cleanup_via_api(
-            client, transcription_id, config, token, model_name, raw_length
+            client, transcription_id, config, token, model_name, raw_length,
+            enable_chunking=enable_chunking
         )
 
         # Cache with auto-versioning
@@ -408,7 +426,7 @@ async def run_test_case(
     return results
 
 
-async def main(model_name: str, prompt_name: str, case: str):
+async def main(model_name: str, prompt_name: str, case: str, enable_chunking: bool = False):
     """Main execution function."""
     print("Dream Cleanup Testing - API Integration with Database Persistence")
     print("="*60)
@@ -424,7 +442,7 @@ async def main(model_name: str, prompt_name: str, case: str):
         print("   TEST_USER_PASSWORD=your-password")
         return
 
-    cache_dir = get_cache_dir(model_name, prompt_name)
+    cache_dir = get_cache_dir(model_name, prompt_name, enable_chunking)
 
     # Load fetched data from prompt-specific directory
     # Structure: cache/{transcription_id}/{prompt_name}/fetched_data.json
@@ -453,6 +471,7 @@ async def main(model_name: str, prompt_name: str, case: str):
     print(f"Model: {model_name}")
     print(f"Cache directory: {cache_dir}")
     print(f"Test case: {case}")
+    print(f"Chunking: {'ENABLED' if enable_chunking else 'disabled'}")
     print(f"User: {email}")
     print(f"Raw transcription length: {raw_length} chars")
 
@@ -480,7 +499,8 @@ async def main(model_name: str, prompt_name: str, case: str):
                 token,
                 cache_dir,
                 model_name,
-                raw_length
+                raw_length,
+                enable_chunking=enable_chunking
             )
             all_results.update(case1_results)
 
@@ -494,7 +514,8 @@ async def main(model_name: str, prompt_name: str, case: str):
                 token,
                 cache_dir,
                 model_name,
-                raw_length
+                raw_length,
+                enable_chunking=enable_chunking
             )
             all_results.update(case2_results)
 
@@ -508,7 +529,8 @@ async def main(model_name: str, prompt_name: str, case: str):
                 token,
                 cache_dir,
                 model_name,
-                raw_length
+                raw_length,
+                enable_chunking=enable_chunking
             )
             all_results.update(case3_results)
 
@@ -521,6 +543,7 @@ async def main(model_name: str, prompt_name: str, case: str):
                 "api_base_url": API_BASE_URL,
                 "execution_timestamp": datetime.now(timezone.utc).isoformat(),
                 "test_case": case,
+                "enable_chunking": enable_chunking,
                 "total_configs_executed": len(all_results),
                 "configs": list(all_results.keys()),
                 "using_api": True,
@@ -543,9 +566,14 @@ if __name__ == "__main__":
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+    # Run temperature tests (no chunking)
     python run_cleanups_api.py llama-3.3-70b-versatile --prompt dream_v7 --case 1
-    python run_cleanups_api.py gpt-oss-120b --prompt dream_v5 --case 2
-    python run_cleanups_api.py gpt-oss-120b --prompt dream_v7 --case all
+
+    # Run with chunking enabled
+    python run_cleanups_api.py llama-3.3-70b-versatile --prompt dream_v7 --case 1 --chunking
+
+    # Run all test cases
+    python run_cleanups_api.py llama-3.3-70b-versatile --prompt dream_v7 --case all
         """
     )
     parser.add_argument(
@@ -565,6 +593,11 @@ Examples:
         default="all",
         help="Test case: 1=Temperature, 2=Top-p, 3=Both, all=All cases (default: all)"
     )
+    parser.add_argument(
+        "--chunking",
+        action="store_true",
+        help="Enable smart text chunking for long transcriptions (>500 words)"
+    )
 
     args = parser.parse_args()
-    asyncio.run(main(args.model, args.prompt, args.case))
+    asyncio.run(main(args.model, args.prompt, args.case, args.chunking))
