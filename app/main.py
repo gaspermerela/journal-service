@@ -95,10 +95,28 @@ async def lifespan(app: FastAPI):
                 f"AssemblyAI transcription service initialized: model={settings.ASSEMBLYAI_MODEL}"
             )
 
+        elif settings.TRANSCRIPTION_PROVIDER.lower() == "runpod":
+            # Create RunPod API transcription service (Slovenian RSDO model)
+            if not settings.RUNPOD_API_KEY:
+                raise ValueError("RUNPOD_API_KEY is required when TRANSCRIPTION_PROVIDER is 'runpod'")
+            if not settings.RUNPOD_ENDPOINT_ID:
+                raise ValueError("RUNPOD_ENDPOINT_ID is required when TRANSCRIPTION_PROVIDER is 'runpod'")
+
+            app.state.transcription_service = create_transcription_service(
+                provider="runpod",
+                model_name=settings.RUNPOD_MODEL,
+                api_key=settings.RUNPOD_API_KEY,
+                endpoint_id=settings.RUNPOD_ENDPOINT_ID
+            )
+            logger.info(
+                f"RunPod transcription service initialized: model={settings.RUNPOD_MODEL}, "
+                f"endpoint_id={settings.RUNPOD_ENDPOINT_ID}"
+            )
+
         else:
             raise ValueError(
                 f"Unsupported TRANSCRIPTION_PROVIDER: {settings.TRANSCRIPTION_PROVIDER}. "
-                f"Supported: whisper, groq, assemblyai"
+                f"Supported: whisper, groq, assemblyai, runpod"
             )
 
     except Exception as e:
