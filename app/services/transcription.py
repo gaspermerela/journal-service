@@ -312,18 +312,20 @@ def create_transcription_service(
     model_name: Optional[str] = None,
     device: str = "cpu",
     num_threads: int = 10,
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    endpoint_id: Optional[str] = None
 ) -> TranscriptionService:
     """
     Factory function to create transcription service based on provider.
 
     Args:
-        provider: Provider name ("whisper" for local, "groq" or "assemblyai" for API)
+        provider: Provider name ("whisper" for local, "groq", "assemblyai", or "runpod" for API)
         model: Loaded Whisper model instance (only for local whisper)
-        model_name: Name of the model (e.g., 'large-v3', 'universal')
+        model_name: Name of the model (e.g., 'large-v3', 'universal', 'rsdo-slovenian-asr')
         device: Device to use for local whisper ('cpu' or 'cuda')
         num_threads: Number of CPU threads for local whisper
-        api_key: API key for Groq/AssemblyAI (required if provider is "groq" or "assemblyai")
+        api_key: API key for cloud providers (required for groq, assemblyai, runpod)
+        endpoint_id: RunPod serverless endpoint ID (required for runpod provider)
 
     Returns:
         TranscriptionService implementation
@@ -382,8 +384,34 @@ def create_transcription_service(
                 f"AssemblyAI provider selected but httpx package not installed. "
                 f"Install with: pip install httpx"
             ) from e
+    elif provider == "runpod":
+        if api_key is None:
+            raise ValueError("api_key is required for runpod provider")
+        if endpoint_id is None:
+            raise ValueError("endpoint_id is required for runpod provider")
+
+        try:
+            from app.services.transcription_runpod import RunPodTranscriptionService
+            from app.config import settings
+
+            return RunPodTranscriptionService(
+                api_key=api_key,
+                endpoint_id=endpoint_id,
+                model=model_name or settings.RUNPOD_MODEL,
+                chunk_duration_seconds=settings.RUNPOD_CHUNK_DURATION_SECONDS,
+                chunk_overlap_seconds=settings.RUNPOD_CHUNK_OVERLAP_SECONDS,
+                use_silence_detection=settings.RUNPOD_USE_SILENCE_DETECTION,
+                max_concurrent_chunks=settings.RUNPOD_MAX_CONCURRENT_CHUNKS,
+                max_retries=settings.RUNPOD_MAX_RETRIES,
+                timeout=settings.RUNPOD_TIMEOUT
+            )
+        except ImportError as e:
+            raise ValueError(
+                f"RunPod provider selected but required packages not installed. "
+                f"Install with: pip install httpx pydub"
+            ) from e
     else:
         raise ValueError(
             f"Unsupported transcription provider: {provider}. "
-            f"Supported providers: whisper, groq, assemblyai"
+            f"Supported providers: whisper, groq, assemblyai, runpod"
         )

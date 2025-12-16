@@ -29,6 +29,7 @@ pytest-cov==6.0.0
 
 # Audio Processing
 mutagen==1.47.0
+pydub==0.25.1  # For audio chunking (RunPod provider)
 
 # Utilities
 aiofiles==24.1.0

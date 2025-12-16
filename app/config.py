@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 100
 
     # Transcription Configuration
-    TRANSCRIPTION_PROVIDER: str = "groq"  # Options: whisper (local), groq (API)
+    TRANSCRIPTION_PROVIDER: str = "groq"  # Options: whisper (local), groq, assemblyai, runpod (Slovenian)
 
     # Whisper (Local) Transcription Configuration
     WHISPER_MODEL: str = "large-v3"  # Options: tiny, base, small, medium, large, large-v3
@@ -65,6 +65,17 @@ class Settings(BaseSettings):
     ASSEMBLYAI_POLL_INTERVAL: float = 3.0  # Seconds between status polls
     ASSEMBLYAI_TIMEOUT: int = 1000  # Max seconds to wait for transcription
     ASSEMBLYAI_AUTO_DELETE: bool = True  # Auto-delete transcript after extraction (GDPR compliance)
+
+    # RunPod API Configuration (for Slovenian transcription using RSDO model)
+    RUNPOD_API_KEY: Optional[str] = None  # Required when using RunPod provider
+    RUNPOD_ENDPOINT_ID: Optional[str] = None  # RunPod serverless endpoint ID
+    RUNPOD_MODEL: str = "rsdo-slovenian-asr"  # RSDO Slovenian ASR model
+    RUNPOD_CHUNK_DURATION_SECONDS: int = 240  # Target chunk duration (4 minutes)
+    RUNPOD_CHUNK_OVERLAP_SECONDS: int = 5  # Overlap between chunks to avoid cutting words
+    RUNPOD_USE_SILENCE_DETECTION: bool = True  # Use silence detection for chunk boundaries
+    RUNPOD_MAX_CONCURRENT_CHUNKS: int = 3  # Max parallel chunk transcriptions
+    RUNPOD_TIMEOUT: int = 300  # Max seconds per chunk (5 minutes)
+    RUNPOD_MAX_RETRIES: int = 3  # Max retry attempts on failure
 
     # CORS Configuration
     CORS_ORIGINS: str = "*"
@@ -171,6 +182,7 @@ TRANSCRIPTION_PROVIDER_PARAMETERS = {
         }
     },
     "assemblyai": {},  # AssemblyAI - no configurable parameters (no beam_size/temperature support)
+    "runpod": {},  # RunPod RSDO - Slovenian only, no configurable parameters (fixed model)
     "noop": {}  # Test provider - no configurable parameters
 }
 

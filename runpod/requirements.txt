@@ -1,0 +1,11 @@
+# RunPod Handler Dependencies
+# These are installed in the Docker image
+
+# NeMo ASR toolkit (required by RSDO model)
+nemo_toolkit[asr]==1.21.0
+
+# RunPod serverless SDK
+runpod>=1.6.0
+
+# Audio file handling
+soundfile>=0.12.1
