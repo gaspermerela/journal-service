@@ -10,6 +10,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from schema_config import get_schema
+
 
 # revision identifiers, used by Alembic.
 revision: str = '74592cf00921'
@@ -19,12 +21,14 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    schema = get_schema()
     op.add_column(
         'transcriptions',
         sa.Column('temperature', sa.Float(), nullable=True, comment='Sampling temperature (0-2)'),
-        schema='journal'
+        schema=schema
     )
 
 
 def downgrade() -> None:
-    op.drop_column('transcriptions', 'temperature', schema='journal')
+    schema = get_schema()
+    op.drop_column('transcriptions', 'temperature', schema=schema)

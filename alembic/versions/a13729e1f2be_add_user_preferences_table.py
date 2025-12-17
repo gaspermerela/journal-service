@@ -10,6 +10,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from schema_config import get_schema
+
 
 # revision identifiers, used by Alembic.
 revision: str = 'a13729e1f2be'
@@ -19,6 +21,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    schema = get_schema()
     # Create user_preferences table
     op.create_table('user_preferences',
         sa.Column('id', sa.UUID(), nullable=False),
@@ -26,15 +29,16 @@ def upgrade() -> None:
         sa.Column('preferred_transcription_language', sa.String(length=10), server_default='auto', nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-        sa.ForeignKeyConstraint(['user_id'], ['journal.users.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['user_id'], [f'{schema}.users.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id'),
-        schema='journal'
+        schema=schema
     )
     # Create unique index on user_id (one preference record per user)
-    op.create_index('idx_user_preferences_user_id', 'user_preferences', ['user_id'], unique=True, schema='journal')
+    op.create_index('idx_user_preferences_user_id', 'user_preferences', ['user_id'], unique=True, schema=schema)
 
 
 def downgrade() -> None:
+    schema = get_schema()
     # Drop user_preferences table
-    op.drop_index('idx_user_preferences_user_id', table_name='user_preferences', schema='journal')
-    op.drop_table('user_preferences', schema='journal')
+    op.drop_index('idx_user_preferences_user_id', table_name='user_preferences', schema=schema)
+    op.drop_table('user_preferences', schema=schema)

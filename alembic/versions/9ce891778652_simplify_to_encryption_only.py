@@ -1,4 +1,4 @@
-f"""simplify_to_encryption_only
+"""simplify_to_encryption_only
 
 Revision ID: 9ce891778652
 Revises: e1f2a3b4c5d6
@@ -14,6 +14,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from schema_config import get_schema
+
 
 # revision identifiers, used by Alembic.
 revision: str = '9ce891778652'
@@ -21,10 +23,9 @@ down_revision: Union[str, None] = 'e1f2a3b4c5d6'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-SCHEMA = "journal"
-
 
 def upgrade() -> None:
+    SCHEMA = get_schema()
     # ==========================================================================
     # TRANSCRIPTIONS TABLE
     # ==========================================================================
@@ -74,6 +75,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    SCHEMA = get_schema()
     # ==========================================================================
     # USER_PREFERENCES TABLE
     # ==========================================================================

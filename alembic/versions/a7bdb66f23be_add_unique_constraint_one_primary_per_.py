@@ -10,6 +10,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from schema_config import get_schema
+
 
 # revision identifiers, used by Alembic.
 revision: str = 'a7bdb66f23be'
@@ -19,14 +21,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    schema = get_schema()
     # Add partial unique index to ensure only one primary transcription per entry
-    op.execute("""
+    op.execute(f"""
         CREATE UNIQUE INDEX idx_one_primary_per_entry
-        ON journal.transcriptions (entry_id)
+        ON "{schema}".transcriptions (entry_id)
         WHERE is_primary = true
     """)
 
 
 def downgrade() -> None:
+    schema = get_schema()
     # Remove the partial unique index
-    op.execute("DROP INDEX IF EXISTS journal.idx_one_primary_per_entry")
+    op.execute(f'DROP INDEX IF EXISTS "{schema}".idx_one_primary_per_entry')
