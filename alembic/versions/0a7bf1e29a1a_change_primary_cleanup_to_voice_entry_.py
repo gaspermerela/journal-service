@@ -9,6 +9,9 @@ from typing import Sequence, Union
 
 from alembic import op
 
+from schema_config import get_schema
+
+
 # revision identifiers, used by Alembic.
 revision: str = '0a7bf1e29a1a'
 down_revision: Union[str, None] = '72b20f635571'
@@ -17,30 +20,32 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    schema = get_schema()
     # Change default value of is_primary to false
     op.alter_column(
         'cleaned_entries',
         'is_primary',
         server_default='false',
-        schema='journal'
+        schema=schema
     )
 
     # Add partial unique index to ensure only one primary cleanup per voice_entry
-    op.execute("""
+    op.execute(f"""
         CREATE UNIQUE INDEX idx_one_primary_cleanup_per_voice_entry
-        ON journal.cleaned_entries (voice_entry_id)
+        ON "{schema}".cleaned_entries (voice_entry_id)
         WHERE is_primary = true
     """)
 
 
 def downgrade() -> None:
+    schema = get_schema()
     # Remove the partial unique index
-    op.execute("DROP INDEX IF EXISTS journal.idx_one_primary_cleanup_per_voice_entry")
+    op.execute(f'DROP INDEX IF EXISTS "{schema}".idx_one_primary_cleanup_per_voice_entry')
 
     # Restore original default value
     op.alter_column(
         'cleaned_entries',
         'is_primary',
         server_default='true',
-        schema='journal'
+        schema=schema
     )

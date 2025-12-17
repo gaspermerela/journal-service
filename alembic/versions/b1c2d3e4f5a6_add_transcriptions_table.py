@@ -11,6 +11,8 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from schema_config import get_schema
+
 # revision identifiers, used by Alembic.
 revision: str = 'b1c2d3e4f5a6'
 down_revision: Union[str, None] = 'aa773922106b'
@@ -19,6 +21,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    schema = get_schema()
     # Create transcriptions table
     op.create_table(
         'transcriptions',
@@ -34,9 +37,9 @@ def upgrade() -> None:
         sa.Column('is_primary', sa.Boolean(), nullable=False, server_default='false'),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
-        sa.ForeignKeyConstraint(['entry_id'], ['journal.voice_entries.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['entry_id'], [f'{schema}.voice_entries.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id'),
-        schema='journal'
+        schema=schema
     )
 
     # Create indexes
@@ -45,45 +48,46 @@ def upgrade() -> None:
         'transcriptions',
         ['entry_id'],
         unique=False,
-        schema='journal'
+        schema=schema
     )
     op.create_index(
         'idx_transcriptions_entry_id_is_primary',
         'transcriptions',
         ['entry_id', 'is_primary'],
         unique=False,
-        schema='journal'
+        schema=schema
     )
     op.create_index(
         'idx_transcriptions_status',
         'transcriptions',
         ['status'],
         unique=False,
-        schema='journal'
+        schema=schema
     )
     op.create_index(
         'idx_transcriptions_created_at',
         'transcriptions',
         ['created_at'],
         unique=False,
-        schema='journal'
+        schema=schema
     )
     op.create_index(
         'idx_transcriptions_is_primary',
         'transcriptions',
         ['is_primary'],
         unique=False,
-        schema='journal'
+        schema=schema
     )
 
 
 def downgrade() -> None:
+    schema = get_schema()
     # Drop indexes
-    op.drop_index('idx_transcriptions_is_primary', table_name='transcriptions', schema='journal')
-    op.drop_index('idx_transcriptions_created_at', table_name='transcriptions', schema='journal')
-    op.drop_index('idx_transcriptions_status', table_name='transcriptions', schema='journal')
-    op.drop_index('idx_transcriptions_entry_id_is_primary', table_name='transcriptions', schema='journal')
-    op.drop_index('idx_transcriptions_entry_id', table_name='transcriptions', schema='journal')
+    op.drop_index('idx_transcriptions_is_primary', table_name='transcriptions', schema=schema)
+    op.drop_index('idx_transcriptions_created_at', table_name='transcriptions', schema=schema)
+    op.drop_index('idx_transcriptions_status', table_name='transcriptions', schema=schema)
+    op.drop_index('idx_transcriptions_entry_id_is_primary', table_name='transcriptions', schema=schema)
+    op.drop_index('idx_transcriptions_entry_id', table_name='transcriptions', schema=schema)
 
     # Drop table
-    op.drop_table('transcriptions', schema='journal')
+    op.drop_table('transcriptions', schema=schema)

@@ -10,6 +10,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from schema_config import get_schema
+
 
 # revision identifiers, used by Alembic.
 revision: str = '7a458945ac76'
@@ -19,11 +21,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    schema = get_schema()
     # Add user_id column to voice_entries table
     op.add_column(
         'voice_entries',
         sa.Column('user_id', sa.UUID(), nullable=True),
-        schema='journal'
+        schema=schema
     )
 
     # Add foreign key constraint
@@ -31,8 +34,8 @@ def upgrade() -> None:
         'fk_voice_entries_user_id_users',
         'voice_entries', 'users',
         ['user_id'], ['id'],
-        source_schema='journal',
-        referent_schema='journal',
+        source_schema=schema,
+        referent_schema=schema,
         ondelete='CASCADE'
     )
 
@@ -42,16 +45,17 @@ def upgrade() -> None:
         'voice_entries',
         ['user_id'],
         unique=False,
-        schema='journal'
+        schema=schema
     )
 
 
 def downgrade() -> None:
+    schema = get_schema()
     # Drop index
-    op.drop_index('idx_voice_entries_user_id', table_name='voice_entries', schema='journal')
+    op.drop_index('idx_voice_entries_user_id', table_name='voice_entries', schema=schema)
 
     # Drop foreign key
-    op.drop_constraint('fk_voice_entries_user_id_users', 'voice_entries', schema='journal', type_='foreignkey')
+    op.drop_constraint('fk_voice_entries_user_id_users', 'voice_entries', schema=schema, type_='foreignkey')
 
     # Drop column
-    op.drop_column('voice_entries', 'user_id', schema='journal')
+    op.drop_column('voice_entries', 'user_id', schema=schema)
