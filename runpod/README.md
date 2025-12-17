@@ -60,7 +60,7 @@ docker buildx build --platform linux/amd64 -t your-dockerhub-username/rsdo-slove
 Add to your `.env`:
 
 ```bash
-TRANSCRIPTION_PROVIDER=runpod
+TRANSCRIPTION_PROVIDER=clarinsi_slovene_asr
 RUNPOD_API_KEY=your_runpod_api_key
 RUNPOD_ENDPOINT_ID=your_endpoint_id
 ```

@@ -407,11 +407,11 @@ def create_transcription_service(
             )
         except ImportError as e:
             raise ValueError(
-                f"RunPod provider selected but required packages not installed. "
-                f"Install with: pip install httpx pydub"
+                f"clarinsi_slovene_asr provider selected but required packages not installed. "
+                f"Install with: pip install httpx mutagen"
             ) from e
     else:
         raise ValueError(
             f"Unsupported transcription provider: {provider}. "
-            f"Supported providers: whisper, groq, assemblyai, runpod"
+            f"Supported providers: whisper, groq, assemblyai, clarinsi_slovene_asr"
         )
