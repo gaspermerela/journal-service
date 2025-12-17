@@ -116,7 +116,7 @@ async def lifespan(app: FastAPI):
         else:
             raise ValueError(
                 f"Unsupported TRANSCRIPTION_PROVIDER: {settings.TRANSCRIPTION_PROVIDER}. "
-                f"Supported: whisper, groq, assemblyai, runpod"
+                f"Supported: whisper, groq, assemblyai, clarinsi_slovene_asr"
             )
 
     except Exception as e:
