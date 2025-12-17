@@ -1,14 +1,17 @@
 """
 Audio chunking utilities for splitting long audio files.
 Used by RunPod transcription service to handle 1h+ recordings.
+
+Uses mutagen for duration detection and ffmpeg for chunking (no pydub dependency).
 """
+import asyncio
+import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from pydub import AudioSegment
-from pydub.silence import detect_silence
+from mutagen import File as MutagenFile
 
 from app.utils.logger import get_logger
 
@@ -27,11 +30,10 @@ class AudioChunk:
 
 class AudioChunker:
     """
-    Handles audio chunking with silence detection for clean boundaries.
+    Handles audio chunking for long audio files.
 
     Splits long audio files into smaller chunks suitable for transcription
-    services with duration limits. Uses silence detection to avoid cutting
-    words mid-utterance.
+    services with duration limits. Uses ffmpeg for reliable audio processing.
     """
 
     def __init__(
@@ -60,6 +62,21 @@ class AudioChunker:
 
         self._temp_dir: Optional[Path] = None
 
+    def _get_duration_ms(self, audio_path: Path) -> int:
+        """
+        Get audio duration in milliseconds using mutagen.
+
+        Args:
+            audio_path: Path to audio file
+
+        Returns:
+            Duration in milliseconds
+        """
+        audio = MutagenFile(str(audio_path))
+        if audio is None or audio.info is None:
+            raise ValueError(f"Could not read audio file: {audio_path}")
+        return int(audio.info.length * 1000)
+
     def needs_chunking(self, audio_path: Path, threshold_seconds: int = 300) -> bool:
         """
         Check if audio file exceeds duration threshold and needs chunking.
@@ -72,8 +89,8 @@ class AudioChunker:
             True if audio duration exceeds threshold
         """
         try:
-            audio = AudioSegment.from_file(str(audio_path))
-            duration_seconds = len(audio) / 1000
+            duration_ms = self._get_duration_ms(audio_path)
+            duration_seconds = duration_ms / 1000
             needs_chunk = duration_seconds > threshold_seconds
 
             logger.info(
@@ -92,6 +109,45 @@ class AudioChunker:
             )
             raise
 
+    def _extract_chunk_ffmpeg(
+        self,
+        audio_path: Path,
+        output_path: Path,
+        start_ms: int,
+        end_ms: int
+    ) -> None:
+        """
+        Extract a chunk from audio file using ffmpeg.
+
+        Args:
+            audio_path: Source audio file
+            output_path: Output chunk file path
+            start_ms: Start time in milliseconds
+            end_ms: End time in milliseconds
+        """
+        start_seconds = start_ms / 1000
+        duration_seconds = (end_ms - start_ms) / 1000
+
+        cmd = [
+            "ffmpeg",
+            "-i", str(audio_path),
+            "-ss", str(start_seconds),
+            "-t", str(duration_seconds),
+            "-ac", "1",           # Mono
+            "-ar", "16000",       # 16kHz
+            "-y",                 # Overwrite
+            str(output_path)
+        ]
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            raise RuntimeError(f"ffmpeg failed: {result.stderr}")
+
     def chunk_audio(
         self,
         audio_path: Path,
@@ -101,13 +157,11 @@ class AudioChunker:
         """
         Split audio file into chunks.
 
-        Uses silence detection to find optimal split points when possible.
-        Falls back to fixed-duration splits if no silence found.
-
         Args:
             audio_path: Path to input audio file (WAV recommended)
             output_dir: Directory for chunk files (uses temp dir if None)
             use_silence_detection: Whether to use silence detection for boundaries
+                                   (currently ignored, uses fixed boundaries)
 
         Returns:
             List of AudioChunk objects with paths to chunk files
@@ -115,10 +169,9 @@ class AudioChunker:
         if not audio_path.exists():
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
-        # Load audio
+        # Get audio duration
         logger.info("Loading audio for chunking", audio_path=str(audio_path))
-        audio = AudioSegment.from_file(str(audio_path))
-        duration_ms = len(audio)
+        duration_ms = self._get_duration_ms(audio_path)
 
         chunk_duration_ms = self.chunk_duration_seconds * 1000
         overlap_ms = self.overlap_seconds * 1000
@@ -150,23 +203,14 @@ class AudioChunker:
         position = 0
 
         while position < duration_ms:
-            # Calculate target chunk end
-            target_end = min(position + chunk_duration_ms, duration_ms)
+            # Calculate chunk end
+            chunk_end = min(position + chunk_duration_ms, duration_ms)
 
-            # Try to find silence near the end for cleaner cuts
-            chunk_end = target_end
-            if use_silence_detection and target_end < duration_ms:
-                chunk_end = self._find_silence_boundary(
-                    audio, position, target_end
-                )
-
-            # Extract chunk
-            chunk_audio = audio[position:chunk_end]
-
-            # Export chunk to WAV
+            # Export chunk using ffmpeg
             chunk_filename = f"chunk_{chunk_index:04d}.wav"
             chunk_path = output_dir / chunk_filename
-            chunk_audio.export(str(chunk_path), format="wav")
+
+            self._extract_chunk_ffmpeg(audio_path, chunk_path, position, chunk_end)
 
             chunks.append(AudioChunk(
                 index=chunk_index,
@@ -202,58 +246,6 @@ class AudioChunker:
         )
 
         return chunks
-
-    def _find_silence_boundary(
-        self,
-        audio: AudioSegment,
-        chunk_start: int,
-        target_end: int
-    ) -> int:
-        """
-        Find a silence point near the target end for cleaner splitting.
-
-        Searches backward from target_end within the search window.
-
-        Args:
-            audio: Full audio segment
-            chunk_start: Start of current chunk in ms
-            target_end: Target end position in ms
-
-        Returns:
-            Adjusted end position (at silence point or original target_end)
-        """
-        # Define search window (last N seconds of chunk)
-        search_start = max(chunk_start, target_end - self.silence_search_window_ms)
-        search_segment = audio[search_start:target_end]
-
-        try:
-            silences = detect_silence(
-                search_segment,
-                min_silence_len=self.min_silence_len_ms,
-                silence_thresh=self.silence_thresh_db
-            )
-
-            if silences:
-                # Use the last silence point (closest to target end)
-                # Each silence is [start_ms, end_ms] relative to search_segment
-                last_silence_end = silences[-1][1]
-                adjusted_end = search_start + last_silence_end
-
-                logger.debug(
-                    "Found silence boundary",
-                    original_target=target_end,
-                    adjusted_end=adjusted_end,
-                    silences_found=len(silences)
-                )
-                return adjusted_end
-
-        except Exception as e:
-            logger.warning(
-                "Silence detection failed, using fixed boundary",
-                error=str(e)
-            )
-
-        return target_end
 
     def cleanup_chunks(self, chunks: List[AudioChunk]) -> None:
         """

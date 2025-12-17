@@ -1,6 +1,8 @@
 """
 Unit tests for audio chunking utilities.
 Tests AudioChunker class for splitting long audio files.
+
+Uses mutagen for duration detection and ffmpeg (via subprocess) for chunking.
 """
 import pytest
 from pathlib import Path
@@ -43,52 +45,52 @@ class TestAudioChunkerInit:
 class TestNeedsChunking:
     """Test needs_chunking method."""
 
-    @patch('app.utils.audio_chunking.AudioSegment')
-    def test_short_audio_no_chunking(self, mock_audio_segment):
+    @patch('app.utils.audio_chunking.MutagenFile')
+    def test_short_audio_no_chunking(self, mock_mutagen_file):
         """Test short audio does not need chunking."""
-        # Mock audio with 2 minute duration (120,000 ms)
+        # Mock audio with 2 minute duration (120 seconds)
         mock_audio = Mock()
-        mock_audio.__len__ = Mock(return_value=120000)
-        mock_audio_segment.from_file.return_value = mock_audio
+        mock_audio.info.length = 120.0
+        mock_mutagen_file.return_value = mock_audio
 
         chunker = AudioChunker()
         result = chunker.needs_chunking(Path("/fake/audio.wav"), threshold_seconds=300)
 
         assert result is False
 
-    @patch('app.utils.audio_chunking.AudioSegment')
-    def test_long_audio_needs_chunking(self, mock_audio_segment):
+    @patch('app.utils.audio_chunking.MutagenFile')
+    def test_long_audio_needs_chunking(self, mock_mutagen_file):
         """Test long audio needs chunking."""
-        # Mock audio with 10 minute duration (600,000 ms)
+        # Mock audio with 10 minute duration (600 seconds)
         mock_audio = Mock()
-        mock_audio.__len__ = Mock(return_value=600000)
-        mock_audio_segment.from_file.return_value = mock_audio
+        mock_audio.info.length = 600.0
+        mock_mutagen_file.return_value = mock_audio
 
         chunker = AudioChunker()
         result = chunker.needs_chunking(Path("/fake/audio.wav"), threshold_seconds=300)
 
         assert result is True
 
-    @patch('app.utils.audio_chunking.AudioSegment')
-    def test_exact_threshold_no_chunking(self, mock_audio_segment):
+    @patch('app.utils.audio_chunking.MutagenFile')
+    def test_exact_threshold_no_chunking(self, mock_mutagen_file):
         """Test audio exactly at threshold does not need chunking."""
-        # Mock audio exactly at 5 minutes (300,000 ms)
+        # Mock audio exactly at 5 minutes (300 seconds)
         mock_audio = Mock()
-        mock_audio.__len__ = Mock(return_value=300000)
-        mock_audio_segment.from_file.return_value = mock_audio
+        mock_audio.info.length = 300.0
+        mock_mutagen_file.return_value = mock_audio
 
         chunker = AudioChunker()
         result = chunker.needs_chunking(Path("/fake/audio.wav"), threshold_seconds=300)
 
         assert result is False
 
-    @patch('app.utils.audio_chunking.AudioSegment')
-    def test_custom_threshold(self, mock_audio_segment):
+    @patch('app.utils.audio_chunking.MutagenFile')
+    def test_custom_threshold(self, mock_mutagen_file):
         """Test needs_chunking with custom threshold."""
-        # Mock audio with 3 minute duration (180,000 ms)
+        # Mock audio with 3 minute duration (180 seconds)
         mock_audio = Mock()
-        mock_audio.__len__ = Mock(return_value=180000)
-        mock_audio_segment.from_file.return_value = mock_audio
+        mock_audio.info.length = 180.0
+        mock_mutagen_file.return_value = mock_audio
 
         chunker = AudioChunker()
 
@@ -102,16 +104,16 @@ class TestNeedsChunking:
 class TestChunkAudio:
     """Test chunk_audio method."""
 
-    @patch('app.utils.audio_chunking.AudioSegment')
-    def test_short_audio_returns_single_chunk(self, mock_audio_segment, tmp_path):
+    @patch('app.utils.audio_chunking.MutagenFile')
+    def test_short_audio_returns_single_chunk(self, mock_mutagen_file, tmp_path):
         """Test short audio returns single chunk (original file)."""
         audio_file = tmp_path / "test.wav"
         audio_file.write_bytes(b"fake audio")
 
-        # Mock short audio (2 minutes = 120,000 ms)
+        # Mock short audio (2 minutes = 120 seconds)
         mock_audio = Mock()
-        mock_audio.__len__ = Mock(return_value=120000)
-        mock_audio_segment.from_file.return_value = mock_audio
+        mock_audio.info.length = 120.0
+        mock_mutagen_file.return_value = mock_audio
 
         chunker = AudioChunker(chunk_duration_seconds=240)
         chunks = chunker.chunk_audio(audio_file)
@@ -123,28 +125,22 @@ class TestChunkAudio:
         assert chunks[0].end_time_ms == 120000
         assert chunks[0].duration_ms == 120000
 
-    @patch('app.utils.audio_chunking.detect_silence')
-    @patch('app.utils.audio_chunking.AudioSegment')
-    def test_long_audio_creates_multiple_chunks(self, mock_audio_segment, mock_detect_silence, tmp_path):
+    @patch('app.utils.audio_chunking.subprocess')
+    @patch('app.utils.audio_chunking.MutagenFile')
+    def test_long_audio_creates_multiple_chunks(self, mock_mutagen_file, mock_subprocess, tmp_path):
         """Test long audio creates multiple chunks."""
         audio_file = tmp_path / "test.wav"
         audio_file.write_bytes(b"fake audio")
 
-        # Mock 10 minute audio (600,000 ms) with 4 min chunks
-        chunk_duration_ms = 240000
-        total_duration_ms = 600000
+        # Mock 10 minute audio (600 seconds)
+        mock_audio = Mock()
+        mock_audio.info.length = 600.0
+        mock_mutagen_file.return_value = mock_audio
 
-        mock_audio = MagicMock()
-        mock_audio.__len__ = Mock(return_value=total_duration_ms)
-
-        # Mock slicing behavior
-        mock_chunk = MagicMock()
-        mock_audio.__getitem__ = Mock(return_value=mock_chunk)
-
-        mock_audio_segment.from_file.return_value = mock_audio
-
-        # Mock no silence detected
-        mock_detect_silence.return_value = []
+        # Mock successful ffmpeg execution
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_subprocess.run.return_value = mock_result
 
         chunker = AudioChunker(chunk_duration_seconds=240, overlap_seconds=5)
         chunks = chunker.chunk_audio(audio_file, output_dir=tmp_path / "chunks")
@@ -156,21 +152,22 @@ class TestChunkAudio:
         assert chunks[0].index == 0
         assert chunks[0].start_time_ms == 0
 
-    @patch('app.utils.audio_chunking.detect_silence')
-    @patch('app.utils.audio_chunking.AudioSegment')
-    def test_chunks_have_overlap(self, mock_audio_segment, mock_detect_silence, tmp_path):
+    @patch('app.utils.audio_chunking.subprocess')
+    @patch('app.utils.audio_chunking.MutagenFile')
+    def test_chunks_have_overlap(self, mock_mutagen_file, mock_subprocess, tmp_path):
         """Test chunks have proper overlap."""
         audio_file = tmp_path / "test.wav"
         audio_file.write_bytes(b"fake audio")
 
-        # Mock 8 minute audio
-        mock_audio = MagicMock()
-        mock_audio.__len__ = Mock(return_value=480000)
-        mock_chunk = MagicMock()
-        mock_audio.__getitem__ = Mock(return_value=mock_chunk)
-        mock_audio_segment.from_file.return_value = mock_audio
+        # Mock 8 minute audio (480 seconds)
+        mock_audio = Mock()
+        mock_audio.info.length = 480.0
+        mock_mutagen_file.return_value = mock_audio
 
-        mock_detect_silence.return_value = []
+        # Mock successful ffmpeg execution
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_subprocess.run.return_value = mock_result
 
         overlap_seconds = 5
         chunker = AudioChunker(chunk_duration_seconds=240, overlap_seconds=overlap_seconds)
@@ -178,37 +175,45 @@ class TestChunkAudio:
 
         # Check overlap between consecutive chunks
         for i in range(len(chunks) - 1):
-            # Next chunk should start before current chunk ends
+            # Next chunk should start before current chunk ends (by overlap amount)
             expected_next_start = chunks[i].end_time_ms - (overlap_seconds * 1000)
-            # Allow some tolerance due to silence detection adjustments
-            assert chunks[i + 1].start_time_ms <= chunks[i].end_time_ms
+            assert chunks[i + 1].start_time_ms == expected_next_start
 
-    @patch('app.utils.audio_chunking.detect_silence')
-    @patch('app.utils.audio_chunking.AudioSegment')
-    def test_silence_detection_adjusts_boundary(self, mock_audio_segment, mock_detect_silence, tmp_path):
-        """Test silence detection adjusts chunk boundaries."""
+    @patch('app.utils.audio_chunking.subprocess')
+    @patch('app.utils.audio_chunking.MutagenFile')
+    def test_ffmpeg_called_with_correct_args(self, mock_mutagen_file, mock_subprocess, tmp_path):
+        """Test ffmpeg is called with correct arguments."""
         audio_file = tmp_path / "test.wav"
         audio_file.write_bytes(b"fake audio")
 
         # Mock 10 minute audio
-        mock_audio = MagicMock()
-        mock_audio.__len__ = Mock(return_value=600000)
-        mock_chunk = MagicMock()
-        mock_audio.__getitem__ = Mock(return_value=mock_chunk)
-        mock_audio_segment.from_file.return_value = mock_audio
+        mock_audio = Mock()
+        mock_audio.info.length = 600.0
+        mock_mutagen_file.return_value = mock_audio
 
-        # Mock silence found at position relative to search segment
-        # This should adjust the chunk boundary
-        mock_detect_silence.return_value = [[25000, 26000]]  # Silence at 25-26s into search segment
+        # Mock successful ffmpeg execution
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_subprocess.run.return_value = mock_result
 
         chunker = AudioChunker(chunk_duration_seconds=240)
-        chunks = chunker.chunk_audio(audio_file, output_dir=tmp_path / "chunks", use_silence_detection=True)
+        chunks = chunker.chunk_audio(audio_file, output_dir=tmp_path / "chunks")
 
-        # Silence detection should have been called
-        assert mock_detect_silence.called
+        # Verify ffmpeg was called
+        assert mock_subprocess.run.called
 
-    @patch('app.utils.audio_chunking.AudioSegment')
-    def test_file_not_found_raises_error(self, mock_audio_segment):
+        # Check first call arguments
+        first_call_args = mock_subprocess.run.call_args_list[0]
+        cmd = first_call_args[0][0]  # First positional arg is the command list
+
+        assert cmd[0] == "ffmpeg"
+        assert "-i" in cmd
+        assert "-ss" in cmd  # Start time
+        assert "-t" in cmd   # Duration
+        assert "-ac" in cmd  # Audio channels
+        assert "-ar" in cmd  # Sample rate
+
+    def test_file_not_found_raises_error(self):
         """Test chunk_audio raises error for non-existent file."""
         non_existent = Path("/fake/does_not_exist.wav")
 
@@ -217,28 +222,56 @@ class TestChunkAudio:
         with pytest.raises(FileNotFoundError):
             chunker.chunk_audio(non_existent)
 
-    @patch('app.utils.audio_chunking.detect_silence')
-    @patch('app.utils.audio_chunking.AudioSegment')
-    def test_disable_silence_detection(self, mock_audio_segment, mock_detect_silence, tmp_path):
-        """Test chunking with silence detection disabled."""
+    @patch('app.utils.audio_chunking.subprocess')
+    @patch('app.utils.audio_chunking.MutagenFile')
+    def test_ffmpeg_failure_raises_error(self, mock_mutagen_file, mock_subprocess, tmp_path):
+        """Test ffmpeg failure raises RuntimeError."""
         audio_file = tmp_path / "test.wav"
         audio_file.write_bytes(b"fake audio")
 
-        mock_audio = MagicMock()
-        mock_audio.__len__ = Mock(return_value=600000)
-        mock_chunk = MagicMock()
-        mock_audio.__getitem__ = Mock(return_value=mock_chunk)
-        mock_audio_segment.from_file.return_value = mock_audio
+        # Mock long audio
+        mock_audio = Mock()
+        mock_audio.info.length = 600.0
+        mock_mutagen_file.return_value = mock_audio
+
+        # Mock ffmpeg failure
+        mock_result = Mock()
+        mock_result.returncode = 1
+        mock_result.stderr = "ffmpeg error message"
+        mock_subprocess.run.return_value = mock_result
 
         chunker = AudioChunker(chunk_duration_seconds=240)
+
+        with pytest.raises(RuntimeError) as exc_info:
+            chunker.chunk_audio(audio_file, output_dir=tmp_path / "chunks")
+
+        assert "ffmpeg failed" in str(exc_info.value)
+
+    @patch('app.utils.audio_chunking.subprocess')
+    @patch('app.utils.audio_chunking.MutagenFile')
+    def test_use_silence_detection_param_accepted(self, mock_mutagen_file, mock_subprocess, tmp_path):
+        """Test use_silence_detection parameter is accepted (but currently ignored)."""
+        audio_file = tmp_path / "test.wav"
+        audio_file.write_bytes(b"fake audio")
+
+        mock_audio = Mock()
+        mock_audio.info.length = 600.0
+        mock_mutagen_file.return_value = mock_audio
+
+        mock_result = Mock()
+        mock_result.returncode = 0
+        mock_subprocess.run.return_value = mock_result
+
+        chunker = AudioChunker(chunk_duration_seconds=240)
+
+        # Should not raise error with use_silence_detection parameter
         chunks = chunker.chunk_audio(
             audio_file,
             output_dir=tmp_path / "chunks",
-            use_silence_detection=False
+            use_silence_detection=True
         )
 
-        # Silence detection should not have been called
-        mock_detect_silence.assert_not_called()
+        assert len(chunks) >= 1
 
 
 class TestCleanupChunks:

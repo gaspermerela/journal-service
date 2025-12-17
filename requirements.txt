@@ -28,8 +28,7 @@ pytest-asyncio==0.24.0
 pytest-cov==6.0.0
 
 # Audio Processing
-mutagen==1.47.0
-pydub==0.25.1  # For audio chunking (RunPod provider)
+mutagen==1.47.0  # For audio duration detection (Python 3.13 compatible)
 
 # Utilities
 aiofiles==24.1.0
