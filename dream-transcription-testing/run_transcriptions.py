@@ -247,17 +247,17 @@ Examples:
         """
     )
     parser.add_argument("entry_id", help="Entry UUID")
-    parser.add_argument("--provider", "-p", required=True, choices=["groq", "assemblyai"])
+    parser.add_argument("--provider", "-p", required=True, choices=["groq", "assemblyai", "clarinsi_slovene_asr"])
     parser.add_argument("--temp", "-t", type=float, default=None,
-                        help="Temperature (default: 0.0 for groq, ignored for assemblyai)")
+                        help="Temperature (default: 0.0 for groq, ignored for others)")
 
     args = parser.parse_args()
 
-    # Default temp to 0.0 for groq, None for assemblyai
+    # Default temp to 0.0 for groq, None for others
     temperature = args.temp
     if temperature is None and args.provider == "groq":
         temperature = 0.0
-    elif args.provider == "assemblyai":
+    elif args.provider in ["assemblyai", "clarinsi_slovene_asr"]:
         temperature = None
 
     asyncio.run(main(args.entry_id, args.provider, temperature))

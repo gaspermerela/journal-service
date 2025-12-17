@@ -17,7 +17,7 @@ from pathlib import Path
 
 import httpx
 
-VALID_PROVIDERS = ["groq", "assemblyai", "whisper"]
+VALID_PROVIDERS = ["groq", "assemblyai", "whisper", "clarinsi_slovene_asr"]
 HEALTH_URL = "http://localhost:8000/health"
 HEALTH_TIMEOUT = 12  # Actual startup ~5s, with 100% buffer
 PROJECT_ROOT = Path(__file__).parent.parent
