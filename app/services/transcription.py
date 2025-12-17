@@ -319,7 +319,7 @@ def create_transcription_service(
     Factory function to create transcription service based on provider.
 
     Args:
-        provider: Provider name ("whisper" for local, "groq", "assemblyai", or "runpod" for API)
+        provider: Provider name ("whisper" for local, "groq", "assemblyai", or "clarinsi_slovene_asr" for API)
         model: Loaded Whisper model instance (only for local whisper)
         model_name: Name of the model (e.g., 'large-v3', 'universal', 'rsdo-slovenian-asr')
         device: Device to use for local whisper ('cpu' or 'cuda')
@@ -384,7 +384,7 @@ def create_transcription_service(
                 f"AssemblyAI provider selected but httpx package not installed. "
                 f"Install with: pip install httpx"
             ) from e
-    elif provider == "runpod":
+    elif provider == "clarinsi_slovene_asr":
         if api_key is None:
             raise ValueError("api_key is required for runpod provider")
         if endpoint_id is None:

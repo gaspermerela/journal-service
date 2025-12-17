@@ -182,7 +182,7 @@ TRANSCRIPTION_PROVIDER_PARAMETERS = {
         }
     },
     "assemblyai": {},  # AssemblyAI - no configurable parameters (no beam_size/temperature support)
-    "runpod": {},  # RunPod RSDO - Slovenian only, no configurable parameters (fixed model)
+    "clarinsi_slovene_asr": {},  # RunPod RSDO - Slovenian only, no configurable parameters (fixed model)
     "noop": {}  # Test provider - no configurable parameters
 }
 
