@@ -10,6 +10,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from schema_config import get_schema
+
 
 # revision identifiers, used by Alembic.
 revision: str = '240e345c9e39'
@@ -19,6 +21,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    schema = get_schema()
     # Create prompt_templates table
     op.create_table(
         'prompt_templates',
@@ -33,7 +36,7 @@ def upgrade() -> None:
         sa.Column('updated_at', sa.DateTime(), nullable=False, server_default=sa.text('NOW()')),
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('name', 'entry_type', name='uq_prompt_name_entry_type'),
-        schema='journal'
+        schema=schema
     )
 
     # Create unique partial index to ensure only one active prompt per entry_type
@@ -42,7 +45,7 @@ def upgrade() -> None:
         'prompt_templates',
         ['entry_type'],
         unique=True,
-        schema='journal',
+        schema=schema,
         postgresql_where=sa.text('is_active = true')
     )
     op.create_index(
@@ -50,14 +53,14 @@ def upgrade() -> None:
         'prompt_templates',
         ['entry_type'],
         unique=False,
-        schema='journal'
+        schema=schema
     )
 
     # Add prompt_template_id to cleaned_entries
     op.add_column(
         'cleaned_entries',
         sa.Column('prompt_template_id', sa.Integer(), nullable=True),
-        schema='journal'
+        schema=schema
     )
     op.create_foreign_key(
         'fk_cleaned_entries_prompt_template',
@@ -65,8 +68,8 @@ def upgrade() -> None:
         'prompt_templates',
         ['prompt_template_id'],
         ['id'],
-        source_schema='journal',
-        referent_schema='journal',
+        source_schema=schema,
+        referent_schema=schema,
         ondelete='SET NULL'
     )
     op.create_index(
@@ -74,15 +77,15 @@ def upgrade() -> None:
         'cleaned_entries',
         ['prompt_template_id'],
         unique=False,
-        schema='journal'
+        schema=schema
     )
 
     # Drop old prompt_used column
-    op.drop_column('cleaned_entries', 'prompt_used', schema='journal')
+    op.drop_column('cleaned_entries', 'prompt_used', schema=schema)
 
     # Seed initial prompts (migrated from hardcoded constants)
-    op.execute("""
-        INSERT INTO journal.prompt_templates (name, entry_type, prompt_text, description, is_active, version)
+    op.execute(f"""
+        INSERT INTO "{schema}".prompt_templates (name, entry_type, prompt_text, description, is_active, version)
         VALUES
         (
             'dream_v1',
@@ -90,7 +93,7 @@ def upgrade() -> None:
             'You are a dream journal assistant. Clean up this voice transcription of a dream:
 
 Original transcription:
-{transcription_text}
+{{transcription_text}}
 
 Tasks:
 1. Fix grammar, punctuation, and capitalization
@@ -120,7 +123,7 @@ Respond ONLY with valid JSON in this exact format (no markdown, no extra text):
             'You are a transcription cleanup assistant. Clean up this voice transcription:
 
 Original transcription:
-{transcription_text}
+{{transcription_text}}
 
 Tasks:
 1. Fix grammar, punctuation, and capitalization
@@ -150,7 +153,7 @@ Respond ONLY with valid JSON in this exact format (no markdown, no extra text):
             'You are a transcription cleanup assistant. Clean up this voice transcription:
 
 Original transcription:
-{transcription_text}
+{{transcription_text}}
 
 Tasks:
 1. Fix grammar, punctuation, and capitalization
@@ -180,7 +183,7 @@ Respond ONLY with valid JSON in this exact format (no markdown, no extra text):
             'You are a transcription cleanup assistant. Clean up this voice transcription:
 
 Original transcription:
-{transcription_text}
+{{transcription_text}}
 
 Tasks:
 1. Fix grammar, punctuation, and capitalization
@@ -208,30 +211,31 @@ Respond ONLY with valid JSON in this exact format (no markdown, no extra text):
 
 
 def downgrade() -> None:
+    schema = get_schema()
     # Re-add prompt_used column
     op.add_column(
         'cleaned_entries',
         sa.Column('prompt_used', sa.Text(), nullable=True),
-        schema='journal'
+        schema=schema
     )
 
     # Drop foreign key and column
     op.drop_constraint(
         'fk_cleaned_entries_prompt_template',
         'cleaned_entries',
-        schema='journal',
+        schema=schema,
         type_='foreignkey'
     )
     op.drop_index(
         'ix_cleaned_entries_prompt_template_id',
         'cleaned_entries',
-        schema='journal'
+        schema=schema
     )
-    op.drop_column('cleaned_entries', 'prompt_template_id', schema='journal')
+    op.drop_column('cleaned_entries', 'prompt_template_id', schema=schema)
 
     # Drop indexes
-    op.drop_index('ix_prompt_templates_entry_type', 'prompt_templates', schema='journal')
-    op.drop_index('ix_prompt_templates_unique_active', 'prompt_templates', schema='journal')
+    op.drop_index('ix_prompt_templates_entry_type', 'prompt_templates', schema=schema)
+    op.drop_index('ix_prompt_templates_unique_active', 'prompt_templates', schema=schema)
 
     # Drop table
-    op.drop_table('prompt_templates', schema='journal')
+    op.drop_table('prompt_templates', schema=schema)

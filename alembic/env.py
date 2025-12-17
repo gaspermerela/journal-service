@@ -3,7 +3,12 @@
 Alembic environment configuration for async migrations.
 """
 import asyncio
+import os
+import sys
 from logging.config import fileConfig
+
+# Add alembic directory to path for schema_config import in migrations
+sys.path.insert(0, os.path.dirname(__file__))
 
 from sqlalchemy import pool, text
 from sqlalchemy.engine import Connection
@@ -18,6 +23,9 @@ from app.models.voice_entry import VoiceEntry  # noqa: F401
 from app.models.transcription import Transcription  # noqa: F401
 from app.models.cleaned_entry import CleanedEntry  # noqa: F401
 from app.config import settings
+
+# Get schema name from settings - enables per-branch database isolation
+SCHEMA = settings.DB_SCHEMA
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -59,7 +67,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        version_table_schema="journal",
+        version_table_schema=SCHEMA,
         include_schemas=True,
     )
 
@@ -71,18 +79,18 @@ def do_run_migrations(connection: Connection) -> None:
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        version_table_schema="journal",
+        version_table_schema=SCHEMA,
         include_schemas=True,
     )
 
     with context.begin_transaction():
-        # Ensure journal schema exists before running migrations
+        # Ensure schema exists before running migrations
         # Must be INSIDE the transaction context
         result = connection.execute(text(
-            "SELECT schema_name FROM information_schema.schemata WHERE schema_name = 'journal'"
+            f"SELECT schema_name FROM information_schema.schemata WHERE schema_name = '{SCHEMA}'"
         ))
         if not result.fetchone():
-            connection.execute(text("CREATE SCHEMA journal"))
+            connection.execute(text(f'CREATE SCHEMA "{SCHEMA}"'))
 
         context.run_migrations()
 

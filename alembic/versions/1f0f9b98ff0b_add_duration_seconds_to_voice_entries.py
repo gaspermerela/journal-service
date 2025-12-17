@@ -10,6 +10,8 @@ from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
 
+from schema_config import get_schema
+
 
 # revision identifiers, used by Alembic.
 revision: str = '1f0f9b98ff0b'
@@ -19,14 +21,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    schema = get_schema()
     # Add duration_seconds column with default value 0.0
     op.add_column(
         'voice_entries',
         sa.Column('duration_seconds', sa.Float(), nullable=False, server_default='0.0'),
-        schema='journal'
+        schema=schema
     )
 
 
 def downgrade() -> None:
+    schema = get_schema()
     # Remove duration_seconds column
-    op.drop_column('voice_entries', 'duration_seconds', schema='journal')
+    op.drop_column('voice_entries', 'duration_seconds', schema=schema)
