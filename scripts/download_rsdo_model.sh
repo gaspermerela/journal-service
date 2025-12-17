@@ -10,11 +10,11 @@
 # Usage:
 #   ./scripts/download_rsdo_model.sh
 #
-# The model will be downloaded to: models/conformer_ctc_bpe.nemo
+# The model will be downloaded to: runpod/models/conformer_ctc_bpe.nemo
 
 set -e
 
-MODEL_DIR="./models"
+MODEL_DIR="./runpod/models"
 MODEL_URL="https://www.clarin.si/repository/xmlui/bitstream/handle/11356/1737/sl-SI_GEN_nemo-2.0.tar.zst"
 ARCHIVE_NAME="sl-SI_GEN_nemo-2.0.tar.zst"
 
@@ -22,6 +22,8 @@ echo "=== RSDO Slovenian ASR Model Download ==="
 echo ""
 
 # Check for required tools
+# "command -v <tool>" returns 0 if command exists, 1 if not
+# "&> /dev/null" silences all output (both stdout and stderr)
 if ! command -v wget &> /dev/null; then
     echo "Error: wget is required but not installed."
     echo "Install with: brew install wget (macOS) or apt install wget (Linux)"
@@ -45,21 +47,26 @@ if [ -f "conformer_ctc_bpe.nemo" ]; then
     exit 0
 fi
 
-# Download model archive
 echo "Downloading RSDO ASR model (~430MB)..."
 echo "Source: $MODEL_URL"
 echo ""
 wget -O "$ARCHIVE_NAME" "$MODEL_URL"
 
-# Extract
+# Extract .tar.zst archive
+# --use-compress-program=unzstd  tells tar to use zstd for decompression
+# -x extract, -v verbose, -f filename
 echo ""
 echo "Extracting model archive..."
 tar --use-compress-program=unzstd -xvf "$ARCHIVE_NAME"
 
-# Cleanup archive
+# Archive extracts to v2.0/ subdirectory - move model to current dir
+if [ -f "v2.0/conformer_ctc_bpe.nemo" ]; then
+    mv v2.0/conformer_ctc_bpe.nemo .
+    rm -rf v2.0
+fi
+
 rm -f "$ARCHIVE_NAME"
 
-# Verify model file exists
 if [ ! -f "conformer_ctc_bpe.nemo" ]; then
     echo ""
     echo "Error: Model file not found after extraction."
@@ -68,7 +75,7 @@ if [ ! -f "conformer_ctc_bpe.nemo" ]; then
     exit 1
 fi
 
-# Create model info file
+# Heredoc: writes everything between << EOF and EOF to model.info
 cat > model.info << EOF
 # RSDO Slovenian ASR Model
 language_code: sl-SI
@@ -87,4 +94,5 @@ echo "Model file: $MODEL_DIR/conformer_ctc_bpe.nemo"
 echo "Model info: $MODEL_DIR/model.info"
 echo ""
 echo "You can now build the RunPod Docker image:"
-echo "  docker build -t your-registry/rsdo-slovenian-asr:latest -f runpod/Dockerfile ."
+echo "  cd runpod"
+echo "  docker buildx build --platform linux/amd64 -t your-registry/rsdo-slovenian-asr:latest --push ."
