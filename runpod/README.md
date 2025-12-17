@@ -16,27 +16,33 @@ The handler uses the [RSDO-DS2-ASR-E2E 2.0](https://www.clarin.si/repository/xml
 
 ### 1. Download the RSDO Model
 
+**Option A: Use the download script (from project root)**
 ```bash
-# From project root
 ./scripts/download_rsdo_model.sh
 ```
 
-This downloads the ~430MB model to `models/conformer_ctc_bpe.nemo`.
-
-### 2. Build Docker Image
-
+**Option B: Manual download (from runpod/ directory)**
 ```bash
-# From project root
-docker build -t your-dockerhub-username/rsdo-slovenian-asr:latest -f runpod/Dockerfile .
+mkdir -p models && cd models
+curl -L -o sl-SI_GEN_nemo-2.0.tar.zst "https://www.clarin.si/repository/xmlui/bitstream/handle/11356/1737/sl-SI_GEN_nemo-2.0.tar.zst"
+zstd -d sl-SI_GEN_nemo-2.0.tar.zst && tar -xf sl-SI_GEN_nemo-2.0.tar
+mv v2.0/conformer_ctc_bpe.nemo . && rm -rf v2.0 sl-SI_GEN_nemo-2.0.tar*
+cd ..
 ```
 
-### 3. Push to Docker Hub
+This downloads the ~430MB model to `runpod/models/conformer_ctc_bpe.nemo`.
+
+### 2. Build and Push Docker Image
 
 ```bash
-docker push your-dockerhub-username/rsdo-slovenian-asr:latest
+# From runpod/ directory
+cd runpod
+docker buildx build --platform linux/amd64 -t your-dockerhub-username/rsdo-slovenian-asr:latest --push .
 ```
 
-### 4. Create RunPod Serverless Endpoint
+> **Note:** The `--platform linux/amd64` flag is required when building on Apple Silicon (M1/M2/M3) since RunPod uses x86 GPUs.
+
+### 3. Create RunPod Serverless Endpoint
 
 1. Go to [RunPod Serverless](https://www.runpod.io/console/serverless)
 2. Click "New Endpoint"
@@ -49,7 +55,7 @@ docker push your-dockerhub-username/rsdo-slovenian-asr:latest
    - **Region**: EU-RO-1 (Romania) for GDPR compliance
 4. Copy the Endpoint ID
 
-### 5. Configure Environment Variables
+### 4. Configure Environment Variables
 
 Add to your `.env`:
 
@@ -126,8 +132,8 @@ Ensure the model file exists at `/app/models/conformer_ctc_bpe.nemo` in the cont
 ### Local Testing
 
 ```bash
-# Build container
-docker build -t rsdo-asr-test -f runpod/Dockerfile .
+# Build container (from runpod/ directory)
+docker build -t rsdo-asr-test .
 
 # Run locally (requires GPU)
 docker run --gpus all -p 8000:8000 rsdo-asr-test
