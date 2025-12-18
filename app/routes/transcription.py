@@ -1,6 +1,7 @@
 """
 API routes for audio transcription operations.
 """
+import json
 from uuid import UUID
 from pathlib import Path
 from typing import Optional
@@ -28,6 +29,7 @@ from app.schemas.transcription import (
     TranscriptionListResponse,
     TranscriptionStatusResponse,
     TranscriptionCreate,
+    TranscriptionSegment,
 )
 from app.schemas.voice_entry import DeleteResponse
 from app.utils.encryption_helpers import (
@@ -52,7 +54,9 @@ async def process_transcription_task(
     transcription_provider: str,
     beam_size: Optional[int] = None,
     temperature: Optional[float] = None,
-    transcription_model: Optional[str] = None
+    transcription_model: Optional[str] = None,
+    enable_diarization: bool = False,
+    speaker_count: int = 1
 ):
     """
     Background task to process audio transcription.
@@ -67,6 +71,8 @@ async def process_transcription_task(
         beam_size: Beam size for transcription (1-10, optional)
         temperature: Temperature for transcription sampling (0.0-1.0, optional)
         transcription_model: Model to use for transcription (optional, uses service default if None)
+        enable_diarization: Enable speaker diarization
+        speaker_count: Expected number of speakers
     """
     from app.database import AsyncSessionLocal
 
@@ -133,14 +139,21 @@ async def process_transcription_task(
                 language=language,
                 beam_size=beam_size,
                 temperature=temperature,
-                model=transcription_model
+                model=transcription_model,
+                enable_diarization=enable_diarization,
+                speaker_count=speaker_count
             )
+
+            diarization_applied = result.get("diarization_applied", False)
+            segments = result.get("segments", [])
 
             logger.info(
                 f"Transcription completed successfully",
                 transcription_id=str(transcription_id),
                 text_length=len(result["text"]),
-                beam_size=result.get("beam_size")
+                beam_size=result.get("beam_size"),
+                diarization_applied=diarization_applied,
+                segment_count=len(segments)
             )
 
             # Encrypt the transcription result (encryption is always on)
@@ -161,12 +174,31 @@ async def process_transcription_task(
                 encrypted_length=len(encrypted_text)
             )
 
+            # Encrypt segments if diarization was applied and segments exist
+            encrypted_segments = None
+            if diarization_applied and segments:
+                segments_json = json.dumps(segments)
+                encrypted_segments = await encrypt_text(
+                    encryption_service,
+                    db,
+                    segments_json,
+                    entry_id,
+                    user_id,
+                )
+                logger.info(
+                    "Transcription segments encrypted",
+                    transcription_id=str(transcription_id),
+                    segment_count=len(segments)
+                )
+
             # Update with encrypted result
             await db_service.update_transcription_status(
                 db=db,
                 transcription_id=transcription_id,
                 status="completed",
                 transcribed_text=encrypted_text,
+                segments=encrypted_segments,
+                diarization_applied=diarization_applied,
             )
             await db.commit()
 
@@ -298,7 +330,9 @@ async def trigger_transcription(
         language_code=request_data.language,
         is_primary=False,  # Can be set later via set-primary endpoint
         beam_size=request_data.beam_size,
-        temperature=request_data.temperature
+        temperature=request_data.temperature,
+        enable_diarization=request_data.enable_diarization,
+        speaker_count=request_data.speaker_count
     )
 
     transcription = await db_service.create_transcription(db, transcription_data)
@@ -307,7 +341,9 @@ async def trigger_transcription(
     logger.info(
         f"Transcription record created",
         transcription_id=str(transcription.id),
-        entry_id=str(entry_id)
+        entry_id=str(entry_id),
+        enable_diarization=request_data.enable_diarization,
+        speaker_count=request_data.speaker_count
     )
 
     # Add background task for transcription processing
@@ -321,7 +357,9 @@ async def trigger_transcription(
         transcription_provider=effective_provider,
         beam_size=request_data.beam_size,
         temperature=request_data.temperature,
-        transcription_model=request_data.transcription_model
+        transcription_model=request_data.transcription_model,
+        enable_diarization=request_data.enable_diarization,
+        speaker_count=request_data.speaker_count
     )
 
     logger.info(f"Background transcription task queued", transcription_id=str(transcription.id))
@@ -390,6 +428,23 @@ async def get_transcription(
         user_id=current_user.id,
     )
 
+    # Decrypt segments if they exist
+    decrypted_segments = None
+    diarization_applied = False
+    if transcription.segments is not None:
+        segments_json = await decrypt_text(
+            encryption_service=encryption_service,
+            db=db,
+            encrypted_bytes=transcription.segments,
+            voice_entry_id=entry.id,
+            user_id=current_user.id,
+        )
+        if segments_json:
+            segments_data = json.loads(segments_json)
+            decrypted_segments = [TranscriptionSegment(**s) for s in segments_data]
+            # Check if any segment has a speaker label to determine if diarization was applied
+            diarization_applied = any(s.speaker is not None for s in decrypted_segments)
+
     logger.info(f"Transcription retrieved", transcription_id=str(transcription_id))
 
     return TranscriptionStatusResponse(
@@ -400,6 +455,10 @@ async def get_transcription(
         language_code=transcription.language_code,
         beam_size=transcription.beam_size,
         temperature=transcription.temperature,
+        enable_diarization=transcription.enable_diarization,
+        speaker_count=transcription.speaker_count,
+        segments=decrypted_segments,
+        diarization_applied=diarization_applied,
         transcription_started_at=transcription.transcription_started_at,
         transcription_completed_at=transcription.transcription_completed_at,
         error_message=transcription.error_message,
@@ -443,7 +502,7 @@ async def list_transcriptions(
 
     transcriptions = await db_service.get_transcriptions_for_entry(db, entry_id, current_user.id)
 
-    # Decrypt transcribed_text for each transcription
+    # Decrypt transcribed_text and segments for each transcription
     transcription_responses = []
     for t in transcriptions:
         decrypted_text = None
@@ -455,6 +514,23 @@ async def list_transcriptions(
                 voice_entry_id=entry_id,
                 user_id=current_user.id,
             )
+
+        # Decrypt segments if they exist
+        decrypted_segments = None
+        diarization_applied = False
+        if t.segments is not None:
+            segments_json = await decrypt_text(
+                encryption_service=encryption_service,
+                db=db,
+                encrypted_bytes=t.segments,
+                voice_entry_id=entry_id,
+                user_id=current_user.id,
+            )
+            if segments_json:
+                segments_data = json.loads(segments_json)
+                decrypted_segments = [TranscriptionSegment(**s) for s in segments_data]
+                diarization_applied = any(s.speaker is not None for s in decrypted_segments)
+
         transcription_responses.append(TranscriptionResponse(
             id=t.id,
             entry_id=t.entry_id,
@@ -465,6 +541,10 @@ async def list_transcriptions(
             is_primary=t.is_primary,
             beam_size=t.beam_size,
             temperature=t.temperature,
+            enable_diarization=t.enable_diarization,
+            speaker_count=t.speaker_count,
+            segments=decrypted_segments,
+            diarization_applied=diarization_applied,
             transcription_started_at=t.transcription_started_at,
             transcription_completed_at=t.transcription_completed_at,
             error_message=t.error_message,
@@ -554,6 +634,22 @@ async def set_primary_transcription(
             user_id=current_user.id,
         )
 
+    # Decrypt segments if they exist
+    decrypted_segments = None
+    diarization_applied = False
+    if updated_transcription.segments is not None:
+        segments_json = await decrypt_text(
+            encryption_service=encryption_service,
+            db=db,
+            encrypted_bytes=updated_transcription.segments,
+            voice_entry_id=updated_transcription.entry_id,
+            user_id=current_user.id,
+        )
+        if segments_json:
+            segments_data = json.loads(segments_json)
+            decrypted_segments = [TranscriptionSegment(**s) for s in segments_data]
+            diarization_applied = any(s.speaker is not None for s in decrypted_segments)
+
     logger.info(f"Transcription set as primary", transcription_id=str(transcription_id))
 
     return TranscriptionResponse(
@@ -566,6 +662,10 @@ async def set_primary_transcription(
         is_primary=updated_transcription.is_primary,
         beam_size=updated_transcription.beam_size,
         temperature=updated_transcription.temperature,
+        enable_diarization=updated_transcription.enable_diarization,
+        speaker_count=updated_transcription.speaker_count,
+        segments=decrypted_segments,
+        diarization_applied=diarization_applied,
         transcription_started_at=updated_transcription.transcription_started_at,
         transcription_completed_at=updated_transcription.transcription_completed_at,
         error_message=updated_transcription.error_message,

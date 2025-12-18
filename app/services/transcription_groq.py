@@ -48,7 +48,9 @@ class GroqTranscriptionService(TranscriptionService):
         language: str = "en",
         beam_size: Optional[int] = None,
         temperature: Optional[float] = None,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        enable_diarization: bool = False,
+        speaker_count: int = 1
     ) -> Dict[str, Any]:
         """
         Transcribe audio file using Groq's Whisper API.
@@ -59,9 +61,11 @@ class GroqTranscriptionService(TranscriptionService):
             beam_size: Not used for Groq API (Groq doesn't expose beam_size control)
             temperature: Temperature for transcription sampling (0.0-1.0). If None, uses Groq's default.
             model: Model to use for transcription. If None, uses the service's default model.
+            enable_diarization: Enable speaker diarization. NOT SUPPORTED by Groq.
+            speaker_count: Expected number of speakers. NOT SUPPORTED by Groq.
 
         Returns:
-            Dict with transcription result
+            Dict with transcription result (diarization_applied=False)
 
         Raises:
             FileNotFoundError: If audio file doesn't exist
@@ -69,6 +73,13 @@ class GroqTranscriptionService(TranscriptionService):
         """
         if not audio_path.exists():
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
+
+        # Log warning if diarization requested but not supported
+        if enable_diarization:
+            logger.warning(
+                "Speaker diarization requested but not supported by Groq. "
+                f"Requested {speaker_count} speakers. Proceeding without diarization."
+            )
 
         # Use provided model or fall back to instance default
         effective_model = model if model else self.model
@@ -127,7 +138,8 @@ class GroqTranscriptionService(TranscriptionService):
                 "language": detected_language,
                 "segments": segments,
                 "beam_size": None,  # Groq doesn't expose beam_size
-                "temperature": temperature  # Include temperature in result
+                "temperature": temperature,  # Include temperature in result
+                "diarization_applied": False,  # Groq does not support diarization
             }
 
         except Exception as e:
@@ -234,3 +246,12 @@ class GroqTranscriptionService(TranscriptionService):
         except Exception as e:
             logger.error(f"Failed to fetch Groq models: {e}", exc_info=True)
             raise RuntimeError(f"Failed to fetch Groq models: {str(e)}") from e
+
+    def supports_diarization(self) -> bool:
+        """
+        Groq does not support speaker diarization.
+
+        Returns:
+            False - diarization not supported
+        """
+        return False

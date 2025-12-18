@@ -646,7 +646,9 @@ class DatabaseService:
         status: str,
         transcribed_text: Optional[bytes] = None,
         error_message: Optional[str] = None,
-        beam_size: Optional[int] = None
+        beam_size: Optional[int] = None,
+        segments: Optional[bytes] = None,
+        diarization_applied: bool = False
     ) -> Optional[Transcription]:
         """
         Update transcription status and related fields.
@@ -658,6 +660,8 @@ class DatabaseService:
             transcribed_text: Optional encrypted transcribed text (bytes)
             error_message: Optional error message
             beam_size: Optional beam size used for transcription
+            segments: Optional encrypted segments JSON (bytes)
+            diarization_applied: Whether speaker diarization was applied
 
         Returns:
             Updated Transcription instance
@@ -682,7 +686,12 @@ class DatabaseService:
                 transcription.transcription_completed_at = datetime.now(timezone.utc)
                 if transcribed_text is not None:
                     transcription.transcribed_text = transcribed_text
-                # beam_size and temperature are set at creation time and are immutable
+                # Save encrypted segments if diarization was applied
+                if segments is not None:
+                    transcription.segments = segments
+                # Note: enable_diarization and speaker_count are set at creation time
+                # diarization_applied is determined at read time from segments presence
+                # beam_size and temperature are also set at creation time and are immutable
 
             if status == "failed":
                 transcription.transcription_completed_at = datetime.now(timezone.utc)

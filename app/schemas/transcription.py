@@ -7,6 +7,18 @@ from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 
+class TranscriptionSegment(BaseModel):
+    """Individual transcription segment with optional speaker info."""
+    id: int = Field(description="Segment index")
+    start: float = Field(description="Start time in seconds")
+    end: float = Field(description="End time in seconds")
+    text: str = Field(description="Segment text")
+    speaker: Optional[str] = Field(
+        default=None,
+        description="Speaker label (e.g., 'Speaker 1', 'Speaker 2')"
+    )
+
+
 class TranscriptionBase(BaseModel):
     """Base schema with common transcription fields."""
     status: str
@@ -40,6 +52,16 @@ class TranscriptionTriggerRequest(BaseModel):
         default=None,
         description="Transcription provider (e.g., 'groq', 'assemblyai', 'clarinsi_slovene_asr'). If not provided, uses configured default."
     )
+    enable_diarization: bool = Field(
+        default=False,
+        description="Enable speaker diarization to identify different speakers"
+    )
+    speaker_count: int = Field(
+        default=1,
+        ge=1,
+        le=10,
+        description="Expected number of speakers (1-10). Set > 1 to enable diarization."
+    )
 
     @field_validator('beam_size')
     @classmethod
@@ -58,6 +80,8 @@ class TranscriptionCreate(BaseModel):
     is_primary: bool = False
     beam_size: Optional[int] = None
     temperature: Optional[float] = None
+    enable_diarization: bool = False
+    speaker_count: int = 1
 
 
 class TranscriptionResponse(TranscriptionBase):
@@ -66,6 +90,10 @@ class TranscriptionResponse(TranscriptionBase):
     entry_id: UUID
     transcribed_text: Optional[str] = None
     temperature: Optional[float] = None
+    enable_diarization: bool = False
+    speaker_count: int = 1
+    segments: Optional[list[TranscriptionSegment]] = None
+    diarization_applied: bool = False
     transcription_started_at: Optional[datetime] = None
     transcription_completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
@@ -98,6 +126,10 @@ class TranscriptionStatusResponse(BaseModel):
     language_code: str
     beam_size: Optional[int] = None
     temperature: Optional[float] = None
+    enable_diarization: bool = False
+    speaker_count: int = 1
+    segments: Optional[list[TranscriptionSegment]] = None
+    diarization_applied: bool = False
     transcription_started_at: Optional[datetime] = None
     transcription_completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
