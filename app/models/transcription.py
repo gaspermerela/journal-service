@@ -26,6 +26,11 @@ class Transcription(Base):
         status: Processing status (pending, processing, completed, failed)
         model_used: Whisper model used (e.g., "whisper-base", "whisper-large")
         language_code: Language code (e.g., "en", "auto")
+        beam_size: Beam size parameter for transcription
+        temperature: Sampling temperature parameter
+        enable_diarization: Whether speaker diarization was requested
+        speaker_count: Expected number of speakers (1-10)
+        segments: Encrypted JSON array of segments with speaker labels
         transcription_started_at: When transcription processing began
         transcription_completed_at: When transcription finished
         error_message: Error details if status is 'failed'
@@ -85,6 +90,28 @@ class Transcription(Base):
         Float,
         nullable=True,
         comment="Sampling temperature (0-2)"
+    )
+
+    # Speaker diarization configuration
+    enable_diarization: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        comment="Whether speaker diarization was requested"
+    )
+
+    speaker_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        comment="Expected number of speakers (1-10)"
+    )
+
+    # Encrypted segments with speaker labels (JSON array)
+    segments: Mapped[bytes | None] = mapped_column(
+        LargeBinary,
+        nullable=True,
+        doc="Encrypted JSON array of segments with speaker labels"
     )
 
     # Timing

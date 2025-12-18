@@ -100,7 +100,9 @@ class AssemblyAITranscriptionService(TranscriptionService):
         self,
         audio_url: str,
         language: str,
-        speech_model: str
+        speech_model: str,
+        enable_diarization: bool = False,
+        speaker_count: int = 1
     ) -> str:
         """
         Step 2: Submit transcription job.
@@ -109,6 +111,8 @@ class AssemblyAITranscriptionService(TranscriptionService):
             audio_url: URL of uploaded audio
             language: Language code or "auto"
             speech_model: AssemblyAI speech model name
+            enable_diarization: Enable speaker diarization
+            speaker_count: Expected number of speakers (only used if enable_diarization=True)
 
         Returns:
             transcript_id: ID for polling status
@@ -116,7 +120,10 @@ class AssemblyAITranscriptionService(TranscriptionService):
         Raises:
             RuntimeError: If submission fails
         """
-        logger.info(f"Submitting transcription job: model={speech_model}, language={language}")
+        logger.info(
+            f"Submitting transcription job: model={speech_model}, language={language}, "
+            f"diarization={enable_diarization}, speakers={speaker_count}"
+        )
 
         payload: Dict[str, Any] = {
             "audio_url": audio_url,
@@ -132,6 +139,13 @@ class AssemblyAITranscriptionService(TranscriptionService):
             logger.warning(
                 "AssemblyAI does not support auto language detection, defaulting to en_us"
             )
+
+        # Add speaker diarization settings if enabled
+        if enable_diarization:
+            payload["speaker_labels"] = True
+            if speaker_count > 1:
+                payload["speakers_expected"] = speaker_count
+            logger.info(f"Speaker diarization enabled with {speaker_count} expected speakers")
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
@@ -237,7 +251,9 @@ class AssemblyAITranscriptionService(TranscriptionService):
         language: str = "en",
         beam_size: Optional[int] = None,
         temperature: Optional[float] = None,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        enable_diarization: bool = False,
+        speaker_count: int = 1
     ) -> Dict[str, Any]:
         """
         Transcribe audio using AssemblyAI 4-step workflow.
@@ -249,9 +265,11 @@ class AssemblyAITranscriptionService(TranscriptionService):
             beam_size: Not supported by AssemblyAI (logged, ignored)
             temperature: Not supported by AssemblyAI (logged, ignored)
             model: Speech model override (default: instance model)
+            enable_diarization: Enable speaker diarization to identify different speakers
+            speaker_count: Expected number of speakers (1-10). Only used if enable_diarization=True.
 
         Returns:
-            Dict with transcription result
+            Dict with transcription result including diarization_applied flag
 
         Raises:
             FileNotFoundError: If audio file doesn't exist
@@ -274,7 +292,8 @@ class AssemblyAITranscriptionService(TranscriptionService):
 
         logger.info(
             f"Starting AssemblyAI transcription: file={audio_path.name}, "
-            f"language={language}, model={effective_model}"
+            f"language={language}, model={effective_model}, "
+            f"diarization={enable_diarization}, speakers={speaker_count}"
         )
 
         transcript_id = None
@@ -282,11 +301,13 @@ class AssemblyAITranscriptionService(TranscriptionService):
             # Step 1: Upload audio
             upload_url = await self._upload_audio(audio_path)
 
-            # Step 2: Submit transcription job
+            # Step 2: Submit transcription job (with diarization if enabled)
             transcript_id = await self._submit_transcription(
                 audio_url=upload_url,
                 language=language,
-                speech_model=effective_model
+                speech_model=effective_model,
+                enable_diarization=enable_diarization,
+                speaker_count=speaker_count
             )
 
             # Step 3: Poll until complete
@@ -296,14 +317,23 @@ class AssemblyAITranscriptionService(TranscriptionService):
             transcribed_text = result.get("text", "")
             detected_language = result.get("language_code", language)
 
-            # Extract word-level segments if available
+            # Extract segments - prefer utterances (with speaker labels) if diarization was requested
             segments = []
-            if "words" in result and result["words"]:
+            diarization_applied = False
+
+            if enable_diarization and "utterances" in result and result["utterances"]:
+                # Use utterances (contains speaker labels)
+                segments = self._utterances_to_segments(result["utterances"])
+                diarization_applied = True
+                logger.info(f"Extracted {len(segments)} speaker-labeled segments from utterances")
+            elif "words" in result and result["words"]:
+                # Fall back to word-level segments (no speaker labels)
                 segments = self._words_to_segments(result["words"])
 
             logger.info(
                 f"AssemblyAI transcription completed: file={audio_path.name}, "
-                f"language={detected_language}, length={len(transcribed_text)} chars"
+                f"language={detected_language}, length={len(transcribed_text)} chars, "
+                f"diarization_applied={diarization_applied}"
             )
 
             return {
@@ -311,7 +341,8 @@ class AssemblyAITranscriptionService(TranscriptionService):
                 "language": detected_language,
                 "segments": segments,
                 "beam_size": None,  # Not supported
-                "temperature": None  # Not supported
+                "temperature": None,  # Not supported
+                "diarization_applied": diarization_applied,
             }
 
         except Exception as e:
@@ -370,6 +401,49 @@ class AssemblyAITranscriptionService(TranscriptionService):
 
         return segments
 
+    def _utterances_to_segments(self, utterances: list[Dict]) -> list[Dict[str, Any]]:
+        """
+        Convert AssemblyAI utterances (with speaker labels) to segment format.
+
+        AssemblyAI returns speaker labels as letters (A, B, C...).
+        We convert these to "Speaker 1", "Speaker 2", etc.
+
+        Args:
+            utterances: List of utterance objects from AssemblyAI with speaker labels
+
+        Returns:
+            List of segment dicts with id, start, end, text, speaker
+        """
+        if not utterances:
+            return []
+
+        # Build speaker mapping (A -> Speaker 1, B -> Speaker 2, etc.)
+        speaker_map: Dict[str, str] = {}
+        speaker_counter = 1
+
+        segments = []
+        for i, utterance in enumerate(utterances):
+            speaker_letter = utterance.get("speaker", "")
+
+            # Map speaker letter to "Speaker N" format
+            if speaker_letter and speaker_letter not in speaker_map:
+                speaker_map[speaker_letter] = f"Speaker {speaker_counter}"
+                speaker_counter += 1
+
+            speaker_label = speaker_map.get(speaker_letter, None)
+
+            segment = {
+                "id": i,
+                "start": utterance.get("start", 0) / 1000.0,  # Convert ms to seconds
+                "end": utterance.get("end", 0) / 1000.0,
+                "text": utterance.get("text", "").strip(),
+                "speaker": speaker_label,
+            }
+            segments.append(segment)
+
+        logger.debug(f"Mapped {len(speaker_map)} unique speakers: {speaker_map}")
+        return segments
+
     def get_supported_languages(self) -> list[str]:
         """
         Get supported language codes.
@@ -425,3 +499,12 @@ class AssemblyAITranscriptionService(TranscriptionService):
 
         logger.info(f"Cached {len(models)} AssemblyAI models (cache TTL: 1 hour)")
         return models
+
+    def supports_diarization(self) -> bool:
+        """
+        AssemblyAI supports native speaker diarization via speaker_labels.
+
+        Returns:
+            True - diarization is supported
+        """
+        return True

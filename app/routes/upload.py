@@ -87,8 +87,10 @@ async def transcription_then_cleanup_task(
     transcription_model: Optional[str] = None,
     cleanup_temperature: Optional[float] = None,
     cleanup_top_p: Optional[float] = None,
+    llm_provider: Optional[str] = None,
     llm_model: Optional[str] = None,
-    llm_provider: Optional[str] = None
+    enable_diarization: bool = False,
+    speaker_count: int = 1
 ):
     """
     Background task that runs transcription, then triggers cleanup when done.
@@ -105,6 +107,8 @@ async def transcription_then_cleanup_task(
         cleanup_top_p: Top-p for LLM cleanup (0.0-1.0)
         llm_model: Model to use for LLM cleanup
         llm_provider: LLM provider name (e.g., 'ollama', 'groq')
+        enable_diarization: Enable speaker diarization
+        speaker_count: Expected number of speakers
     """
     # Import here to avoid circular imports
     from app.routes.transcription import process_transcription_task
@@ -120,7 +124,9 @@ async def transcription_then_cleanup_task(
         transcription_provider=transcription_provider,
         beam_size=transcription_beam_size,
         temperature=transcription_temperature,
-        transcription_model=transcription_model
+        transcription_model=transcription_model,
+        enable_diarization=enable_diarization,
+        speaker_count=speaker_count
     )
 
     # Check if transcription succeeded
@@ -369,6 +375,8 @@ async def upload_and_transcribe(
     transcription_temperature: Optional[float] = Form(None, ge=0.0, le=1.0, description="Temperature for transcription sampling (0.0-1.0, higher = more random). If not provided, uses default."),
     transcription_model: Optional[str] = Form(None, description="Transcription model to use (e.g., 'whisper-large-v3'). If not provided, uses configured default."),
     transcription_provider: Optional[str] = Form(None, description="Transcription provider (e.g., 'groq', 'assemblyai', 'clarinsi_slovene_asr'). If not provided, uses configured default."),
+    enable_diarization: bool = Form(False, description="Enable speaker diarization to identify different speakers."),
+    speaker_count: int = Form(1, ge=1, le=10, description="Expected number of speakers (1-10). Only used if enable_diarization=True."),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service),
@@ -504,7 +512,9 @@ async def upload_and_transcribe(
             language_code=effective_language,
             is_primary=False,
             beam_size=transcription_beam_size,
-            temperature=transcription_temperature
+            temperature=transcription_temperature,
+            enable_diarization=enable_diarization,
+            speaker_count=speaker_count
         )
 
         transcription = await db_service.create_transcription(db, transcription_data)
@@ -513,7 +523,9 @@ async def upload_and_transcribe(
         logger.info(
             f"Transcription record created",
             transcription_id=str(transcription.id),
-            entry_id=str(entry.id)
+            entry_id=str(entry.id),
+            enable_diarization=enable_diarization,
+            speaker_count=speaker_count
         )
 
         # Step 5: Add background task for transcription processing
@@ -530,7 +542,9 @@ async def upload_and_transcribe(
             transcription_provider=effective_transcription_provider,
             beam_size=transcription_beam_size,
             temperature=transcription_temperature,
-            transcription_model=transcription_model
+            transcription_model=transcription_model,
+            enable_diarization=enable_diarization,
+            speaker_count=speaker_count
         )
 
         logger.info(
@@ -601,6 +615,8 @@ async def upload_transcribe_and_cleanup(
     transcription_temperature: Optional[float] = Form(None, ge=0.0, le=1.0, description="Temperature for transcription sampling (0.0-1.0, higher = more random). If not provided, uses default."),
     transcription_model: Optional[str] = Form(None, description="Transcription model to use (e.g., 'whisper-large-v3'). If not provided, uses configured default."),
     transcription_provider: Optional[str] = Form(None, description="Transcription provider (e.g., 'groq', 'assemblyai', 'clarinsi_slovene_asr'). If not provided, uses configured default."),
+    enable_diarization: bool = Form(False, description="Enable speaker diarization to identify different speakers."),
+    speaker_count: int = Form(1, ge=1, le=10, description="Expected number of speakers (1-10). Only used if enable_diarization=True."),
     cleanup_temperature: Optional[float] = Form(None, ge=0.0, le=2.0, description="Temperature for LLM cleanup (0.0-2.0, higher = more creative). If not provided, uses default."),
     cleanup_top_p: Optional[float] = Form(None, ge=0.0, le=1.0, description="Top-p for LLM cleanup (0.0-1.0, nucleus sampling). If not provided, uses default."),
     llm_model: Optional[str] = Form(None, description="LLM model to use for cleanup (e.g., 'llama-3.3-70b-versatile'). If not provided, uses configured default."),
@@ -753,7 +769,9 @@ async def upload_transcribe_and_cleanup(
             language_code=effective_language,
             is_primary=False,
             beam_size=transcription_beam_size,
-            temperature=transcription_temperature
+            temperature=transcription_temperature,
+            enable_diarization=enable_diarization,
+            speaker_count=speaker_count
         )
 
         transcription = await db_service.create_transcription(db, transcription_data)
@@ -762,7 +780,9 @@ async def upload_transcribe_and_cleanup(
         logger.info(
             f"Transcription record created",
             transcription_id=str(transcription.id),
-            entry_id=str(entry.id)
+            entry_id=str(entry.id),
+            enable_diarization=enable_diarization,
+            speaker_count=speaker_count
         )
 
         # Step 5: Create cleanup record
@@ -811,7 +831,9 @@ async def upload_transcribe_and_cleanup(
             cleanup_temperature=cleanup_temperature,
             cleanup_top_p=cleanup_top_p,
             llm_model=llm_model,
-            llm_provider=effective_llm_provider
+            llm_provider=effective_llm_provider,
+            enable_diarization=enable_diarization,
+            speaker_count=speaker_count
         )
 
         logger.info(

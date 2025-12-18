@@ -130,7 +130,9 @@ class RunPodTranscriptionService(TranscriptionService):
         model: Optional[str] = None,
         punctuate: Optional[bool] = None,
         denormalize: Optional[bool] = None,
-        denormalize_style: Optional[str] = None
+        denormalize_style: Optional[str] = None,
+        enable_diarization: bool = False,
+        speaker_count: int = 1
     ) -> Dict[str, Any]:
         """
         Transcribe audio file using RunPod PROTOVERB service with NLP pipeline.
@@ -147,6 +149,10 @@ class RunPodTranscriptionService(TranscriptionService):
             punctuate: Override default punctuation setting (optional)
             denormalize: Override default denormalization setting (optional)
             denormalize_style: Override default denormalization style (optional)
+            beam_size: Not supported by RSDO (ignored with warning)
+            temperature: Not supported by RSDO (ignored with warning)
+            enable_diarization: Not supported by RSDO (ignored with warning)
+            speaker_count: Not supported by RSDO (ignored with warning)
 
         Returns:
             Dict containing:
@@ -158,6 +164,7 @@ class RunPodTranscriptionService(TranscriptionService):
                 - temperature: None (not supported)
                 - pipeline: List of processing steps applied
                 - model_version: Model version identifier
+                - diarization_applied: False (not supported)
                 - chunking_metadata: Optional dict with chunking stats
 
         Raises:
@@ -184,6 +191,11 @@ class RunPodTranscriptionService(TranscriptionService):
             logger.warning(
                 f"model parameter not supported by RunPod PROTOVERB (ignored). "
                 f"Using fixed model: {self.model}"
+            )
+        if enable_diarization:
+            logger.warning(
+                "Speaker diarization requested but not supported by RunPod RSDO. "
+                f"Requested {speaker_count} speakers. Proceeding without diarization."
             )
 
         # Resolve NLP pipeline options (use instance defaults if not overridden)
@@ -268,7 +280,8 @@ class RunPodTranscriptionService(TranscriptionService):
             "beam_size": None,
             "temperature": None,
             "pipeline": pipeline,
-            "model_version": model_version
+            "model_version": model_version,
+            "diarization_applied": False,
         }
 
     async def _transcribe_with_chunking(
@@ -337,6 +350,7 @@ class RunPodTranscriptionService(TranscriptionService):
                 "temperature": None,
                 "pipeline": pipeline,
                 "model_version": model_version,
+                "diarization_applied": False,
                 "chunking_metadata": chunking_metadata
             }
 
@@ -593,3 +607,13 @@ class RunPodTranscriptionService(TranscriptionService):
                 }
             }
         ]
+
+    def supports_diarization(self) -> bool:
+        """
+        RunPod RSDO does not support speaker diarization.
+        Note: Pyannote diarization may be added in a future PR.
+
+        Returns:
+            False - diarization not supported
+        """
+        return False

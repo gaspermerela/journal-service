@@ -26,7 +26,9 @@ class TranscriptionService(ABC):
         language: str = "en",
         beam_size: Optional[int] = None,
         temperature: Optional[float] = None,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        enable_diarization: bool = False,
+        speaker_count: int = 1
     ) -> Dict[str, Any]:
         """
         Transcribe audio file to text.
@@ -37,17 +39,30 @@ class TranscriptionService(ABC):
             beam_size: Beam size for transcription (1-10). If None, uses default.
             temperature: Temperature for transcription sampling (0.0-1.0). If None, uses default (0.0).
             model: Model to use for transcription. If None, uses the service's default model.
+            enable_diarization: Enable speaker diarization to identify different speakers.
+            speaker_count: Expected number of speakers (1-10). Only used if enable_diarization=True.
 
         Returns:
             Dict containing:
                 - text: Transcribed text
                 - language: Detected/used language
-                - segments: Optional list of timed segments
+                - segments: List of timed segments with optional speaker labels
                 - beam_size: Beam size used for transcription
+                - diarization_applied: Whether speaker diarization was applied
 
         Raises:
             FileNotFoundError: If audio file doesn't exist
             RuntimeError: If transcription fails
+        """
+        pass
+
+    @abstractmethod
+    def supports_diarization(self) -> bool:
+        """
+        Check if this provider supports speaker diarization.
+
+        Returns:
+            True if diarization is supported, False otherwise
         """
         pass
 

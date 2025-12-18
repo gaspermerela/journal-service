@@ -24,7 +24,10 @@ class NoOpTranscriptionService(TranscriptionService):
         audio_path: Path,
         language: str = "en",
         beam_size: Optional[int] = None,
-        temperature: Optional[float] = None
+        temperature: Optional[float] = None,
+        model: Optional[str] = None,
+        enable_diarization: bool = False,
+        speaker_count: int = 1
     ) -> Dict[str, Any]:
         """
         Return mock transcription without calling any service.
@@ -34,6 +37,9 @@ class NoOpTranscriptionService(TranscriptionService):
             language: Language code
             beam_size: Beam size (ignored for NoOp)
             temperature: Temperature (ignored for NoOp)
+            model: Model to use (ignored for NoOp)
+            enable_diarization: Enable speaker diarization (ignored for NoOp)
+            speaker_count: Expected number of speakers (ignored for NoOp)
 
         Returns:
             Dict with mock transcription data
@@ -41,13 +47,18 @@ class NoOpTranscriptionService(TranscriptionService):
         if not audio_path.exists():
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
-        logger.info(f"NoOp transcription called for file={audio_path.name}, language={language}")
+        logger.info(
+            f"NoOp transcription called for file={audio_path.name}, language={language}, "
+            f"diarization={enable_diarization}, speakers={speaker_count}"
+        )
 
         return {
             "text": f"[NoOp Transcription] This is a test transcription for {audio_path.name}",
             "language": language if language != "auto" else "en",
             "segments": [],
-            "beam_size": beam_size
+            "beam_size": beam_size,
+            "temperature": temperature,
+            "diarization_applied": False,
         }
 
     def get_supported_languages(self) -> list[str]:
@@ -63,3 +74,12 @@ class NoOpTranscriptionService(TranscriptionService):
         return [
             {"id": "noop-whisper-test", "name": "NoOp Test Model"}
         ]
+
+    def supports_diarization(self) -> bool:
+        """
+        NoOp service does not support speaker diarization.
+
+        Returns:
+            False - diarization not supported
+        """
+        return False
