@@ -3,50 +3,12 @@ Unit tests for model listing service methods.
 """
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
-from app.services.transcription import WhisperLocalService
 from app.services.transcription_groq import GroqTranscriptionService
 from app.services.transcription_assemblyai import AssemblyAITranscriptionService
 from app.services.transcription_noop import NoOpTranscriptionService
 from app.services.llm_cleanup_ollama import OllamaLLMCleanupService
 from app.services.llm_cleanup_groq import GroqLLMCleanupService
 from app.services.llm_cleanup_noop import NoOpLLMCleanupService
-
-
-class TestWhisperLocalServiceModels:
-    """Test WhisperLocalService.list_available_models()"""
-
-    @pytest.mark.asyncio
-    async def test_list_available_models_returns_whisper_models(self):
-        """Test that Whisper service returns hardcoded list of models."""
-        # Create service with mock model
-        mock_model = MagicMock()
-        service = WhisperLocalService(
-            model=mock_model,
-            model_name="large-v3",
-            device="cpu"
-        )
-
-        models = await service.list_available_models()
-
-        # Should return list of dicts
-        assert isinstance(models, list)
-        assert len(models) == 6  # tiny, base, small, medium, large, large-v3
-
-        # Check structure of models
-        for model in models:
-            assert "id" in model
-            assert "name" in model
-            assert "size" in model
-            assert "speed" in model
-
-        # Check specific models are included
-        model_ids = [m["id"] for m in models]
-        assert "tiny" in model_ids
-        assert "base" in model_ids
-        assert "small" in model_ids
-        assert "medium" in model_ids
-        assert "large" in model_ids
-        assert "large-v3" in model_ids
 
 
 class TestGroqTranscriptionServiceModels:

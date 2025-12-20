@@ -7,7 +7,7 @@ import asyncio
 
 
 @pytest.mark.asyncio
-async def test_complete_transcription_workflow(authenticated_client, sample_mp3_path, mock_transcription_service):
+async def test_complete_transcription_workflow(authenticated_client, sample_mp3_path):
     """
     Test the complete transcription workflow from upload to retrieval.
 
@@ -18,9 +18,6 @@ async def test_complete_transcription_workflow(authenticated_client, sample_mp3_
     4. Retrieve transcription
     5. Get entry with transcription included
     """
-    from app.main import app
-    app.state.transcription_service = mock_transcription_service
-
     # Step 1: Upload audio file
     with open(sample_mp3_path, "rb") as f:
         upload_response = await authenticated_client.post(
@@ -31,10 +28,10 @@ async def test_complete_transcription_workflow(authenticated_client, sample_mp3_
     assert upload_response.status_code == 201
     entry_id = upload_response.json()["id"]
 
-    # Step 2: Trigger transcription
+    # Step 2: Trigger transcription using noop provider
     transcribe_response = await authenticated_client.post(
         f"/api/v1/entries/{entry_id}/transcribe",
-        json={"language": "en"}
+        json={"language": "en", "transcription_provider": "noop"}
     )
 
     assert transcribe_response.status_code == 202
@@ -62,21 +59,18 @@ async def test_complete_transcription_workflow(authenticated_client, sample_mp3_
 
 
 @pytest.mark.asyncio
-async def test_multiple_transcription_attempts(authenticated_client, sample_voice_entry, mock_transcription_service):
+async def test_multiple_transcription_attempts(authenticated_client, sample_voice_entry):
     """
     Test creating multiple transcriptions for the same entry.
     Simulates: trying multiple times (e.g., retries or different language attempts).
     """
-    from app.main import app
-    app.state.transcription_service = mock_transcription_service
-
     # Create 3 transcriptions for the same entry
     transcription_ids = []
 
     for i in range(3):
         response = await authenticated_client.post(
             f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
-            json={"language": "en"}
+            json={"language": "en", "transcription_provider": "noop"}
         )
 
         assert response.status_code == 202
@@ -94,7 +88,7 @@ async def test_multiple_transcription_attempts(authenticated_client, sample_voic
 
 
 @pytest.mark.asyncio
-async def test_set_primary_after_comparison(authenticated_client, sample_voice_entry, db_session, mock_transcription_service):
+async def test_set_primary_after_comparison(authenticated_client, sample_voice_entry, db_session):
     """
     Test workflow: create multiple transcriptions, then set one as primary.
     Simulates: user tries different models, picks best one.
@@ -191,16 +185,13 @@ async def test_retry_failed_transcription(authenticated_client, sample_voice_ent
 
 
 @pytest.mark.asyncio
-async def test_transcription_with_auto_language_detection(authenticated_client, sample_voice_entry, mock_transcription_service):
+async def test_transcription_with_auto_language_detection(authenticated_client, sample_voice_entry):
     """
     Test transcription with automatic language detection.
     """
-    from app.main import app
-    app.state.transcription_service = mock_transcription_service
-
     response = await authenticated_client.post(
         f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
-        json={"language": "auto"}
+        json={"language": "auto", "transcription_provider": "noop"}
     )
 
     assert response.status_code == 202
@@ -241,13 +232,10 @@ async def test_entry_deletion_cascades_to_transcriptions(client, sample_voice_en
 
 
 @pytest.mark.asyncio
-async def test_upload_and_immediate_transcription(authenticated_client, sample_mp3_path, mock_transcription_service):
+async def test_upload_and_immediate_transcription(authenticated_client, sample_mp3_path):
     """
     Test realistic user flow: upload file and immediately trigger transcription.
     """
-    from app.main import app
-    app.state.transcription_service = mock_transcription_service
-
     # Upload
     with open(sample_mp3_path, "rb") as f:
         upload_response = await authenticated_client.post(
@@ -257,10 +245,10 @@ async def test_upload_and_immediate_transcription(authenticated_client, sample_m
 
     entry_id = upload_response.json()["id"]
 
-    # Immediately trigger transcription
+    # Immediately trigger transcription using noop provider
     transcribe_response = await authenticated_client.post(
         f"/api/v1/entries/{entry_id}/transcribe",
-        json={"language": "en"}
+        json={"language": "en", "transcription_provider": "noop"}
     )
 
     assert transcribe_response.status_code == 202

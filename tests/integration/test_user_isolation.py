@@ -162,16 +162,12 @@ async def test_user_can_access_own_entry(
 @pytest.mark.asyncio
 async def test_user_cannot_trigger_transcription_for_other_users_entry(
     authenticated_client_a: AsyncClient,
-    user_b_entry: VoiceEntry,
-    mock_transcription_service
+    user_b_entry: VoiceEntry
 ):
     """Test that User A cannot trigger transcription for User B's entry."""
-    from app.main import app
-    app.state.transcription_service = mock_transcription_service
-
     response = await authenticated_client_a.post(
         f"/api/v1/entries/{user_b_entry.id}/transcribe",
-        json={"language": "en"}
+        json={"language": "en", "transcription_provider": "noop"}
     )
 
     assert response.status_code == 404
@@ -181,16 +177,12 @@ async def test_user_cannot_trigger_transcription_for_other_users_entry(
 @pytest.mark.asyncio
 async def test_user_can_trigger_transcription_for_own_entry(
     authenticated_client_a: AsyncClient,
-    user_a_entry: VoiceEntry,
-    mock_transcription_service
+    user_a_entry: VoiceEntry
 ):
     """Test that User A can trigger transcription for their own entry."""
-    from app.main import app
-    app.state.transcription_service = mock_transcription_service
-
     response = await authenticated_client_a.post(
         f"/api/v1/entries/{user_a_entry.id}/transcribe",
-        json={"language": "en"}
+        json={"language": "en", "transcription_provider": "noop"}
     )
 
     assert response.status_code == 202

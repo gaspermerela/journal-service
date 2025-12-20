@@ -38,7 +38,7 @@ class TestE2EUnifiedOptions:
 
         # Verify transcription provider and models
         transcription = data["transcription"]
-        assert transcription["provider"] in ["whisper", "groq"]
+        assert transcription["provider"] in ["assemblyai", "groq"]
         assert len(transcription["models"]) > 0
 
         # Verify LLM provider and models

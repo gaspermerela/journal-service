@@ -18,6 +18,11 @@ from app.services.database import db_service
 from app.services.transcription import TranscriptionService
 from app.services.audio_preprocessing import preprocessing_service
 from app.services.envelope_encryption import EnvelopeEncryptionService, get_encryption_service
+from app.services.provider_registry import (
+    get_effective_transcription_provider,
+    get_effective_llm_provider,
+    get_transcription_service_for_provider,
+)
 from app.middleware.jwt import get_current_user
 from app.utils.validators import validate_audio_file
 from app.utils.logger import get_logger
@@ -73,7 +78,7 @@ async def transcription_then_cleanup_task(
     entry_id: uuid.UUID,
     audio_file_path: str,
     language: str,
-    transcription_service: TranscriptionService,
+    transcription_provider: str,
     cleaned_entry_id: uuid.UUID,
     entry_type: str,
     user_id: uuid.UUID,
@@ -82,7 +87,8 @@ async def transcription_then_cleanup_task(
     transcription_model: Optional[str] = None,
     cleanup_temperature: Optional[float] = None,
     cleanup_top_p: Optional[float] = None,
-    llm_model: Optional[str] = None
+    llm_model: Optional[str] = None,
+    llm_provider: Optional[str] = None
 ):
     """
     Background task that runs transcription, then triggers cleanup when done.
@@ -91,12 +97,14 @@ async def transcription_then_cleanup_task(
     workflow of transcribing audio and then cleaning up the transcription.
 
     Args:
+        transcription_provider: Transcription provider name (e.g., 'groq', 'assemblyai')
         transcription_beam_size: Beam size for transcription (1-10)
         transcription_temperature: Temperature for transcription (0.0-1.0)
         transcription_model: Model to use for transcription
         cleanup_temperature: Temperature for LLM cleanup (0.0-2.0)
         cleanup_top_p: Top-p for LLM cleanup (0.0-1.0)
         llm_model: Model to use for LLM cleanup
+        llm_provider: LLM provider name (e.g., 'ollama', 'groq')
     """
     # Import here to avoid circular imports
     from app.routes.transcription import process_transcription_task
@@ -109,7 +117,7 @@ async def transcription_then_cleanup_task(
         user_id=user_id,
         audio_file_path=audio_file_path,
         language=language,
-        transcription_service=transcription_service,
+        transcription_provider=transcription_provider,
         beam_size=transcription_beam_size,
         temperature=transcription_temperature,
         transcription_model=transcription_model
@@ -148,7 +156,8 @@ async def transcription_then_cleanup_task(
                 logger.info(
                     f"Transcription completed, starting cleanup for {cleaned_entry_id}",
                     cleanup_temperature=cleanup_temperature,
-                    cleanup_top_p=cleanup_top_p
+                    cleanup_top_p=cleanup_top_p,
+                    llm_provider=llm_provider
                 )
                 await process_cleanup_background(
                     cleaned_entry_id=cleaned_entry_id,
@@ -158,7 +167,8 @@ async def transcription_then_cleanup_task(
                     voice_entry_id=entry_id,
                     temperature=cleanup_temperature,
                     top_p=cleanup_top_p,
-                    llm_model=llm_model
+                    llm_model=llm_model,
+                    llm_provider=llm_provider
                 )
             else:
                 # Decryption failed
@@ -180,31 +190,6 @@ async def transcription_then_cleanup_task(
                 error_message="Transcription failed or produced no text"
             )
             await db.commit()
-
-
-def get_transcription_service(request: Request) -> TranscriptionService:
-    """
-    Dependency to get transcription service from app state.
-
-    Args:
-        request: FastAPI request object
-
-    Returns:
-        TranscriptionService instance
-
-    Raises:
-        HTTPException: If transcription service is not available
-    """
-    service = request.app.state.transcription_service
-
-    if service is None:
-        logger.error("Transcription service not available")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Transcription service is currently unavailable"
-        )
-
-    return service
 
 
 @router.post(
@@ -369,10 +354,9 @@ async def upload_audio(
     description="Upload an audio file and immediately start transcription in a single request. Returns both entry details and transcription ID.",
     responses={
         202: {"description": "File uploaded and transcription started"},
-        400: {"description": "Invalid file type or missing file"},
+        400: {"description": "Invalid file type, missing file, or unconfigured provider"},
         413: {"description": "File too large"},
         500: {"description": "Server error during upload"},
-        503: {"description": "Transcription service unavailable"}
     }
 )
 async def upload_and_transcribe(
@@ -384,8 +368,8 @@ async def upload_and_transcribe(
     transcription_beam_size: Optional[int] = Form(None, description="Beam size for transcription (1-10, higher = more accurate but slower). If not provided, uses default from config."),
     transcription_temperature: Optional[float] = Form(None, ge=0.0, le=1.0, description="Temperature for transcription sampling (0.0-1.0, higher = more random). If not provided, uses default."),
     transcription_model: Optional[str] = Form(None, description="Transcription model to use (e.g., 'whisper-large-v3'). If not provided, uses configured default."),
+    transcription_provider: Optional[str] = Form(None, description="Transcription provider (e.g., 'groq', 'assemblyai', 'clarinsi_slovene_asr'). If not provided, uses configured default."),
     db: AsyncSession = Depends(get_db),
-    transcription_service: TranscriptionService = Depends(get_transcription_service),
     current_user: User = Depends(get_current_user),
     encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service),
 ) -> VoiceEntryUploadAndTranscribeResponse:
@@ -405,6 +389,19 @@ async def upload_and_transcribe(
     - Database transaction is rolled back automatically
     - Saved file is deleted if database write fails
     """
+    # Validate and get effective transcription provider
+    try:
+        effective_transcription_provider = get_effective_transcription_provider(transcription_provider)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+    # Get transcription service to obtain model name for database record
+    # TODO: Simplify
+    transcription_service = get_transcription_service_for_provider(effective_transcription_provider)
+
     file_id = uuid.uuid4()
     saved_file_path = None
 
@@ -530,7 +527,7 @@ async def upload_and_transcribe(
             user_id=current_user.id,
             audio_file_path=entry.file_path,
             language=effective_language,
-            transcription_service=transcription_service,
+            transcription_provider=effective_transcription_provider,
             beam_size=transcription_beam_size,
             temperature=transcription_temperature,
             transcription_model=transcription_model
@@ -589,10 +586,9 @@ async def upload_and_transcribe(
     description="Upload an audio file, transcribe it, and clean it with LLM - all in one request. This is the recommended workflow for most use cases.",
     responses={
         202: {"description": "File uploaded, transcription and cleanup started"},
-        400: {"description": "Invalid file type or missing file"},
+        400: {"description": "Invalid file type, missing file, or unconfigured provider"},
         413: {"description": "File too large"},
         500: {"description": "Server error during upload"},
-        503: {"description": "Transcription service unavailable"}
     }
 )
 async def upload_transcribe_and_cleanup(
@@ -604,11 +600,12 @@ async def upload_transcribe_and_cleanup(
     transcription_beam_size: Optional[int] = Form(None, description="Beam size for transcription (1-10, higher = more accurate but slower). If not provided, uses default from config."),
     transcription_temperature: Optional[float] = Form(None, ge=0.0, le=1.0, description="Temperature for transcription sampling (0.0-1.0, higher = more random). If not provided, uses default."),
     transcription_model: Optional[str] = Form(None, description="Transcription model to use (e.g., 'whisper-large-v3'). If not provided, uses configured default."),
+    transcription_provider: Optional[str] = Form(None, description="Transcription provider (e.g., 'groq', 'assemblyai', 'clarinsi_slovene_asr'). If not provided, uses configured default."),
     cleanup_temperature: Optional[float] = Form(None, ge=0.0, le=2.0, description="Temperature for LLM cleanup (0.0-2.0, higher = more creative). If not provided, uses default."),
     cleanup_top_p: Optional[float] = Form(None, ge=0.0, le=1.0, description="Top-p for LLM cleanup (0.0-1.0, nucleus sampling). If not provided, uses default."),
     llm_model: Optional[str] = Form(None, description="LLM model to use for cleanup (e.g., 'llama-3.3-70b-versatile'). If not provided, uses configured default."),
+    llm_provider: Optional[str] = Form(None, description="LLM provider (e.g., 'ollama', 'groq'). If not provided, uses configured default."),
     db: AsyncSession = Depends(get_db),
-    transcription_service: TranscriptionService = Depends(get_transcription_service),
     current_user: User = Depends(get_current_user),
     encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service),
 ) -> UploadTranscribeCleanupResponse:
@@ -632,6 +629,27 @@ async def upload_transcribe_and_cleanup(
     - Saved file is deleted if database write fails
     """
     from app.config import settings
+
+    # Validate and get effective providers
+    try:
+        effective_transcription_provider = get_effective_transcription_provider(transcription_provider)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+    try:
+        effective_llm_provider = get_effective_llm_provider(llm_provider)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+    # Get transcription service to obtain model name for database record
+    # TODO: Simplify
+    transcription_service = get_transcription_service_for_provider(effective_transcription_provider)
 
     file_id = uuid.uuid4()
     saved_file_path = None
@@ -751,11 +769,13 @@ async def upload_transcribe_and_cleanup(
         # Determine cleanup model name in {provider}-{model} format
         if llm_model:
             # User specified a custom model
-            # Need to determine provider based on model name or current LLM_PROVIDER setting
-            cleanup_model_name = f"{settings.LLM_PROVIDER}-{llm_model}"
+            cleanup_model_name = f"{effective_llm_provider}-{llm_model}"
         else:
-            # Use default from settings
-            cleanup_model_name = f"{settings.LLM_PROVIDER}-{settings.GROQ_LLM_MODEL if settings.LLM_PROVIDER == 'groq' else settings.OLLAMA_MODEL}"
+            # Use default from settings based on effective provider
+            if effective_llm_provider == "groq":
+                cleanup_model_name = f"groq-{settings.GROQ_LLM_MODEL}"
+            else:
+                cleanup_model_name = f"ollama-{settings.OLLAMA_MODEL}"
 
         cleaned_entry = await db_service.create_cleaned_entry(
             db=db,
@@ -781,7 +801,7 @@ async def upload_transcribe_and_cleanup(
             entry_id=entry.id,
             audio_file_path=entry.file_path,
             language=effective_language,
-            transcription_service=transcription_service,
+            transcription_provider=effective_transcription_provider,
             cleaned_entry_id=cleaned_entry.id,
             entry_type=entry_type,
             user_id=current_user.id,
@@ -790,7 +810,8 @@ async def upload_transcribe_and_cleanup(
             transcription_model=transcription_model,
             cleanup_temperature=cleanup_temperature,
             cleanup_top_p=cleanup_top_p,
-            llm_model=llm_model
+            llm_model=llm_model,
+            llm_provider=effective_llm_provider
         )
 
         logger.info(

@@ -36,6 +36,10 @@ class TranscriptionTriggerRequest(BaseModel):
         default=None,
         description="Transcription model to use (e.g., 'whisper-large-v3'). If not provided, uses configured default."
     )
+    transcription_provider: Optional[str] = Field(
+        default=None,
+        description="Transcription provider (e.g., 'groq', 'assemblyai', 'clarinsi_slovene_asr'). If not provided, uses configured default."
+    )
 
     @field_validator('beam_size')
     @classmethod
