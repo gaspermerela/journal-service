@@ -1,7 +1,7 @@
 """
 API routes for listing available models and options.
 """
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 
 from app.config import settings, TRANSCRIPTION_PROVIDER_PARAMETERS, LLM_PROVIDER_PARAMETERS
 from app.schemas.models import (
@@ -11,6 +11,10 @@ from app.schemas.models import (
     ServiceOptions,
     ParameterConfig
 )
+from app.services.provider_registry import (
+    get_transcription_service_for_provider,
+    get_llm_service_for_provider,
+)
 from app.utils.logger import get_logger
 
 logger = get_logger("routes.models")
@@ -19,7 +23,7 @@ router = APIRouter(prefix="/api/v1", tags=["Models"])
 
 
 @router.get("/options", response_model=UnifiedOptionsResponse)
-async def get_options(request: Request) -> UnifiedOptionsResponse:
+async def get_options() -> UnifiedOptionsResponse:
     """
     Get unified options for transcription and LLM services.
 
@@ -30,14 +34,15 @@ async def get_options(request: Request) -> UnifiedOptionsResponse:
 
     Returns:
         UnifiedOptionsResponse: Combined options for both services including:
-            - provider: Current active provider (groq, whisper, ollama)
+            - provider: Current active provider (groq, assemblyai, ollama)
             - models: List of available models
             - parameters: Available parameters with type, min/max, default, description
     """
-    transcription_service = request.app.state.transcription_service
-    llm_service = request.app.state.llm_cleanup_service
-
     try:
+        # Create services for default providers
+        transcription_service = get_transcription_service_for_provider(settings.TRANSCRIPTION_PROVIDER)
+        llm_service = get_llm_service_for_provider(settings.LLM_PROVIDER)
+
         # Get models from services
         transcription_models = await transcription_service.list_available_models()
         llm_models = await llm_service.list_available_models()

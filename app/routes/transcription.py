@@ -16,6 +16,10 @@ from app.services.envelope_encryption import (
     get_encryption_service,
     create_envelope_encryption_service,
 )
+from app.services.provider_registry import (
+    get_effective_transcription_provider,
+    get_transcription_service_for_provider,
+)
 from app.middleware.jwt import get_current_user
 from app.schemas.transcription import (
     TranscriptionTriggerRequest,
@@ -39,38 +43,13 @@ logger = get_logger("transcription_routes")
 router = APIRouter()
 
 
-def get_transcription_service(request: Request) -> TranscriptionService:
-    """
-    Dependency to get transcription service from app state.
-
-    Args:
-        request: FastAPI request object
-
-    Returns:
-        TranscriptionService instance
-
-    Raises:
-        HTTPException: If transcription service is not available
-    """
-    service = request.app.state.transcription_service
-
-    if service is None:
-        logger.error("Transcription service not available")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Transcription service is currently unavailable"
-        )
-
-    return service
-
-
 async def process_transcription_task(
     transcription_id: UUID,
     entry_id: UUID,
     user_id: UUID,
     audio_file_path: str,
     language: str,
-    transcription_service: TranscriptionService,
+    transcription_provider: str,
     beam_size: Optional[int] = None,
     temperature: Optional[float] = None,
     transcription_model: Optional[str] = None
@@ -84,12 +63,15 @@ async def process_transcription_task(
         user_id: UUID of the user (for encryption/decryption)
         audio_file_path: Path to audio file
         language: Language code for transcription
-        transcription_service: Transcription service instance
+        transcription_provider: Transcription provider name (e.g., 'groq', 'assemblyai')
         beam_size: Beam size for transcription (1-10, optional)
         temperature: Temperature for transcription sampling (0.0-1.0, optional)
         transcription_model: Model to use for transcription (optional, uses service default if None)
     """
     from app.database import AsyncSessionLocal
+
+    # Create transcription service for this provider
+    transcription_service = get_transcription_service_for_provider(transcription_provider)
 
     logger.info(
         f"Starting transcription background task",
@@ -250,36 +232,45 @@ async def process_transcription_task(
     response_model=TranscriptionTriggerResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Trigger audio transcription",
-    description="Start background transcription of an audio file using the configured Whisper model (set via WHISPER_MODEL env variable)"
+    description="Start background transcription of an audio file using the specified or configured transcription provider"
 )
 async def trigger_transcription(
     entry_id: UUID,
     request_data: TranscriptionTriggerRequest,
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
-    transcription_service: TranscriptionService = Depends(get_transcription_service),
     current_user: User = Depends(get_current_user)
 ):
     """
     Trigger transcription for a voice entry audio file.
 
-    The transcription runs in the background using the configured Whisper model.
+    The transcription runs in the background using the specified provider.
     Use the returned transcription_id to check status via GET /transcriptions/{transcription_id}.
 
     Args:
         entry_id: UUID of the voice entry
-        request_data: Transcription parameters (language)
+        request_data: Transcription parameters (language, provider)
         background_tasks: FastAPI background tasks
         db: Database session
-        transcription_service: Transcription service
 
     Returns:
         TranscriptionTriggerResponse with transcription ID and status
 
     Raises:
-        HTTPException: If entry not found or transcription cannot be started
+        HTTPException: If entry not found, provider not configured, or transcription cannot be started
     """
-    # Get model name from loaded transcription service
+    # Validate and get effective provider
+    try:
+        effective_provider = get_effective_transcription_provider(request_data.transcription_provider)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+    # Get transcription service to obtain model name for database record
+    # TODO: Simplify
+    transcription_service = get_transcription_service_for_provider(effective_provider)
     model_name = transcription_service.get_model_name()
 
     logger.info(
@@ -327,7 +318,7 @@ async def trigger_transcription(
         user_id=current_user.id,
         audio_file_path=entry.file_path,
         language=request_data.language,
-        transcription_service=transcription_service,
+        transcription_provider=effective_provider,
         beam_size=request_data.beam_size,
         temperature=request_data.temperature,
         transcription_model=request_data.transcription_model

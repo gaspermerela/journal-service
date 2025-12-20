@@ -24,6 +24,10 @@ from app.services.envelope_encryption import (
     get_encryption_service,
     create_envelope_encryption_service,
 )
+from app.services.provider_registry import (
+    get_effective_llm_provider,
+    get_llm_service_for_provider,
+)
 from app.config import settings
 from app.utils.encryption_helpers import (
     decrypt_text,
@@ -71,7 +75,8 @@ async def process_cleanup_background(
     llm_model: str = None,
     analysis_temperature: float = None,
     analysis_top_p: float = None,
-    analysis_model: str = None
+    analysis_model: str = None,
+    llm_provider: str = None
 ):
     """
     Background task to process LLM cleanup.
@@ -88,16 +93,20 @@ async def process_cleanup_background(
         analysis_temperature: Temperature for analysis LLM sampling (separate from cleanup)
         analysis_top_p: Top-p for analysis nucleus sampling (separate from cleanup)
         analysis_model: Model to use for analysis (separate from cleanup model)
+        llm_provider: LLM provider name (e.g., 'ollama', 'groq'). If None, uses default.
     """
     from app.database import get_session
     from app.models.notion_sync import SyncStatus as NotionSyncStatus
     from app.routes.notion import process_notion_sync_background
     from app.services.llm_cleanup import create_llm_cleanup_service
 
+    # Use specified provider or fall back to settings default
+    effective_provider = llm_provider or settings.LLM_PROVIDER
+
     async with get_session() as db:
         # Create LLM service using factory with database session for prompt lookup
         llm_service = create_llm_cleanup_service(
-            provider=settings.LLM_PROVIDER,
+            provider=effective_provider,
             db_session=db
         )
 
@@ -313,7 +322,6 @@ async def trigger_cleanup(
     transcription_id: UUID,
     background_tasks: BackgroundTasks,
     current_user: Annotated[User, Depends(get_current_user)],
-    llm_service: Annotated[LLMCleanupService, Depends(get_llm_cleanup_service)],
     db: AsyncSession = Depends(get_db),
     request: CleanupTriggerRequest = CleanupTriggerRequest(),
     encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service)
@@ -324,11 +332,22 @@ async def trigger_cleanup(
     The cleanup process:
     1. Validates that the transcription exists and is completed
     2. Creates a cleaned_entry record
-    3. Starts background processing using the configured LLM model
+    3. Starts background processing using the specified or configured LLM provider
     4. Returns immediately with cleanup ID and status
 
     Query the cleanup status using GET /api/v1/cleaned-entries/{cleanup_id}
     """
+    # Validate and get effective LLM provider
+    try:
+        effective_llm_provider = get_effective_llm_provider(request.llm_provider)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+    # Get LLM service to obtain model name for database record
+    llm_service = get_llm_service_for_provider(effective_llm_provider)
     # Get the transcription
     transcription = await db_service.get_transcription_by_id(
         db=db,
@@ -381,7 +400,7 @@ async def trigger_cleanup(
     # Determine cleanup model name in {provider}-{model} format
     if request.llm_model:
         # User specified a custom model
-        cleanup_model_name = f"{settings.LLM_PROVIDER}-{request.llm_model}"
+        cleanup_model_name = f"{effective_llm_provider}-{request.llm_model}"
     else:
         # Use default from service
         cleanup_model_name = llm_service.get_model_name()
@@ -408,7 +427,8 @@ async def trigger_cleanup(
         voice_entry_id=voice_entry.id,
         temperature=request.temperature,
         top_p=request.top_p,
-        llm_model=request.llm_model
+        llm_model=request.llm_model,
+        llm_provider=effective_llm_provider
     )
 
     logger.info(

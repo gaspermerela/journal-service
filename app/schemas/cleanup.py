@@ -36,6 +36,10 @@ class CleanupTriggerRequest(BaseModel):
         default=None,
         description="LLM model to use for cleanup (e.g., 'llama-3.3-70b-versatile'). If not provided, uses configured default."
     )
+    llm_provider: Optional[str] = Field(
+        default=None,
+        description="LLM provider (e.g., 'ollama', 'groq'). If not provided, uses configured default."
+    )
 
 
 class CleanupResponse(BaseModel):

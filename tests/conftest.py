@@ -139,11 +139,15 @@ def test_settings(test_storage_path) -> Settings:
 
 
 @pytest.fixture
-async def client(db_session: AsyncSession, test_settings: Settings, mock_transcription_service, mock_llm_cleanup_service, encryption_service) -> AsyncGenerator[AsyncClient, None]:
+async def client(db_session: AsyncSession, test_settings: Settings, encryption_service) -> AsyncGenerator[AsyncClient, None]:
     """
     Create an async test client for the FastAPI application.
     Overrides the database dependency to use test database.
     Includes encryption service (required for encryption-only mode).
+
+    Note: AI services (transcription, LLM cleanup) are created per-request
+    via the provider registry. Tests should use 'noop' provider to avoid
+    calling real API services.
     """
     # Override dependencies
     async def override_get_db():
@@ -155,9 +159,6 @@ async def client(db_session: AsyncSession, test_settings: Settings, mock_transcr
     from app import config
     config.settings = test_settings
 
-    # Mock AI services to avoid loading Whisper/Ollama/Groq in tests
-    app.state.transcription_service = mock_transcription_service
-    app.state.llm_cleanup_service = mock_llm_cleanup_service
     # Encryption service is required (encryption-only mode)
     app.state.encryption_service = encryption_service
 
@@ -170,8 +171,6 @@ async def client(db_session: AsyncSession, test_settings: Settings, mock_transcr
 
     # Clear overrides
     app.dependency_overrides.clear()
-    app.state.transcription_service = None
-    app.state.llm_cleanup_service = None
     app.state.encryption_service = None
 
 
@@ -352,32 +351,6 @@ async def sample_voice_entry(db_session: AsyncSession, test_storage_path: Path, 
 
 
 # ===== Transcription Test Fixtures =====
-
-@pytest.fixture
-def mock_whisper_model():
-    """
-    Mock Whisper model for testing without loading the actual model.
-    Returns predictable transcription results.
-    """
-    model = Mock()
-    model.transcribe.return_value = {
-        "text": "I had a dream about flying over mountains and vast oceans.",
-        "language": "en",
-        "segments": [
-            {
-                "start": 0.0,
-                "end": 2.5,
-                "text": "I had a dream about flying"
-            },
-            {
-                "start": 2.5,
-                "end": 5.0,
-                "text": "over mountains and vast oceans."
-            }
-        ]
-    }
-    return model
-
 
 @pytest.fixture
 def mock_transcription_service():

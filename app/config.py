@@ -27,13 +27,7 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 100
 
     # Transcription Configuration
-    TRANSCRIPTION_PROVIDER: str = "groq"  # Options: whisper (local), groq, assemblyai, runpod (Slovenian)
-
-    # Whisper (Local) Transcription Configuration
-    WHISPER_MODEL: str = "large-v3"  # Options: tiny, base, small, medium, large, large-v3
-    WHISPER_DEVICE: str = "cpu"  # Options: cpu, cuda (for GPU)
-    TORCH_NUM_THREADS: int = 10  # Number of CPU threads for PyTorch
-    WHISPER_DEFAULT_BEAM_SIZE: int = 5  # Default beam size for transcription (1-10, higher = more accurate but slower)
+    TRANSCRIPTION_PROVIDER: str = "groq"  # Options: groq, assemblyai, clarinsi_slovene_asr (Slovenian)
 
     # Audio Preprocessing Configuration
     ENABLE_AUDIO_PREPROCESSING: bool = True  # Enable ffmpeg preprocessing pipeline
@@ -164,15 +158,6 @@ class Settings(BaseSettings):
 # Transcription Provider Parameters
 TRANSCRIPTION_PROVIDER_PARAMETERS = {
     "groq": {
-        "temperature": {
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "default": 0.0,
-            "description": "Temperature for transcription sampling (0.0-1.0, higher = more random)"
-        }
-    },
-    "whisper": {
         "temperature": {
             "type": "float",
             "min": 0.0,

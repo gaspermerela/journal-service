@@ -9,22 +9,17 @@ from uuid import uuid4
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.routes.transcription import get_transcription_service
 from app.models.voice_entry import VoiceEntry
 from app.models.transcription import Transcription
 from app.models.user import User
 
 
 @pytest.mark.asyncio
-async def test_trigger_transcription_success(authenticated_client, sample_voice_entry, mock_transcription_service):
+async def test_trigger_transcription_success(authenticated_client, sample_voice_entry):
     """Test triggering transcription for an entry."""
-    # Override transcription service dependency
-    from app.main import app
-    app.state.transcription_service = mock_transcription_service
-
     response = await authenticated_client.post(
         f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
-        json={"language": "en"}
+        json={"language": "en", "transcription_provider": "noop"}
     )
 
     assert response.status_code == 202
@@ -36,16 +31,13 @@ async def test_trigger_transcription_success(authenticated_client, sample_voice_
 
 
 @pytest.mark.asyncio
-async def test_trigger_transcription_entry_not_found(authenticated_client, mock_transcription_service):
+async def test_trigger_transcription_entry_not_found(authenticated_client):
     """Test triggering transcription for non-existent entry."""
-    from app.main import app
-    app.state.transcription_service = mock_transcription_service
-
     non_existent_id = uuid4()
 
     response = await authenticated_client.post(
         f"/api/v1/entries/{non_existent_id}/transcribe",
-        json={"language": "en"}
+        json={"language": "en", "transcription_provider": "noop"}
     )
 
     assert response.status_code == 404
@@ -53,18 +45,15 @@ async def test_trigger_transcription_entry_not_found(authenticated_client, mock_
 
 
 @pytest.mark.asyncio
-async def test_trigger_transcription_service_unavailable(authenticated_client, sample_voice_entry):
-    """Test triggering transcription when service is unavailable."""
-    from app.main import app
-    app.state.transcription_service = None  # Simulate service unavailable
-
+async def test_trigger_transcription_invalid_provider(authenticated_client, sample_voice_entry):
+    """Test triggering transcription with invalid provider returns 400."""
     response = await authenticated_client.post(
         f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
-        json={"language": "en"}
+        json={"language": "en", "transcription_provider": "nonexistent_provider"}
     )
 
-    assert response.status_code == 503
-    assert "unavailable" in response.json()["detail"].lower()
+    assert response.status_code == 400
+    assert "unknown" in response.json()["detail"].lower() or "provider" in response.json()["detail"].lower()
 
 
 @pytest.mark.asyncio
@@ -277,52 +266,43 @@ async def test_get_entry_without_transcription(authenticated_client, sample_voic
 
 
 @pytest.mark.asyncio
-async def test_trigger_transcription_uses_configured_model(authenticated_client, sample_voice_entry, mock_transcription_service, db_session):
-    """Test that transcription uses the model configured in the service (not from request)."""
-    from app.main import app
-    app.state.transcription_service = mock_transcription_service
-
+async def test_trigger_transcription_uses_configured_model(authenticated_client, sample_voice_entry, db_session):
+    """Test that transcription uses the model configured for the selected provider."""
     response = await authenticated_client.post(
         f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
-        json={"language": "en"}
+        json={"language": "en", "transcription_provider": "noop"}
     )
 
     assert response.status_code == 202
     data = response.json()
     assert "transcription_id" in data
 
-    # Verify the transcription was created with the correct model from service
+    # Verify the transcription was created with the correct model from noop provider
     from app.services.database import db_service
     transcription = await db_service.get_transcription_by_id(db_session, data["transcription_id"])
-    assert transcription.model_used == "noop-whisper-test"  # From NoOp service
+    assert transcription.model_used == "noop-whisper-test"  # From NoOp provider
 
 
 @pytest.mark.asyncio
-async def test_trigger_transcription_with_different_languages(authenticated_client, sample_voice_entry, mock_transcription_service):
+async def test_trigger_transcription_with_different_languages(authenticated_client, sample_voice_entry):
     """Test triggering transcription with different languages."""
-    from app.main import app
-    app.state.transcription_service = mock_transcription_service
-
     languages = ["en", "es", "fr", "sl", "auto"]
 
     for lang in languages:
         response = await authenticated_client.post(
             f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
-            json={"language": lang}
+            json={"language": lang, "transcription_provider": "noop"}
         )
 
         assert response.status_code == 202
 
 
 @pytest.mark.asyncio
-async def test_transcription_background_task_execution(authenticated_client, sample_voice_entry, mock_transcription_service, db_session):
+async def test_transcription_background_task_execution(authenticated_client, sample_voice_entry, db_session):
     """Test that background task actually processes transcription."""
-    from app.main import app
-    app.state.transcription_service = mock_transcription_service
-
     response = await authenticated_client.post(
         f"/api/v1/entries/{sample_voice_entry.id}/transcribe",
-        json={"language": "en"}
+        json={"language": "en", "transcription_provider": "noop"}
     )
 
     assert response.status_code == 202
