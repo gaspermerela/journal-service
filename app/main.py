@@ -11,8 +11,6 @@ from app.routes import upload, health, entries, transcription, auth, cleanup, no
 from app.middleware.logging import RequestLoggingMiddleware
 from app.services.envelope_encryption import create_envelope_encryption_service
 from app.services.provider_registry import (
-    is_transcription_provider_configured,
-    is_llm_provider_configured,
     get_available_transcription_providers,
     get_available_llm_providers,
 )
@@ -45,32 +43,22 @@ async def lifespan(app: FastAPI):
     storage_path.mkdir(parents=True, exist_ok=True)
     logger.info(f"Storage path configured: {settings.AUDIO_STORAGE_PATH}")
 
-    # Validate default transcription provider is configured
-    # Note: Services are now created per-request via provider_registry
-    logger.info(f"Validating default transcription provider: {settings.TRANSCRIPTION_PROVIDER}")
-    if not is_transcription_provider_configured(settings.TRANSCRIPTION_PROVIDER):
-        logger.warning(
-            f"Default transcription provider '{settings.TRANSCRIPTION_PROVIDER}' is not configured. "
-            f"API requests will need to specify a configured provider."
-        )
-    else:
+    # Validate default providers are configured (required - app fails without them)
+    from app.services.provider_registry import get_effective_transcription_provider, get_effective_llm_provider
+    try:
+        get_effective_transcription_provider(None)
         logger.info(f"Default transcription provider '{settings.TRANSCRIPTION_PROVIDER}' is configured")
+    except ValueError as e:
+        raise RuntimeError(str(e)) from e
 
-    available_transcription_providers = get_available_transcription_providers()
-    logger.info(f"Available transcription providers: {available_transcription_providers}")
-
-    # Validate default LLM provider is configured
-    logger.info(f"Validating default LLM provider: {settings.LLM_PROVIDER}")
-    if not is_llm_provider_configured(settings.LLM_PROVIDER):
-        logger.warning(
-            f"Default LLM provider '{settings.LLM_PROVIDER}' is not configured. "
-            f"API requests will need to specify a configured provider."
-        )
-    else:
+    try:
+        get_effective_llm_provider(None)
         logger.info(f"Default LLM provider '{settings.LLM_PROVIDER}' is configured")
+    except ValueError as e:
+        raise RuntimeError(str(e)) from e
 
-    available_llm_providers = get_available_llm_providers()
-    logger.info(f"Available LLM providers: {available_llm_providers}")
+    logger.info(f"Available transcription providers: {get_available_transcription_providers()}")
+    logger.info(f"Available LLM providers: {get_available_llm_providers()}")
 
     # Store default provider names in app.state for backwards compatibility
     app.state.default_transcription_provider = settings.TRANSCRIPTION_PROVIDER
