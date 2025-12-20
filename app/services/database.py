@@ -1333,7 +1333,6 @@ class DatabaseService:
         cleaned_entry_id: UUID,
         cleanup_status: CleanupStatus,
         cleaned_text: Optional[bytes] = None,
-        analysis: Optional[bytes] = None,
         error_message: Optional[str] = None,
         prompt_template_id: Optional[int] = None,
         llm_raw_response: Optional[str] = None,
@@ -1348,7 +1347,6 @@ class DatabaseService:
             cleaned_entry_id: UUID of the cleaned entry
             cleanup_status: New cleanup status
             cleaned_text: Encrypted cleaned text (bytes)
-            analysis: Encrypted analysis JSON (bytes)
             error_message: Error message if failed
             prompt_template_id: ID of prompt template used (optional)
             llm_raw_response: Raw LLM response before parsing (optional)
@@ -1374,8 +1372,6 @@ class DatabaseService:
             cleaned_entry.status = cleanup_status
             if cleaned_text is not None:
                 cleaned_entry.cleaned_text = cleaned_text
-            if analysis is not None:
-                cleaned_entry.analysis = analysis
             if error_message is not None:
                 cleaned_entry.error_message = error_message
             if prompt_template_id is not None:

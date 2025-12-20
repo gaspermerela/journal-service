@@ -31,9 +31,7 @@ from app.services.provider_registry import (
 from app.config import settings
 from app.utils.encryption_helpers import (
     decrypt_text,
-    decrypt_json,
     encrypt_text,
-    encrypt_json,
 )
 from app.utils.logger import get_logger
 
@@ -73,9 +71,6 @@ async def process_cleanup_background(
     temperature: float = None,
     top_p: float = None,
     llm_model: str = None,
-    analysis_temperature: float = None,
-    analysis_top_p: float = None,
-    analysis_model: str = None,
     llm_provider: str = None
 ):
     """
@@ -90,9 +85,6 @@ async def process_cleanup_background(
         temperature: Temperature for cleanup LLM sampling (0.0-2.0)
         top_p: Top-p for cleanup nucleus sampling (0.0-1.0)
         llm_model: Model to use for cleanup (optional, uses service default if None)
-        analysis_temperature: Temperature for analysis LLM sampling (separate from cleanup)
-        analysis_top_p: Top-p for analysis nucleus sampling (separate from cleanup)
-        analysis_model: Model to use for analysis (separate from cleanup model)
         llm_provider: LLM provider name (e.g., 'ollama', 'groq'). If None, uses default.
     """
     from app.database import get_session
@@ -137,25 +129,9 @@ async def process_cleanup_background(
                 model=llm_model
             )
 
-            logger.info(
-                f"Cleanup completed, starting analysis for entry {cleaned_entry_id}"
-            )
+            logger.info(f"Cleanup completed for entry {cleaned_entry_id}")
 
-            # Step 2: Analysis (separate LLM call for themes, emotions, etc.)
-            # Uses separate parameters from cleanup for flexibility
-            analysis_result = await llm_service.analyze_text(
-                cleaned_text=cleanup_result["cleaned_text"],
-                entry_type=entry_type,
-                analysis_temperature=analysis_temperature,
-                analysis_top_p=analysis_top_p,
-                analysis_model=analysis_model
-            )
-
-            logger.info(
-                f"Analysis completed for entry {cleaned_entry_id}"
-            )
-
-            # Step 3: Encrypt results (encryption is always on)
+            # Step 2: Encrypt results (encryption is always on)
             encrypted_cleaned_text = await encrypt_text(
                 encryption_service,
                 db,
@@ -163,33 +139,24 @@ async def process_cleanup_background(
                 voice_entry_id,
                 user_id,
             )
-            encrypted_analysis = await encrypt_json(
-                encryption_service,
-                db,
-                analysis_result["analysis"],
-                voice_entry_id,
-                user_id,
-            )
             logger.info(
                 "Cleanup results encrypted",
                 cleaned_entry_id=str(cleaned_entry_id),
-                encrypted_text_length=len(encrypted_cleaned_text),
-                encrypted_analysis_length=len(encrypted_analysis)
+                encrypted_text_length=len(encrypted_cleaned_text)
             )
 
-            # Step 4: Store encrypted results
+            # Step 3: Store encrypted results
             await db_service.update_cleaned_entry_processing(
                 db=db,
                 cleaned_entry_id=cleaned_entry_id,
                 cleanup_status=CleanupStatus.COMPLETED,
                 cleaned_text=encrypted_cleaned_text,
-                analysis=encrypted_analysis,
                 prompt_template_id=cleanup_result.get("prompt_template_id"),
                 llm_raw_response=cleanup_result.get("llm_raw_response") if settings.LLM_STORE_RAW_RESPONSE else None
             )
             await db.commit()
 
-            logger.info(f"LLM cleanup and analysis completed for entry {cleaned_entry_id}")
+            logger.info(f"LLM cleanup completed for entry {cleaned_entry_id}")
 
             # Get the cleaned entry to retrieve voice_entry_id for auto-promotion
             cleaned_entry = await db_service.get_cleaned_entry_by_id(
@@ -465,7 +432,6 @@ async def get_cleaned_entry(
     Returns:
     - Cleanup status (pending, processing, completed, failed)
     - Cleaned text (when completed)
-    - Analysis data (themes, emotions, characters, locations)
     - Processing time and error details (if applicable)
     """
     cleaned_entry = await db_service.get_cleaned_entry_by_id(
@@ -480,19 +446,11 @@ async def get_cleaned_entry(
             detail="Cleaned entry not found"
         )
 
-    # Decrypt cleaned text and analysis if encrypted
+    # Decrypt cleaned text if encrypted
     decrypted_text = await decrypt_text(
         encryption_service=encryption_service,
         db=db,
         encrypted_bytes=cleaned_entry.cleaned_text,
-        voice_entry_id=cleaned_entry.voice_entry_id,
-        user_id=current_user.id,
-    )
-
-    decrypted_analysis = await decrypt_json(
-        encryption_service=encryption_service,
-        db=db,
-        encrypted_bytes=cleaned_entry.analysis,
         voice_entry_id=cleaned_entry.voice_entry_id,
         user_id=current_user.id,
     )
@@ -503,7 +461,6 @@ async def get_cleaned_entry(
         transcription_id=cleaned_entry.transcription_id,
         user_id=cleaned_entry.user_id,
         cleaned_text=decrypted_text,
-        analysis=decrypted_analysis,
         llm_raw_response=cleaned_entry.llm_raw_response,
         status=cleaned_entry.status,
         model_name=cleaned_entry.model_name,
@@ -571,20 +528,12 @@ async def get_cleaned_entries_by_entry(
             voice_entry_id=ce.voice_entry_id,
             user_id=current_user.id,
         )
-        decrypted_analysis = await decrypt_json(
-            encryption_service=encryption_service,
-            db=db,
-            encrypted_bytes=ce.analysis,
-            voice_entry_id=ce.voice_entry_id,
-            user_id=current_user.id,
-        )
         result.append(CleanedEntryDetail(
             id=ce.id,
             voice_entry_id=ce.voice_entry_id,
             transcription_id=ce.transcription_id,
             user_id=ce.user_id,
             cleaned_text=decrypted_text,
-            analysis=decrypted_analysis,
             llm_raw_response=ce.llm_raw_response,
             status=ce.status,
             model_name=ce.model_name,
@@ -675,23 +624,14 @@ async def set_primary_cleanup(
             detail="Failed to set primary cleanup"
         )
 
-    # Decrypt cleaned_text and analysis before returning
-    # This is somewhat wasteful but it avoids separate GET request form the client
+    # Decrypt cleaned_text before returning
+    # This is somewhat wasteful but it avoids separate GET request from the client
     decrypted_text = None
-    decrypted_analysis = None
     if updated_cleanup.cleaned_text is not None:
         decrypted_text = await decrypt_text(
             encryption_service=encryption_service,
             db=db,
             encrypted_bytes=updated_cleanup.cleaned_text,
-            voice_entry_id=updated_cleanup.voice_entry_id,
-            user_id=current_user.id,
-        )
-    if updated_cleanup.analysis is not None:
-        decrypted_analysis = await decrypt_json(
-            encryption_service=encryption_service,
-            db=db,
-            encrypted_bytes=updated_cleanup.analysis,
             voice_entry_id=updated_cleanup.voice_entry_id,
             user_id=current_user.id,
         )
@@ -709,7 +649,6 @@ async def set_primary_cleanup(
         transcription_id=updated_cleanup.transcription_id,
         user_id=updated_cleanup.user_id,
         cleaned_text=decrypted_text,
-        analysis=decrypted_analysis,
         llm_raw_response=updated_cleanup.llm_raw_response,
         status=updated_cleanup.status,
         model_name=updated_cleanup.model_name,

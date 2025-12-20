@@ -2,20 +2,12 @@
 Pydantic schemas for LLM cleanup operations.
 """
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 from app.models.cleaned_entry import CleanupStatus
-
-# TODO: Here we have lots of dream specific terminology. We should refactor it in the future to logically separate dream-specific logic
-class CleanupAnalysis(BaseModel):
-    """Structured analysis extracted from LLM cleanup."""
-    themes: List[str] = Field(default_factory=list, description="Key themes identified")
-    emotions: List[str] = Field(default_factory=list, description="Emotions detected")
-    characters: List[str] = Field(default_factory=list, description="People or entities mentioned")
-    locations: List[str] = Field(default_factory=list, description="Places mentioned")
 
 
 class CleanupTriggerRequest(BaseModel):
@@ -63,7 +55,6 @@ class CleanedEntryDetail(BaseModel):
     transcription_id: UUID = Field(description="Transcription ID")
     user_id: UUID = Field(description="User ID")
     cleaned_text: Optional[str] = Field(None, description="LLM-cleaned text")
-    analysis: Optional[Dict[str, Any]] = Field(None, description="Structured analysis")
     llm_raw_response: Optional[str] = Field(None, description="Raw LLM response before parsing")
     status: CleanupStatus = Field(description="Cleanup processing status")
     model_name: str = Field(description="LLM model used")

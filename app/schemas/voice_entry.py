@@ -3,7 +3,7 @@ Pydantic schemas for voice entry request/response validation.
 """
 from datetime import datetime
 from uuid import UUID
-from typing import Optional, Any, Dict
+from typing import Optional, Any
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -91,10 +91,6 @@ class CleanedEntrySummary(BaseModel):
     cleaned_text_preview: Optional[str] = Field(
         None,
         description="First 200 characters of cleaned text"
-    )
-    analysis: Optional[Dict[str, Any]] = Field(
-        None,
-        description="Structured analysis (themes, emotions, etc.)"
     )
     error_message: Optional[str] = None
     created_at: datetime

@@ -30,7 +30,6 @@ from app.services.envelope_encryption import (
 from app.middleware.jwt import get_current_user
 from app.utils.encryption_helpers import (
     decrypt_text,
-    decrypt_json,
     decrypt_audio_to_temp,
     cleanup_temp_file,
 )
@@ -143,21 +142,10 @@ async def list_entries(
             if cleaned_text:
                 text_preview = cleaned_text[:200]
 
-            # TODO: lots of DB calls for encrypted DEK key, optimise with batching
-            # Decrypt analysis (always encrypted)
-            analysis = await decrypt_json(
-                encryption_service=encryption_service,
-                db=db,
-                encrypted_bytes=primary_cleanup.analysis,
-                voice_entry_id=entry.id,
-                user_id=current_user.id,
-            )
-
             latest_cleaned = CleanedEntrySummary(
                 id=primary_cleanup.id,
                 status=primary_cleanup.status.value,  # Convert enum to string
                 cleaned_text_preview=text_preview,
-                analysis=analysis,
                 error_message=primary_cleanup.error_message,
                 created_at=primary_cleanup.created_at
             )

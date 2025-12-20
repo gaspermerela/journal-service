@@ -1,7 +1,6 @@
 """
 Ollama LLM Cleanup Service implementation.
 """
-import json
 import re
 from typing import Dict, Any, Optional, Tuple
 
@@ -9,7 +8,7 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.config import settings, get_output_schema, generate_json_schema_instruction
+from app.config import settings
 from app.models.prompt_template import PromptTemplate
 from app.utils.logger import get_logger
 from app.services.llm_cleanup_base import LLMCleanupService, LLMCleanupError
@@ -47,24 +46,6 @@ Tasks:
 
 Output ONLY the cleaned text with <break> markers between paragraphs.
 No JSON, no explanations, no analysis - just the cleaned text."""
-
-
-# Analysis prompt templates - output JSON with structured analysis
-# Note: {output_format} will be replaced with JSON schema instructions based on entry_type
-DREAM_ANALYSIS_PROMPT = """Analyze this dream journal entry and extract key elements.
-
-Dream text:
-{cleaned_text}
-
-{output_format}"""
-
-
-GENERIC_ANALYSIS_PROMPT = """Analyze this text and extract key elements.
-
-Text:
-{cleaned_text}
-
-{output_format}"""
 
 
 class OllamaLLMCleanupService(LLMCleanupService):
@@ -144,15 +125,6 @@ class OllamaLLMCleanupService(LLMCleanupService):
         else:
             return GENERIC_CLEANUP_PROMPT
 
-    def _get_hardcoded_analysis_prompt(self, entry_type: str) -> str:
-        """
-        Get hardcoded analysis prompt (JSON output).
-        """
-        if entry_type == "dream":
-            return DREAM_ANALYSIS_PROMPT
-        else:
-            return GENERIC_ANALYSIS_PROMPT
-
     async def _get_cleanup_prompt(self, entry_type: str) -> Tuple[str, Optional[int]]:
         """
         Get cleanup prompt template (plain text output, no JSON schema).
@@ -180,34 +152,6 @@ class OllamaLLMCleanupService(LLMCleanupService):
 
         return (prompt_text, template_id)
 
-    def _get_analysis_prompt(self, entry_type: str) -> str:
-        """
-        Get analysis prompt template with JSON schema instruction inserted.
-
-        Only replaces {output_format} if present - does NOT append if missing.
-
-        Returns:
-            Complete prompt with JSON schema instruction (if placeholder exists)
-        """
-        prompt_text = self._get_hardcoded_analysis_prompt(entry_type)
-
-        # Only replace {output_format} if present in the prompt
-        if "{output_format}" in prompt_text:
-            # Generate JSON schema instruction based on entry_type
-            try:
-                schema_instruction = generate_json_schema_instruction(entry_type)
-            except ValueError:
-                logger.error(
-                    f"Unknown entry_type for schema generation, using 'dream' fallback",
-                    entry_type=entry_type
-                )
-                schema_instruction = generate_json_schema_instruction("dream")
-
-            return prompt_text.replace("{output_format}", schema_instruction)
-        else:
-            # No placeholder - return prompt as-is (don't append schema)
-            return prompt_text
-
     async def cleanup_transcription(
         self,
         transcription_text: str,
@@ -220,7 +164,6 @@ class OllamaLLMCleanupService(LLMCleanupService):
         Clean up transcription text using Ollama LLM.
 
         Returns plain text with paragraph breaks (no JSON, no analysis).
-        Use analyze_text() separately for analysis extraction.
 
         Args:
             transcription_text: Raw transcription text to clean
@@ -294,78 +237,6 @@ class OllamaLLMCleanupService(LLMCleanupService):
             prompt_template_id=template_id
         )
 
-    async def analyze_text(
-        self,
-        cleaned_text: str,
-        entry_type: str = "dream",
-        analysis_temperature: Optional[float] = None,
-        analysis_top_p: Optional[float] = None,
-        analysis_model: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Extract analysis from cleaned text (themes, emotions, etc.).
-
-        Args:
-            cleaned_text: Cleaned text to analyze
-            entry_type: Type of entry for schema lookup
-            analysis_temperature: Temperature for analysis LLM sampling (separate from cleanup)
-            analysis_top_p: Top-p for analysis nucleus sampling (separate from cleanup)
-            analysis_model: Model to use for analysis. IGNORED for local Ollama.
-
-        Returns:
-            Dict containing:
-            - analysis: dict with entry_type-specific fields
-            - llm_raw_response: str
-
-        Raises:
-            LLMCleanupError: If analysis fails after retries
-        """
-        # Log warning if model selection requested but not supported
-        if analysis_model and analysis_model != self.model:
-            logger.warning(
-                f"Model selection not supported for local Ollama. "
-                f"Requested: {analysis_model}, Using: {self.model}"
-            )
-
-        prompt_template = self._get_analysis_prompt(entry_type)
-        prompt = prompt_template.format(cleaned_text=cleaned_text)
-
-        last_raw_response = None
-
-        for attempt in range(self.max_retries + 1):
-            try:
-                logger.info(
-                    f"LLM analysis attempt {attempt + 1}/{self.max_retries + 1} "
-                    f"using model {self.model}, temperature={analysis_temperature}, top_p={analysis_top_p}"
-                )
-                result = await self._call_ollama_analysis(
-                    prompt,
-                    entry_type=entry_type,
-                    temperature=analysis_temperature,
-                    top_p=analysis_top_p
-                )
-                return result
-            except Exception as e:
-                if hasattr(e, 'llm_raw_response'):
-                    last_raw_response = e.llm_raw_response
-
-                logger.warning(
-                    f"LLM analysis attempt {attempt + 1} failed: {str(e)}"
-                )
-                if attempt == self.max_retries:
-                    logger.error("All LLM analysis attempts failed")
-                    raise LLMCleanupError(
-                        message=str(e),
-                        llm_raw_response=last_raw_response,
-                        prompt_template_id=None
-                    ) from e
-
-        raise LLMCleanupError(
-            message="LLM analysis failed unexpectedly",
-            llm_raw_response=last_raw_response,
-            prompt_template_id=None
-        )
-
     async def _call_ollama_cleanup(
         self,
         prompt: str,
@@ -422,70 +293,6 @@ class OllamaLLMCleanupService(LLMCleanupService):
                 "llm_raw_response": response_text
             }
 
-    async def _call_ollama_analysis(
-        self,
-        prompt: str,
-        entry_type: str = "dream",
-        temperature: Optional[float] = None,
-        top_p: Optional[float] = None
-    ) -> Dict[str, Any]:
-        """
-        Call Ollama API for analysis (JSON response).
-
-        Args:
-            prompt: Formatted prompt to send to LLM
-            entry_type: Entry type for schema-based parsing
-            temperature: Temperature for sampling (0.0-2.0). If None, uses default (0.3).
-            top_p: Top-p for nucleus sampling (0.0-1.0). If None, Ollama uses default.
-
-        Returns:
-            Dict containing analysis and llm_raw_response
-
-        Raises:
-            httpx.HTTPError: If API call fails
-            ValueError: If response is not valid JSON
-        """
-        url = f"{self.base_url}/api/generate"
-
-        # Build options dict with provided parameters
-        options = {}
-        if temperature is not None:
-            options["temperature"] = temperature
-        else:
-            options["temperature"] = 0.3  # Default for consistent output
-
-        if top_p is not None:
-            options["top_p"] = top_p
-
-        payload = {
-            "model": self.model,
-            "prompt": prompt,
-            "stream": False,
-            "options": options
-        }
-
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-
-            data = response.json()
-            response_text = data.get("response", "")
-
-            logger.debug(f"Raw analysis LLM response: {response_text[:200]}...")
-
-            # Parse the JSON response with schema-based parsing
-            try:
-                result = self._parse_analysis_response(response_text, entry_type)
-            except (ValueError, json.JSONDecodeError) as parse_error:
-                # Attach raw response to parsing exceptions for debugging
-                parse_error.llm_raw_response = response_text
-                raise
-
-            # Include raw response for debugging and storage
-            result["llm_raw_response"] = response_text
-
-            return result
-
     def _process_cleanup_response(self, response_text: str) -> str:
         """
         Process cleanup response: convert <break> markers to paragraph breaks.
@@ -502,61 +309,6 @@ class OllamaLLMCleanupService(LLMCleanupService):
         # Clean up any excessive whitespace
         text = re.sub(r'\n{3,}', '\n\n', text)
         return text
-
-    def _parse_analysis_response(self, response_text: str, entry_type: str = "dream") -> Dict[str, Any]:
-        """
-        Parse and validate LLM JSON response for analysis using OUTPUT_SCHEMAS.
-
-        Args:
-            response_text: Raw response from LLM (should be JSON)
-            entry_type: Entry type for schema lookup
-
-        Returns:
-            Dict containing analysis fields
-
-        Raises:
-            ValueError: If response is not valid JSON
-        """
-        logger.debug(
-            "Parsing analysis response",
-            entry_type=entry_type,
-            response_length=len(response_text)
-        )
-
-        # Strip markdown code blocks if present
-        text = response_text.strip()
-        if text.startswith("```json"):
-            text = text[7:]  # Remove ```json
-        elif text.startswith("```"):
-            text = text[3:]  # Remove ```
-        if text.endswith("```"):
-            text = text[:-3]
-        text = text.strip()
-
-        # Parse JSON
-        try:
-            parsed = json.loads(text)
-        except json.JSONDecodeError as e:
-            logger.error("Failed to parse analysis response as JSON", error=str(e))
-            raise ValueError(f"Analysis response is not valid JSON: {e}")
-
-        # Get schema for this entry_type
-        try:
-            schema = get_output_schema(entry_type)
-        except ValueError:
-            logger.warning(
-                "Unknown entry_type, using 'dream' schema fallback",
-                entry_type=entry_type
-            )
-            schema = get_output_schema("dream")
-
-        # Parse analysis fields with graceful degradation
-        analysis = {}
-        for field_name in schema["fields"].keys():
-            # Use .get() with default - tolerates missing fields
-            analysis[field_name] = parsed.get(field_name, [])
-
-        return {"analysis": analysis}
 
     async def test_connection(self) -> bool:
         """

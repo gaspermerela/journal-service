@@ -154,26 +154,6 @@ class TestPromptFallbackMechanisms:
             assert "{transcription_text}" in prompt
             assert "<break>" in prompt
 
-    def test_hardcoded_analysis_prompt_dream(self):
-        """Test hardcoded analysis prompt for dream entry type."""
-        service = LLMCleanupService()
-
-        prompt = service._get_hardcoded_analysis_prompt("dream")
-
-        assert "{cleaned_text}" in prompt
-        assert "{output_format}" in prompt
-        assert "dream" in prompt.lower()
-
-    def test_hardcoded_analysis_prompt_generic(self):
-        """Test hardcoded analysis prompt for non-dream entry types."""
-        service = LLMCleanupService()
-
-        for entry_type in ["journal", "meeting", "note"]:
-            prompt = service._get_hardcoded_analysis_prompt(entry_type)
-
-            assert "{cleaned_text}" in prompt
-            assert "{output_format}" in prompt
-
     @pytest.mark.asyncio
     async def test_get_cleanup_prompt_with_db_success(self):
         """Test full cleanup prompt chain with successful DB lookup."""
@@ -237,18 +217,6 @@ class TestPromptFallbackMechanisms:
         # Should use hardcoded fallback
         assert "transcription cleanup assistant" in prompt_text.lower()
         assert template_id is None
-
-    def test_get_analysis_prompt_uses_schema(self):
-        """Test that analysis prompt has correct structure."""
-        service = LLMCleanupService(db_session=None)
-
-        prompt_text = service._get_analysis_prompt("dream")
-
-        # Analysis prompt should have cleaned_text placeholder (not transcription_text)
-        assert "{cleaned_text}" in prompt_text  # Placeholder for cleaned text
-        assert "{transcription_text}" not in prompt_text  # Not using transcription placeholder
-        # Should mention JSON output
-        assert "json" in prompt_text.lower() or "JSON" in prompt_text
 
 
 class TestPromptTemplateValidation:

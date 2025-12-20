@@ -38,7 +38,7 @@ async def test_e2e_cleanup_full_workflow(
     1. Upload audio file
     2. Transcribe with real Whisper
     3. Cleanup with real Ollama
-    4. Verify cleaned text and analysis
+    4. Verify cleaned text
 
     This test uses REAL services (no mocks).
     """
@@ -98,18 +98,8 @@ async def test_e2e_cleanup_full_workflow(
     assert cleaned_entry["cleaned_text"] is not None
     assert len(cleaned_entry["cleaned_text"]) > 0
 
-    # Verify analysis structure
-    assert "analysis" in cleaned_entry
-    analysis = cleaned_entry["analysis"]
-    assert "themes" in analysis
-    assert "emotions" in analysis
-    assert isinstance(analysis["themes"], list)
-    assert isinstance(analysis["emotions"], list)
-
     print(f"\n✓ Cleanup completed successfully!")
     print(f"  Cleaned text: {cleaned_entry['cleaned_text'][:100]}...")
-    print(f"  Themes: {analysis['themes']}")
-    print(f"  Emotions: {analysis['emotions']}")
     print(f"  Entry ID: {entry_id}")
     print(f"  Transcription ID: {transcription_id}")
     print(f"  Cleanup ID: {cleanup_id}")

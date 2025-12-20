@@ -167,11 +167,8 @@ async def test_e2e_real_complete_workflow(
         cleanup_id=cleanup_id
     )
     assert cleaned_entry["cleaned_text"] is not None
-    assert cleaned_entry["analysis"] is not None
 
     print(f"✓ Cleanup completed: {cleaned_entry['cleaned_text'][:80]}...")
-    print(f"  Themes: {cleaned_entry['analysis'].get('themes', [])}")
-    print(f"  Emotions: {cleaned_entry['analysis'].get('emotions', [])}")
 
     # Step 7: Verify we can retrieve everything
     entry_response = await client.get(f"/api/v1/entries/{entry_id}")
