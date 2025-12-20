@@ -4,7 +4,7 @@ CleanedEntry model for LLM-processed transcription text.
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Optional, Dict, Any
+from typing import Optional
 
 from sqlalchemy import (
     Column,
@@ -13,7 +13,6 @@ from sqlalchemy import (
     DateTime,
     Enum as SQLEnum,
     ForeignKey,
-    JSON,
     Integer,
     Boolean,
     Float,
@@ -37,8 +36,8 @@ class CleanedEntry(Base):
     """
     Represents an LLM-cleaned version of a transcription.
 
-    Contains the cleaned text and extracted analysis (themes, emotions, etc.)
-    from processing the original transcription through a local LLM.
+    Contains the cleaned text from processing the original transcription
+    through an LLM. Analysis is handled by wrapper applications.
     """
     __tablename__ = "cleaned_entries"
     __table_args__ = {"schema": DB_SCHEMA}
@@ -65,7 +64,6 @@ class CleanedEntry(Base):
 
     # Cleanup results (always encrypted as LargeBinary)
     cleaned_text = Column(LargeBinary, nullable=True, doc="Encrypted cleaned text (BYTEA)")
-    analysis = Column(LargeBinary, nullable=True, doc="Encrypted analysis JSON (BYTEA)")
     llm_raw_response = Column(Text, nullable=True)  # Raw response from LLM before parsing
 
     # Processing metadata

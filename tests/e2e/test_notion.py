@@ -170,8 +170,6 @@ async def test_e2e_real_full_workflow_with_notion_sync(
     )
     print(f"✓ Cleanup completed")
     print(f"  Cleaned text: {cleaned_entry['cleaned_text'][:80]}...")
-    print(f"  Themes: {cleaned_entry['analysis'].get('themes', [])}")
-    print(f"  Emotions: {cleaned_entry['analysis'].get('emotions', [])}")
 
     # Step 5: Trigger Notion sync
     print("\n[5/7] Syncing to Notion...")

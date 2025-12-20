@@ -174,11 +174,8 @@ async def test_e2e_upload_transcribe_and_cleanup(
 
     assert cleaned_entry["cleaned_text"] is not None
     assert len(cleaned_entry["cleaned_text"]) > 0
-    assert cleaned_entry["analysis"] is not None
 
     print(f"✓ Cleanup completed: {cleaned_entry['cleaned_text'][:80]}...")
-    print(f"  Themes: {cleaned_entry['analysis'].get('themes', [])}")
-    print(f"  Emotions: {cleaned_entry['analysis'].get('emotions', [])}")
 
     # Verify entry details
     entry_response = await client.get(f"/api/v1/entries/{entry_id}")

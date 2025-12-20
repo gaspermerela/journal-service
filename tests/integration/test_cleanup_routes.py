@@ -105,26 +105,12 @@ async def sample_cleaned_entry(
     encryption_service
 ) -> CleanedEntry:
     """Create a completed cleaned entry with proper encryption."""
-    import json
-
-    # Properly encrypt cleaned_text and analysis using the encryption service
+    # Properly encrypt cleaned_text using the encryption service
     cleaned_text_plain = "This is the cleaned and processed dream content about flying over mountains."
-    analysis_dict = {
-        "themes": ["flying", "nature", "adventure"],
-        "emotions": ["excitement", "wonder"],
-        "characters": [],
-        "locations": ["mountains", "oceans"]
-    }
 
     encrypted_cleaned_text = await encryption_service.encrypt_data(
         db_session,
         cleaned_text_plain,
-        sample_voice_entry.id,
-        test_user.id
-    )
-    encrypted_analysis = await encryption_service.encrypt_data(
-        db_session,
-        json.dumps(analysis_dict),
         sample_voice_entry.id,
         test_user.id
     )
@@ -135,7 +121,6 @@ async def sample_cleaned_entry(
         transcription_id=completed_transcription.id,
         user_id=test_user.id,
         cleaned_text=encrypted_cleaned_text,
-        analysis=encrypted_analysis,
         prompt_template_id=sample_prompt_template.id,
         model_name="llama3.2:3b",
         processing_started_at=datetime.utcnow(),
@@ -265,8 +250,6 @@ class TestGetCleanedEntry:
         assert data["id"] == str(sample_cleaned_entry.id)
         assert data["status"] == "completed"
         assert data["cleaned_text"] is not None
-        assert "analysis" in data
-        assert "themes" in data["analysis"]
         # Verify prompt template fields
         assert data["prompt_template_id"] == sample_prompt_template.id
         assert data["prompt_name"] == "Dream Analysis v1"
@@ -495,21 +478,14 @@ class TestSetPrimaryCleanup:
     ):
         """Test setting a cleanup as primary with encrypted text."""
         from app.models.cleaned_entry import CleanedEntry, CleanupStatus
-        from app.utils.encryption_helpers import encrypt_text, encrypt_json
+        from app.utils.encryption_helpers import encrypt_text
         import uuid
 
-        # Encrypt the cleanup text and analysis
+        # Encrypt the cleanup text
         encrypted_text1 = await encrypt_text(
             encryption_service=encryption_service,
             db=db_session,
             text="First cleanup text",
-            voice_entry_id=sample_voice_entry.id,
-            user_id=test_user.id,
-        )
-        encrypted_analysis1 = await encrypt_json(
-            encryption_service=encryption_service,
-            db=db_session,
-            data={"themes": ["theme1"]},
             voice_entry_id=sample_voice_entry.id,
             user_id=test_user.id,
         )
@@ -521,13 +497,6 @@ class TestSetPrimaryCleanup:
             voice_entry_id=sample_voice_entry.id,
             user_id=test_user.id,
         )
-        encrypted_analysis2 = await encrypt_json(
-            encryption_service=encryption_service,
-            db=db_session,
-            data={"themes": ["theme2"]},
-            voice_entry_id=sample_voice_entry.id,
-            user_id=test_user.id,
-        )
 
         # Create two completed cleanups with encrypted data
         cleanup1 = CleanedEntry(
@@ -536,7 +505,6 @@ class TestSetPrimaryCleanup:
             transcription_id=completed_transcription.id,
             user_id=test_user.id,
             cleaned_text=encrypted_text1,
-            analysis=encrypted_analysis1,
             model_name="llama3.2:3b",
             prompt_template_id=sample_prompt_template.id,
             is_primary=True
@@ -549,7 +517,6 @@ class TestSetPrimaryCleanup:
             transcription_id=completed_transcription.id,
             user_id=test_user.id,
             cleaned_text=encrypted_text2,
-            analysis=encrypted_analysis2,
             model_name="llama3.2:3b",
             prompt_template_id=sample_prompt_template.id,
             is_primary=False
@@ -568,9 +535,8 @@ class TestSetPrimaryCleanup:
         data = response.json()
         assert data["id"] == str(cleanup2.id)
         assert data["is_primary"] is True
-        # Verify cleaned_text and analysis are decrypted correctly
+        # Verify cleaned_text is decrypted correctly
         assert data["cleaned_text"] == "Second cleanup text"
-        assert data["analysis"] == {"themes": ["theme2"]}
         # Verify prompt template fields are included
         assert data["prompt_template_id"] == sample_prompt_template.id
         assert data["prompt_name"] == "Dream Analysis v1"
@@ -827,7 +793,6 @@ class TestCleanupParameterHandling:
         test_user: User
     ):
         """Test GET endpoint returns temperature and top_p parameters."""
-        import json as json_lib
         # Create cleaned entry with parameters
         cleaned_entry = CleanedEntry(
             id=uuid.uuid4(),
@@ -835,7 +800,6 @@ class TestCleanupParameterHandling:
             transcription_id=completed_transcription.id,
             user_id=test_user.id,
             cleaned_text=b"Test cleaned text",
-            analysis=json_lib.dumps({"themes": [], "emotions": [], "characters": [], "locations": []}).encode("utf-8"),
             model_name="test-model",
             temperature=0.6,
             top_p=0.85,

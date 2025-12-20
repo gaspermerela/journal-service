@@ -43,7 +43,6 @@ class LLMCleanupService(ABC):
         Clean up transcription text using an LLM.
 
         Returns plain text with paragraph breaks (no JSON, no analysis).
-        Use analyze_text() separately for analysis extraction.
 
         Args:
             transcription_text: Raw transcription text to clean
@@ -62,38 +61,6 @@ class LLMCleanupService(ABC):
 
         Raises:
             LLMCleanupError: If cleanup fails after retries
-        """
-        pass
-
-    @abstractmethod
-    async def analyze_text(
-        self,
-        cleaned_text: str,
-        entry_type: str = "dream",
-        analysis_temperature: Optional[float] = None,
-        analysis_top_p: Optional[float] = None,
-        analysis_model: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Extract analysis from cleaned text (themes, emotions, etc.).
-
-        Analysis has separate LLM parameters from cleanup, allowing different
-        temperature/model settings for each step.
-
-        Args:
-            cleaned_text: Cleaned text to analyze
-            entry_type: Type of entry for schema lookup
-            analysis_temperature: Temperature for analysis LLM sampling (separate from cleanup)
-            analysis_top_p: Top-p for analysis nucleus sampling (separate from cleanup)
-            analysis_model: Model to use for analysis (separate from cleanup model)
-
-        Returns:
-            Dict containing:
-                - analysis: dict with entry_type-specific fields
-                - llm_raw_response: str
-
-        Raises:
-            LLMCleanupError: If analysis fails after retries
         """
         pass
 
