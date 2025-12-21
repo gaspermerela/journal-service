@@ -99,7 +99,6 @@ class CleanedEntrySummary(BaseModel):
         None,
         description="First 200 characters of user-edited text"
     )
-    has_user_edit: bool = Field(default=False, description="Whether user has edited this cleanup")
 
     model_config = ConfigDict(from_attributes=True)
 

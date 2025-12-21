@@ -162,7 +162,6 @@ async def list_entries(
                 error_message=primary_cleanup.error_message,
                 created_at=primary_cleanup.created_at,
                 user_edited_text_preview=user_edit_preview,
-                has_user_edit=primary_cleanup.user_edited_text is not None,
             )
 
         entry_summaries.append(

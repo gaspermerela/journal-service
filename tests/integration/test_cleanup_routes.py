@@ -861,7 +861,6 @@ class TestUserEditCleanup:
         data = response.json()
         assert data["id"] == str(sample_cleaned_entry.id)
         assert data["user_edited_text"] == "This is my corrected version of the text."
-        assert data["has_user_edit"] is True
         assert data["user_edited_at"] is not None
         # Original cleaned_text should still be preserved
         assert data["cleaned_text"] is not None
@@ -964,7 +963,6 @@ class TestUserEditCleanup:
         data = response.json()
         assert data["id"] == str(sample_cleaned_entry.id)
         assert data["user_edited_text"] is None
-        assert data["has_user_edit"] is False
         assert data["user_edited_at"] is None
         # Original cleaned_text should still be preserved
         assert data["cleaned_text"] is not None
@@ -997,7 +995,6 @@ class TestUserEditCleanup:
         assert response.status_code == 200
         data = response.json()
         assert data["user_edited_text"] is None
-        assert data["has_user_edit"] is False
 
     @pytest.mark.asyncio
     async def test_get_cleaned_entry_includes_user_edit_fields(
@@ -1021,9 +1018,7 @@ class TestUserEditCleanup:
         data = response.json()
         assert "user_edited_text" in data
         assert "user_edited_at" in data
-        assert "has_user_edit" in data
         assert data["user_edited_text"] == "User corrected text"
-        assert data["has_user_edit"] is True
 
     @pytest.mark.asyncio
     async def test_get_cleaned_entry_no_user_edit(
@@ -1039,7 +1034,6 @@ class TestUserEditCleanup:
         assert response.status_code == 200
         data = response.json()
         assert data["user_edited_text"] is None
-        assert data["has_user_edit"] is False
         assert data["user_edited_at"] is None
 
     @pytest.mark.asyncio
