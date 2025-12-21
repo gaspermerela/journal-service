@@ -72,7 +72,6 @@ class CleanedEntryDetail(BaseModel):
     # User edit fields
     user_edited_text: Optional[str] = Field(None, description="User-edited text (if edited)")
     user_edited_at: Optional[datetime] = Field(None, description="When user last edited")
-    has_user_edit: bool = Field(default=False, description="Whether user has edited this cleanup")
 
     class Config:
         from_attributes = True

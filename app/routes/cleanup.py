@@ -489,7 +489,6 @@ async def get_cleaned_entry(
         prompt_description=cleaned_entry.prompt_template.description if cleaned_entry.prompt_template else None,
         user_edited_text=decrypted_user_edit,
         user_edited_at=cleaned_entry.user_edited_at,
-        has_user_edit=cleaned_entry.user_edited_text is not None,
     )
 
 
@@ -575,7 +574,6 @@ async def get_cleaned_entries_by_entry(
             prompt_description=ce.prompt_template.description if ce.prompt_template else None,
             user_edited_text=decrypted_user_edit,
             user_edited_at=ce.user_edited_at,
-            has_user_edit=ce.user_edited_text is not None,
         ))
     return result
 
@@ -704,7 +702,6 @@ async def set_primary_cleanup(
         prompt_description=updated_cleanup.prompt_template.description if updated_cleanup.prompt_template else None,
         user_edited_text=decrypted_user_edit,
         user_edited_at=updated_cleanup.user_edited_at,
-        has_user_edit=updated_cleanup.user_edited_text is not None,
     )
 
 
@@ -828,7 +825,6 @@ async def save_user_edit(
         prompt_description=updated_cleanup.prompt_template.description if updated_cleanup.prompt_template else None,
         user_edited_text=decrypted_user_edit,
         user_edited_at=updated_cleanup.user_edited_at,
-        has_user_edit=True,
     )
 
 
@@ -923,7 +919,6 @@ async def revert_user_edit(
         prompt_description=updated_cleanup.prompt_template.description if updated_cleanup.prompt_template else None,
         user_edited_text=None,
         user_edited_at=None,
-        has_user_edit=False,
     )
 
 
