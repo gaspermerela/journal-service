@@ -836,3 +836,273 @@ class TestCleanupParameterHandling:
         data = response.json()
         assert "id" in data
         assert data["status"] == "pending"
+
+
+# ============================================================================
+# User Edit Tests
+# ============================================================================
+
+class TestUserEditCleanup:
+    """Tests for user-editable cleanup functionality."""
+
+    @pytest.mark.asyncio
+    async def test_save_user_edit_success(
+        self,
+        authenticated_client: AsyncClient,
+        sample_cleaned_entry: CleanedEntry
+    ):
+        """Test successfully saving a user edit."""
+        response = await authenticated_client.put(
+            f"/api/v1/cleaned-entries/{sample_cleaned_entry.id}/user-edit",
+            json={"edited_text": "This is my corrected version of the text."}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == str(sample_cleaned_entry.id)
+        assert data["user_edited_text"] == "This is my corrected version of the text."
+        assert data["has_user_edit"] is True
+        assert data["user_edited_at"] is not None
+        # Original cleaned_text should still be preserved
+        assert data["cleaned_text"] is not None
+
+    @pytest.mark.asyncio
+    async def test_save_user_edit_not_found(
+        self,
+        authenticated_client: AsyncClient
+    ):
+        """Test 404 for saving edit on non-existent cleanup."""
+        fake_id = uuid.uuid4()
+
+        response = await authenticated_client.put(
+            f"/api/v1/cleaned-entries/{fake_id}/user-edit",
+            json={"edited_text": "Some text"}
+        )
+
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_save_user_edit_not_completed(
+        self,
+        authenticated_client: AsyncClient,
+        db_session: AsyncSession,
+        sample_voice_entry: VoiceEntry,
+        completed_transcription: Transcription,
+        test_user: User
+    ):
+        """Test cannot save edit on pending cleanup."""
+        # Create pending cleanup
+        cleanup = CleanedEntry(
+            id=uuid.uuid4(),
+            voice_entry_id=sample_voice_entry.id,
+            transcription_id=completed_transcription.id,
+            user_id=test_user.id,
+            cleaned_text=None,
+            model_name="llama3.2:3b",
+            is_primary=False
+        )
+        cleanup.status = CleanupStatus.PENDING
+
+        db_session.add(cleanup)
+        await db_session.commit()
+
+        response = await authenticated_client.put(
+            f"/api/v1/cleaned-entries/{cleanup.id}/user-edit",
+            json={"edited_text": "Some text"}
+        )
+
+        assert response.status_code == 400
+        assert "completed" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_save_user_edit_empty_text(
+        self,
+        authenticated_client: AsyncClient,
+        sample_cleaned_entry: CleanedEntry
+    ):
+        """Test validation rejects empty text."""
+        response = await authenticated_client.put(
+            f"/api/v1/cleaned-entries/{sample_cleaned_entry.id}/user-edit",
+            json={"edited_text": ""}
+        )
+
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_save_user_edit_whitespace_only(
+        self,
+        authenticated_client: AsyncClient,
+        sample_cleaned_entry: CleanedEntry
+    ):
+        """Test validation rejects whitespace-only text."""
+        response = await authenticated_client.put(
+            f"/api/v1/cleaned-entries/{sample_cleaned_entry.id}/user-edit",
+            json={"edited_text": "   \n\t  "}
+        )
+
+        assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_revert_user_edit_success(
+        self,
+        authenticated_client: AsyncClient,
+        sample_cleaned_entry: CleanedEntry
+    ):
+        """Test successfully reverting a user edit."""
+        # First save an edit
+        await authenticated_client.put(
+            f"/api/v1/cleaned-entries/{sample_cleaned_entry.id}/user-edit",
+            json={"edited_text": "User's edited text"}
+        )
+
+        # Then revert it
+        response = await authenticated_client.delete(
+            f"/api/v1/cleaned-entries/{sample_cleaned_entry.id}/user-edit"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["id"] == str(sample_cleaned_entry.id)
+        assert data["user_edited_text"] is None
+        assert data["has_user_edit"] is False
+        assert data["user_edited_at"] is None
+        # Original cleaned_text should still be preserved
+        assert data["cleaned_text"] is not None
+
+    @pytest.mark.asyncio
+    async def test_revert_user_edit_not_found(
+        self,
+        authenticated_client: AsyncClient
+    ):
+        """Test 404 for reverting edit on non-existent cleanup."""
+        fake_id = uuid.uuid4()
+
+        response = await authenticated_client.delete(
+            f"/api/v1/cleaned-entries/{fake_id}/user-edit"
+        )
+
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_revert_user_edit_when_no_edit_exists(
+        self,
+        authenticated_client: AsyncClient,
+        sample_cleaned_entry: CleanedEntry
+    ):
+        """Test reverting when no user edit exists (should work - idempotent)."""
+        response = await authenticated_client.delete(
+            f"/api/v1/cleaned-entries/{sample_cleaned_entry.id}/user-edit"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["user_edited_text"] is None
+        assert data["has_user_edit"] is False
+
+    @pytest.mark.asyncio
+    async def test_get_cleaned_entry_includes_user_edit_fields(
+        self,
+        authenticated_client: AsyncClient,
+        sample_cleaned_entry: CleanedEntry
+    ):
+        """Test GET endpoint includes user edit fields."""
+        # First save an edit
+        await authenticated_client.put(
+            f"/api/v1/cleaned-entries/{sample_cleaned_entry.id}/user-edit",
+            json={"edited_text": "User corrected text"}
+        )
+
+        # Get the cleaned entry
+        response = await authenticated_client.get(
+            f"/api/v1/cleaned-entries/{sample_cleaned_entry.id}"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "user_edited_text" in data
+        assert "user_edited_at" in data
+        assert "has_user_edit" in data
+        assert data["user_edited_text"] == "User corrected text"
+        assert data["has_user_edit"] is True
+
+    @pytest.mark.asyncio
+    async def test_get_cleaned_entry_no_user_edit(
+        self,
+        authenticated_client: AsyncClient,
+        sample_cleaned_entry: CleanedEntry
+    ):
+        """Test GET endpoint shows no user edit when none exists."""
+        response = await authenticated_client.get(
+            f"/api/v1/cleaned-entries/{sample_cleaned_entry.id}"
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["user_edited_text"] is None
+        assert data["has_user_edit"] is False
+        assert data["user_edited_at"] is None
+
+    @pytest.mark.asyncio
+    async def test_user_edit_different_user_403(
+        self,
+        authenticated_client: AsyncClient,
+        db_session: AsyncSession,
+        completed_transcription: Transcription,
+        sample_voice_entry: VoiceEntry
+    ):
+        """Test user cannot edit another user's cleanup."""
+        from app.schemas.auth import UserCreate
+        from app.services.database import db_service
+
+        # Create another user
+        other_user = await db_service.create_user(
+            db_session,
+            UserCreate(email="other_edit@example.com", password="Password123!")
+        )
+        await db_session.commit()
+
+        # Create cleaned entry for other user
+        cleanup = CleanedEntry(
+            id=uuid.uuid4(),
+            voice_entry_id=sample_voice_entry.id,
+            transcription_id=completed_transcription.id,
+            user_id=other_user.id,  # Different user!
+            cleaned_text=b"encrypted_text",
+            model_name="llama3.2:3b"
+        )
+        cleanup.status = CleanupStatus.COMPLETED
+
+        db_session.add(cleanup)
+        await db_session.commit()
+
+        # Try to save edit on other user's cleanup
+        response = await authenticated_client.put(
+            f"/api/v1/cleaned-entries/{cleanup.id}/user-edit",
+            json={"edited_text": "Malicious edit attempt"}
+        )
+
+        # Should return 404 (not 403) to avoid leaking info
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_overwrite_existing_user_edit(
+        self,
+        authenticated_client: AsyncClient,
+        sample_cleaned_entry: CleanedEntry
+    ):
+        """Test that saving a new edit overwrites the previous one."""
+        # Save first edit
+        await authenticated_client.put(
+            f"/api/v1/cleaned-entries/{sample_cleaned_entry.id}/user-edit",
+            json={"edited_text": "First edit"}
+        )
+
+        # Save second edit (should overwrite)
+        response = await authenticated_client.put(
+            f"/api/v1/cleaned-entries/{sample_cleaned_entry.id}/user-edit",
+            json={"edited_text": "Second edit"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["user_edited_text"] == "Second edit"

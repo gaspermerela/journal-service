@@ -1513,6 +1513,116 @@ class DatabaseService:
                 detail="Failed to retrieve cleaned entries"
             )
 
+    async def update_cleaned_entry_user_edit(
+        self,
+        db: AsyncSession,
+        cleaned_entry_id: UUID,
+        user_id: UUID,
+        encrypted_user_edited_text: bytes,
+    ) -> Optional[CleanedEntry]:
+        """
+        Store encrypted user-edited text for a cleaned entry.
+
+        Args:
+            db: Database session
+            cleaned_entry_id: UUID of the cleaned entry
+            user_id: UUID of the user (for ownership verification)
+            encrypted_user_edited_text: Encrypted user-edited text (bytes)
+
+        Returns:
+            Updated CleanedEntry instance, or None if not found/not owned
+
+        Raises:
+            HTTPException: If database operation fails
+        """
+        try:
+            cleaned_entry = await self.get_cleaned_entry_by_id(db, cleaned_entry_id, user_id)
+
+            if not cleaned_entry:
+                return None
+
+            cleaned_entry.user_edited_text = encrypted_user_edited_text
+            cleaned_entry.user_edited_at = datetime.now(timezone.utc)
+
+            await db.flush()
+            await db.refresh(cleaned_entry)
+
+            logger.info(
+                f"User edit saved for cleaned entry",
+                cleaned_entry_id=str(cleaned_entry_id),
+                user_id=str(user_id)
+            )
+
+            return cleaned_entry
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Failed to update cleaned entry user edit",
+                cleaned_entry_id=str(cleaned_entry_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to save user edit"
+            )
+
+    async def clear_cleaned_entry_user_edit(
+        self,
+        db: AsyncSession,
+        cleaned_entry_id: UUID,
+        user_id: UUID,
+    ) -> Optional[CleanedEntry]:
+        """
+        Clear user-edited text (revert to AI-generated cleanup).
+
+        Args:
+            db: Database session
+            cleaned_entry_id: UUID of the cleaned entry
+            user_id: UUID of the user (for ownership verification)
+
+        Returns:
+            Updated CleanedEntry instance, or None if not found/not owned
+
+        Raises:
+            HTTPException: If database operation fails
+        """
+        try:
+            cleaned_entry = await self.get_cleaned_entry_by_id(db, cleaned_entry_id, user_id)
+
+            if not cleaned_entry:
+                return None
+
+            cleaned_entry.user_edited_text = None
+            cleaned_entry.user_edited_at = None
+
+            await db.flush()
+            await db.refresh(cleaned_entry)
+
+            logger.info(
+                f"User edit cleared for cleaned entry",
+                cleaned_entry_id=str(cleaned_entry_id),
+                user_id=str(user_id)
+            )
+
+            return cleaned_entry
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Failed to clear cleaned entry user edit",
+                cleaned_entry_id=str(cleaned_entry_id),
+                error=str(e),
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to clear user edit"
+            )
+
     # Notion Sync Methods
 
     async def get_latest_completed_sync(

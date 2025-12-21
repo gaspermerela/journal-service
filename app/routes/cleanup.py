@@ -14,7 +14,8 @@ from app.models.cleaned_entry import CleanupStatus
 from app.schemas.cleanup import (
     CleanupTriggerRequest,
     CleanupResponse,
-    CleanedEntryDetail
+    CleanedEntryDetail,
+    UserEditRequest,
 )
 from app.schemas.voice_entry import DeleteResponse
 from app.services.database import db_service
@@ -455,6 +456,17 @@ async def get_cleaned_entry(
         user_id=current_user.id,
     )
 
+    # Decrypt user-edited text if exists
+    decrypted_user_edit = None
+    if cleaned_entry.user_edited_text is not None:
+        decrypted_user_edit = await decrypt_text(
+            encryption_service=encryption_service,
+            db=db,
+            encrypted_bytes=cleaned_entry.user_edited_text,
+            voice_entry_id=cleaned_entry.voice_entry_id,
+            user_id=current_user.id,
+        )
+
     return CleanedEntryDetail(
         id=cleaned_entry.id,
         voice_entry_id=cleaned_entry.voice_entry_id,
@@ -474,7 +486,10 @@ async def get_cleaned_entry(
         processing_completed_at=cleaned_entry.processing_completed_at,
         prompt_template_id=cleaned_entry.prompt_template_id,
         prompt_name=cleaned_entry.prompt_template.name if cleaned_entry.prompt_template else None,
-        prompt_description=cleaned_entry.prompt_template.description if cleaned_entry.prompt_template else None
+        prompt_description=cleaned_entry.prompt_template.description if cleaned_entry.prompt_template else None,
+        user_edited_text=decrypted_user_edit,
+        user_edited_at=cleaned_entry.user_edited_at,
+        has_user_edit=cleaned_entry.user_edited_text is not None,
     )
 
 
@@ -528,6 +543,16 @@ async def get_cleaned_entries_by_entry(
             voice_entry_id=ce.voice_entry_id,
             user_id=current_user.id,
         )
+        # Decrypt user-edited text if exists
+        decrypted_user_edit = None
+        if ce.user_edited_text is not None:
+            decrypted_user_edit = await decrypt_text(
+                encryption_service=encryption_service,
+                db=db,
+                encrypted_bytes=ce.user_edited_text,
+                voice_entry_id=ce.voice_entry_id,
+                user_id=current_user.id,
+            )
         result.append(CleanedEntryDetail(
             id=ce.id,
             voice_entry_id=ce.voice_entry_id,
@@ -547,7 +572,10 @@ async def get_cleaned_entries_by_entry(
             processing_completed_at=ce.processing_completed_at,
             prompt_template_id=ce.prompt_template_id,
             prompt_name=ce.prompt_template.name if ce.prompt_template else None,
-            prompt_description=ce.prompt_template.description if ce.prompt_template else None
+            prompt_description=ce.prompt_template.description if ce.prompt_template else None,
+            user_edited_text=decrypted_user_edit,
+            user_edited_at=ce.user_edited_at,
+            has_user_edit=ce.user_edited_text is not None,
         ))
     return result
 
@@ -636,6 +664,17 @@ async def set_primary_cleanup(
             user_id=current_user.id,
         )
 
+    # Decrypt user-edited text if exists
+    decrypted_user_edit = None
+    if updated_cleanup.user_edited_text is not None:
+        decrypted_user_edit = await decrypt_text(
+            encryption_service=encryption_service,
+            db=db,
+            encrypted_bytes=updated_cleanup.user_edited_text,
+            voice_entry_id=updated_cleanup.voice_entry_id,
+            user_id=current_user.id,
+        )
+
     logger.info(
         f"Cleanup set as primary",
         cleanup_id=str(cleanup_id),
@@ -662,7 +701,229 @@ async def set_primary_cleanup(
         processing_completed_at=updated_cleanup.processing_completed_at,
         prompt_template_id=updated_cleanup.prompt_template_id,
         prompt_name=updated_cleanup.prompt_template.name if updated_cleanup.prompt_template else None,
-        prompt_description=updated_cleanup.prompt_template.description if updated_cleanup.prompt_template else None
+        prompt_description=updated_cleanup.prompt_template.description if updated_cleanup.prompt_template else None,
+        user_edited_text=decrypted_user_edit,
+        user_edited_at=updated_cleanup.user_edited_at,
+        has_user_edit=updated_cleanup.user_edited_text is not None,
+    )
+
+
+@router.put(
+    "/cleaned-entries/{cleanup_id}/user-edit",
+    response_model=CleanedEntryDetail,
+    summary="Save user edit",
+    description="Save user-edited text for a cleanup. Preserves AI-generated text for revert."
+)
+async def save_user_edit(
+    cleanup_id: UUID,
+    request: UserEditRequest,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db),
+    encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service),
+):
+    """
+    Save user-edited text for a cleaned entry.
+
+    The original AI-generated text is preserved, allowing users to revert.
+
+    Args:
+        cleanup_id: UUID of the cleanup to edit
+        request: User edit request containing the edited text
+        current_user: Current authenticated user
+        db: Database session
+        encryption_service: Encryption service for text encryption
+
+    Returns:
+        Updated CleanedEntryDetail with both AI and user-edited text
+
+    Raises:
+        HTTPException: 404 if cleanup not found, 400 if not completed
+    """
+    # Get cleanup and verify ownership
+    cleanup = await db_service.get_cleaned_entry_by_id(
+        db=db,
+        cleaned_entry_id=cleanup_id,
+        user_id=current_user.id
+    )
+
+    if not cleanup:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cleanup not found"
+        )
+
+    # Verify cleanup is completed
+    if cleanup.status != CleanupStatus.COMPLETED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Can only edit completed cleanups"
+        )
+
+    # Encrypt user-edited text
+    encrypted_user_edit = await encrypt_text(
+        encryption_service=encryption_service,
+        db=db,
+        text=request.edited_text,
+        voice_entry_id=cleanup.voice_entry_id,
+        user_id=current_user.id,
+    )
+
+    # Save user edit
+    updated_cleanup = await db_service.update_cleaned_entry_user_edit(
+        db=db,
+        cleaned_entry_id=cleanup_id,
+        user_id=current_user.id,
+        encrypted_user_edited_text=encrypted_user_edit,
+    )
+    await db.commit()
+
+    if not updated_cleanup:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save user edit"
+        )
+
+    # Decrypt both texts for response
+    decrypted_cleaned_text = await decrypt_text(
+        encryption_service=encryption_service,
+        db=db,
+        encrypted_bytes=updated_cleanup.cleaned_text,
+        voice_entry_id=updated_cleanup.voice_entry_id,
+        user_id=current_user.id,
+    )
+
+    decrypted_user_edit = await decrypt_text(
+        encryption_service=encryption_service,
+        db=db,
+        encrypted_bytes=updated_cleanup.user_edited_text,
+        voice_entry_id=updated_cleanup.voice_entry_id,
+        user_id=current_user.id,
+    )
+
+    logger.info(
+        "User edit saved",
+        cleanup_id=str(cleanup_id),
+        user_id=str(current_user.id)
+    )
+
+    return CleanedEntryDetail(
+        id=updated_cleanup.id,
+        voice_entry_id=updated_cleanup.voice_entry_id,
+        transcription_id=updated_cleanup.transcription_id,
+        user_id=updated_cleanup.user_id,
+        cleaned_text=decrypted_cleaned_text,
+        llm_raw_response=updated_cleanup.llm_raw_response,
+        status=updated_cleanup.status,
+        model_name=updated_cleanup.model_name,
+        temperature=updated_cleanup.temperature,
+        top_p=updated_cleanup.top_p,
+        error_message=updated_cleanup.error_message,
+        is_primary=updated_cleanup.is_primary,
+        processing_time_seconds=updated_cleanup.processing_time_seconds,
+        created_at=updated_cleanup.created_at,
+        processing_started_at=updated_cleanup.processing_started_at,
+        processing_completed_at=updated_cleanup.processing_completed_at,
+        prompt_template_id=updated_cleanup.prompt_template_id,
+        prompt_name=updated_cleanup.prompt_template.name if updated_cleanup.prompt_template else None,
+        prompt_description=updated_cleanup.prompt_template.description if updated_cleanup.prompt_template else None,
+        user_edited_text=decrypted_user_edit,
+        user_edited_at=updated_cleanup.user_edited_at,
+        has_user_edit=True,
+    )
+
+
+@router.delete(
+    "/cleaned-entries/{cleanup_id}/user-edit",
+    response_model=CleanedEntryDetail,
+    summary="Revert user edit",
+    description="Clear user-edited text and revert to AI-generated cleanup."
+)
+async def revert_user_edit(
+    cleanup_id: UUID,
+    current_user: Annotated[User, Depends(get_current_user)],
+    db: AsyncSession = Depends(get_db),
+    encryption_service: Optional[EnvelopeEncryptionService] = Depends(get_encryption_service),
+):
+    """
+    Revert to AI-generated cleanup by clearing user-edited text.
+
+    Args:
+        cleanup_id: UUID of the cleanup to revert
+        current_user: Current authenticated user
+        db: Database session
+        encryption_service: Encryption service for text decryption
+
+    Returns:
+        Updated CleanedEntryDetail with user edit cleared
+
+    Raises:
+        HTTPException: 404 if cleanup not found
+    """
+    # Get cleanup and verify ownership
+    cleanup = await db_service.get_cleaned_entry_by_id(
+        db=db,
+        cleaned_entry_id=cleanup_id,
+        user_id=current_user.id
+    )
+
+    if not cleanup:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cleanup not found"
+        )
+
+    # Clear user edit
+    updated_cleanup = await db_service.clear_cleaned_entry_user_edit(
+        db=db,
+        cleaned_entry_id=cleanup_id,
+        user_id=current_user.id,
+    )
+    await db.commit()
+
+    if not updated_cleanup:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to clear user edit"
+        )
+
+    # Decrypt cleaned text for response
+    decrypted_cleaned_text = await decrypt_text(
+        encryption_service=encryption_service,
+        db=db,
+        encrypted_bytes=updated_cleanup.cleaned_text,
+        voice_entry_id=updated_cleanup.voice_entry_id,
+        user_id=current_user.id,
+    )
+
+    logger.info(
+        "User edit reverted",
+        cleanup_id=str(cleanup_id),
+        user_id=str(current_user.id)
+    )
+
+    return CleanedEntryDetail(
+        id=updated_cleanup.id,
+        voice_entry_id=updated_cleanup.voice_entry_id,
+        transcription_id=updated_cleanup.transcription_id,
+        user_id=updated_cleanup.user_id,
+        cleaned_text=decrypted_cleaned_text,
+        llm_raw_response=updated_cleanup.llm_raw_response,
+        status=updated_cleanup.status,
+        model_name=updated_cleanup.model_name,
+        temperature=updated_cleanup.temperature,
+        top_p=updated_cleanup.top_p,
+        error_message=updated_cleanup.error_message,
+        is_primary=updated_cleanup.is_primary,
+        processing_time_seconds=updated_cleanup.processing_time_seconds,
+        created_at=updated_cleanup.created_at,
+        processing_started_at=updated_cleanup.processing_started_at,
+        processing_completed_at=updated_cleanup.processing_completed_at,
+        prompt_template_id=updated_cleanup.prompt_template_id,
+        prompt_name=updated_cleanup.prompt_template.name if updated_cleanup.prompt_template else None,
+        prompt_description=updated_cleanup.prompt_template.description if updated_cleanup.prompt_template else None,
+        user_edited_text=None,
+        user_edited_at=None,
+        has_user_edit=False,
     )
 
 
