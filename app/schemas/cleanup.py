@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.cleaned_entry import CleanupStatus
 
@@ -69,9 +69,30 @@ class CleanedEntryDetail(BaseModel):
     prompt_template_id: Optional[int] = Field(None, description="ID of the prompt template used")
     prompt_name: Optional[str] = Field(None, description="Name of the prompt template used")
     prompt_description: Optional[str] = Field(None, description="Description of the prompt template used")
+    # User edit fields
+    user_edited_text: Optional[str] = Field(None, description="User-edited text (if edited)")
+    user_edited_at: Optional[datetime] = Field(None, description="When user last edited")
+    has_user_edit: bool = Field(default=False, description="Whether user has edited this cleanup")
 
     class Config:
         from_attributes = True
+
+
+class UserEditRequest(BaseModel):
+    """Request to save user-edited cleanup text."""
+    edited_text: str = Field(
+        ...,
+        min_length=1,
+        max_length=50000,
+        description="User-edited text to replace AI-generated cleanup"
+    )
+
+    @field_validator('edited_text')
+    @classmethod
+    def validate_not_whitespace(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Edited text cannot be empty or whitespace only")
+        return v
 
 
 class UploadTranscribeCleanupRequest(BaseModel):

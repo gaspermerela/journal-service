@@ -66,6 +66,10 @@ class CleanedEntry(Base):
     cleaned_text = Column(LargeBinary, nullable=True, doc="Encrypted cleaned text (BYTEA)")
     llm_raw_response = Column(Text, nullable=True)  # Raw response from LLM before parsing
 
+    # User edits (encrypted, allows user to correct AI-generated cleanup)
+    user_edited_text = Column(LargeBinary, nullable=True, doc="Encrypted user-edited text (BYTEA)")
+    user_edited_at = Column(DateTime(timezone=True), nullable=True, comment="When user last edited")
+
     # Processing metadata
     prompt_template_id = Column(
         Integer,

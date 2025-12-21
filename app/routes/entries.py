@@ -128,6 +128,7 @@ async def list_entries(
 
             # Create text preview (first 200 chars), decrypt the encrypted data
             text_preview = None
+            user_edit_preview = None
 
             # TODO: lots of DB calls for encrypted DEK key, optimise with batching
             # Decrypt cleaned_text (always encrypted)
@@ -142,12 +143,26 @@ async def list_entries(
             if cleaned_text:
                 text_preview = cleaned_text[:200]
 
+            # Decrypt user-edited text if exists
+            if primary_cleanup.user_edited_text is not None:
+                user_edited_text = await decrypt_text(
+                    encryption_service=encryption_service,
+                    db=db,
+                    encrypted_bytes=primary_cleanup.user_edited_text,
+                    voice_entry_id=entry.id,
+                    user_id=current_user.id,
+                )
+                if user_edited_text:
+                    user_edit_preview = user_edited_text[:200]
+
             latest_cleaned = CleanedEntrySummary(
                 id=primary_cleanup.id,
                 status=primary_cleanup.status.value,  # Convert enum to string
                 cleaned_text_preview=text_preview,
                 error_message=primary_cleanup.error_message,
-                created_at=primary_cleanup.created_at
+                created_at=primary_cleanup.created_at,
+                user_edited_text_preview=user_edit_preview,
+                has_user_edit=primary_cleanup.user_edited_text is not None,
             )
 
         entry_summaries.append(

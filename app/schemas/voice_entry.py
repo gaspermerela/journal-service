@@ -94,6 +94,12 @@ class CleanedEntrySummary(BaseModel):
     )
     error_message: Optional[str] = None
     created_at: datetime
+    # User edit fields
+    user_edited_text_preview: Optional[str] = Field(
+        None,
+        description="First 200 characters of user-edited text"
+    )
+    has_user_edit: bool = Field(default=False, description="Whether user has edited this cleanup")
 
     model_config = ConfigDict(from_attributes=True)
 
