@@ -41,9 +41,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import handler as handler_module
 from handler import (
-    load_asr_model,
-    load_punctuator_model,
-    load_denormalizer,
+    load_models_parallel,
     handler,
 )
 
@@ -233,40 +231,6 @@ Examples:
     # Get audio info
     audio_info = get_audio_info(args.audio)
 
-    # Load models (once)
-    print()
-    print("Loading models...")
-
-    start = time.time()
-    try:
-        load_asr_model()
-        print(f"  ASR model loaded ({format_time(time.time() - start)})")
-    except Exception as e:
-        print(f"  ASR model FAILED: {e}")
-        sys.exit(1)
-
-    start = time.time()
-    try:
-        load_punctuator_model()
-        # Access via module to get updated global (not the imported None)
-        if handler_module.PUNCTUATOR_MODEL is not None:
-            print(f"  Punctuator loaded ({format_time(time.time() - start)})")
-        else:
-            print("  Punctuator not available (model not found)")
-    except Exception as e:
-        print(f"  Punctuator FAILED: {e}")
-
-    start = time.time()
-    try:
-        load_denormalizer()
-        # Access via module to get updated global (not the imported None)
-        if handler_module.DENORMALIZER is not None:
-            print(f"  Denormalizer loaded ({format_time(time.time() - start)})")
-        else:
-            print("  Denormalizer not available (not found)")
-    except Exception as e:
-        print(f"  Denormalizer FAILED: {e}")
-
     # Determine pipeline options
     if args.asr_only:
         punctuate = False
@@ -274,6 +238,26 @@ Examples:
     else:
         punctuate = not args.no_punctuate
         denormalize = not args.no_denormalize
+
+    # Load only the models we need (in parallel)
+    print()
+    print("Loading models...")
+    start = time.time()
+
+    try:
+        load_models_parallel(need_asr=True, need_punct=punctuate, need_denorm=denormalize)
+        print(f"  Models loaded in {format_time(time.time() - start)}")
+    except Exception as e:
+        print(f"  Model loading FAILED: {e}")
+        sys.exit(1)
+
+    # Report what's loaded
+    if handler_module.ASR_MODEL:
+        print("  ✓ ASR model ready")
+    if handler_module.PUNCTUATOR_MODEL:
+        print("  ✓ Punctuator ready")
+    if handler_module.DENORMALIZER:
+        print("  ✓ Denormalizer ready")
 
     # Run test
     if args.compare:
