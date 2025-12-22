@@ -240,13 +240,8 @@ Examples:
         denormalize = not args.no_denormalize
 
     # Load only the models we need (in parallel)
-    print()
-    print("Loading models...")
-    start = time.time()
-
     try:
         load_models_parallel(need_asr=True, need_punct=punctuate, need_denorm=denormalize)
-        print(f"  Models loaded in {format_time(time.time() - start)}")
     except Exception as e:
         print(f"  Model loading FAILED: {e}")
         sys.exit(1)

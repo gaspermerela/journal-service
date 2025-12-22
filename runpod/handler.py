@@ -180,39 +180,54 @@ def load_denormalizer():
 
 def load_models_parallel(need_asr: bool = True, need_punct: bool = True, need_denorm: bool = True):
     """
-    Load required models in parallel.
+    Load required models with safe parallelism.
 
-    Only loads models that are needed AND not already loaded.
-    If multiple models need loading, they load in parallel.
+    NeMo models (ASR and Punctuator) cannot be loaded in parallel due to
+    shared temp directory conflicts. Solution:
+    - Phase 1: Load ASR + Denormalizer in parallel (different frameworks)
+    - Phase 2: Load Punctuator after ASR is done (avoids NeMo conflict)
     """
     global ASR_MODEL, PUNCTUATOR_MODEL, DENORMALIZER
 
-    loaders = []
+    # Track what we're actually loading in this call
+    loading = []
     if need_asr and ASR_MODEL is None:
-        loaders.append(("ASR", load_asr_model))
+        loading.append("ASR")
     if need_punct and PUNCTUATOR_MODEL is None:
-        loaders.append(("Punctuator", load_punctuator_model))
+        loading.append("Punctuator")
     if need_denorm and DENORMALIZER is None:
-        loaders.append(("Denormalizer", load_denormalizer))
+        loading.append("Denormalizer")
 
-    if not loaders:
-        return  # All already loaded
+    if not loading:
+        return  # Everything already loaded
 
-    names = [name for name, _ in loaders]
-    logger.info(f"Loading models: {', '.join(names)}")
     start_time = time.time()
 
-    if len(loaders) == 1:
-        # Single model - load directly
-        loaders[0][1]()
-    else:
-        # Multiple models - load in parallel
-        with ThreadPoolExecutor(max_workers=len(loaders)) as executor:
-            futures = [executor.submit(fn) for _, fn in loaders]
-            wait(futures)
+    # Phase 1: ASR + Denormalizer in parallel (different frameworks, no conflict)
+    phase1_loaders = []
+    if need_asr and ASR_MODEL is None:
+        phase1_loaders.append(("ASR", load_asr_model))
+    if need_denorm and DENORMALIZER is None:
+        phase1_loaders.append(("Denormalizer", load_denormalizer))
+
+    if phase1_loaders:
+        names = [name for name, _ in phase1_loaders]
+        logger.info(f"Loading phase 1: {', '.join(names)}")
+
+        if len(phase1_loaders) == 1:
+            phase1_loaders[0][1]()
+        else:
+            with ThreadPoolExecutor(max_workers=len(phase1_loaders)) as executor:
+                futures = [executor.submit(fn) for _, fn in phase1_loaders]
+                wait(futures)
+
+    # Phase 2: Punctuator (must wait for ASR to avoid NeMo conflicts)
+    if need_punct and PUNCTUATOR_MODEL is None:
+        logger.info("Loading phase 2: Punctuator")
+        load_punctuator_model()
 
     load_time = time.time() - start_time
-    logger.info(f"Models loaded in {load_time:.2f}s")
+    logger.info(f"Models loaded in {load_time:.2f}s: {', '.join(loading)}")
 
 
 def apply_punctuation(text: str) -> str:
