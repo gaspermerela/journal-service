@@ -5,8 +5,15 @@
 #
 # Pipeline: Audio -> ASR (PROTOVERB) -> Punctuation -> Denormalization
 #
-# Build (from runpod/ directory):
+# Build for RunPod (from runpod/ directory):
 #   docker buildx build --platform linux/amd64 -t YOUR_DOCKERHUB/slovene-asr-pipeline:v2.0 --push .
+#
+# Build for local testing (M1/M2 Mac):
+#   docker build -t slovene-asr-local .
+#
+# Local test:
+#   docker run --rm -v $(pwd)/test_audio.wav:/app/test_audio.wav \
+#     slovene-asr-local python test_local.py /app/test_audio.wav
 #
 # Prerequisites - Download models:
 #
@@ -50,8 +57,9 @@ RUN pip install --no-cache-dir \
     runpod>=1.6.0 \
     soundfile>=0.12.1
 
-# Copy handler code
+# Copy handler and test script
 COPY handler.py /app/
+COPY test_local.py /app/
 
 # Copy ASR model (PROTOVERB - ~431MB)
 COPY models/asr/conformer_ctc_bpe.nemo /app/models/asr/
@@ -64,6 +72,15 @@ COPY Slovene_denormalizator /app/Slovene_denormalizator
 
 # Install denormalizer dependencies
 RUN pip install --no-cache-dir -r /app/Slovene_denormalizator/requirements.txt || true
+
+# Pre-download NLTK data required by denormalizer
+RUN python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')"
+
+# Pre-download EMBEDDIA/sloberta model used by punctuator
+# This prevents runtime downloads and ensures consistent cold starts on RunPod
+RUN python -c "from transformers import AutoModel, AutoTokenizer; \
+    AutoModel.from_pretrained('EMBEDDIA/sloberta'); \
+    AutoTokenizer.from_pretrained('EMBEDDIA/sloberta')"
 
 # Set environment variables
 ENV ASR_MODEL_PATH=/app/models/asr/conformer_ctc_bpe.nemo

@@ -1,1 +1,17 @@
+# NeMo models (downloaded via download_models.sh)
 models/
+audio/
+
+# Denormalizer (cloned via download_models.sh)
+Slovene_denormalizator/
+
+# Test audio files
+*.wav
+*.mp3
+*.m4a
+*.flac
+
+# Compressed model archives
+*.tar
+*.tar.zst
+*.zst
