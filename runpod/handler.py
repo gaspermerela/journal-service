@@ -33,17 +33,23 @@ import os
 import sys
 import tempfile
 import time
+import warnings
 from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Dict, Any, List
 
 import runpod
 
-# Configure logging
+# Configure logging for our handler
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("slovene_asr_handler")
+
+# Suppress HuggingFace/transformers warnings
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+warnings.filterwarnings("ignore", message=".*resume_download.*")
+warnings.filterwarnings("ignore", message=".*Some weights.*were not initialized.*")
 
 # Global model instances - loaded once at container startup
 ASR_MODEL = None
@@ -78,6 +84,10 @@ def load_asr_model():
     start_time = time.time()
 
     try:
+        # Suppress NeMo's verbose warnings before loading
+        from nemo.utils import logging as nemo_logging
+        nemo_logging.setLevel(logging.ERROR)
+
         import nemo.collections.asr as nemo_asr
 
         ASR_MODEL = nemo_asr.models.EncDecCTCModelBPE.restore_from(ASR_MODEL_PATH)
