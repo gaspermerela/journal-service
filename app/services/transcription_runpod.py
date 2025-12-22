@@ -1,7 +1,9 @@
 """
 RunPod transcription service implementation.
-Uses RSDO Slovenian ASR model on RunPod serverless GPU.
+Uses PROTOVERB Slovenian ASR model on RunPod serverless GPU with NLP pipeline.
 Supports client-side audio chunking for long recordings (1h+).
+
+Pipeline: Audio -> ASR (PROTOVERB) -> Punctuation (optional) -> Denormalization (optional)
 """
 import asyncio
 import base64
@@ -21,7 +23,8 @@ logger = get_logger("transcription.runpod")
 
 class RunPodTranscriptionService(TranscriptionService):
     """
-    RunPod API implementation for Slovenian transcription using RSDO model.
+    RunPod API implementation for Slovenian transcription using PROTOVERB model.
+    Includes optional punctuation and denormalization pipeline.
     Supports client-side audio chunking for long recordings.
     """
 
@@ -30,6 +33,9 @@ class RunPodTranscriptionService(TranscriptionService):
 
     # Chunk threshold - audio longer than this will be chunked
     CHUNK_THRESHOLD_SECONDS = 300  # 5 minutes
+
+    # Valid denormalization styles
+    VALID_DENORMALIZE_STYLES = ["default", "technical", "everyday"]
 
     def __init__(
         self,
@@ -41,7 +47,10 @@ class RunPodTranscriptionService(TranscriptionService):
         use_silence_detection: bool = True,
         max_concurrent_chunks: int = 3,
         max_retries: int = 3,
-        timeout: int = 300
+        timeout: int = 300,
+        punctuate: bool = True,
+        denormalize: bool = True,
+        denormalize_style: str = "default"
     ):
         """
         Initialize RunPod transcription service.
@@ -49,13 +58,16 @@ class RunPodTranscriptionService(TranscriptionService):
         Args:
             api_key: RunPod API key
             endpoint_id: RunPod serverless endpoint ID
-            model: Model name for identification (default: rsdo-slovenian-asr)
+            model: Model name for identification (default: protoverb-slovenian-asr)
             chunk_duration_seconds: Target duration for each chunk (default: 4 min)
             chunk_overlap_seconds: Overlap between chunks (default: 5s)
             use_silence_detection: Use silence detection for chunk boundaries
             max_concurrent_chunks: Max parallel chunk transcriptions
             max_retries: Max retry attempts on failure
             timeout: Max seconds per chunk request
+            punctuate: Enable punctuation & capitalization (default: True)
+            denormalize: Enable text denormalization (default: True)
+            denormalize_style: Denormalization style - default, technical, everyday
         """
         if not api_key:
             raise ValueError("api_key is required for RunPod provider")
@@ -69,6 +81,18 @@ class RunPodTranscriptionService(TranscriptionService):
         self.timeout = timeout
         self.max_concurrent_chunks = max_concurrent_chunks
         self.use_silence_detection = use_silence_detection
+
+        # NLP pipeline defaults
+        self.punctuate = punctuate
+        self.denormalize = denormalize
+        self.denormalize_style = denormalize_style
+
+        # Validate denormalize_style
+        if denormalize_style not in self.VALID_DENORMALIZE_STYLES:
+            logger.warning(
+                f"Invalid denormalize_style '{denormalize_style}', using 'default'"
+            )
+            self.denormalize_style = "default"
 
         # Initialize audio chunker
         self._chunker = AudioChunker(
@@ -84,7 +108,10 @@ class RunPodTranscriptionService(TranscriptionService):
             endpoint_id=endpoint_id,
             model=model,
             chunk_duration_s=chunk_duration_seconds,
-            max_concurrent=max_concurrent_chunks
+            max_concurrent=max_concurrent_chunks,
+            punctuate=punctuate,
+            denormalize=denormalize,
+            denormalize_style=self.denormalize_style
         )
 
     def _get_headers(self) -> Dict[str, str]:
@@ -100,10 +127,13 @@ class RunPodTranscriptionService(TranscriptionService):
         language: str = "sl",
         beam_size: Optional[int] = None,
         temperature: Optional[float] = None,
-        model: Optional[str] = None
+        model: Optional[str] = None,
+        punctuate: Optional[bool] = None,
+        denormalize: Optional[bool] = None,
+        denormalize_style: Optional[str] = None
     ) -> Dict[str, Any]:
         """
-        Transcribe audio file using RunPod RSDO service.
+        Transcribe audio file using RunPod PROTOVERB service with NLP pipeline.
 
         For long audio (>5 min), automatically chunks the audio,
         transcribes in parallel, and reassembles the results.
@@ -111,17 +141,23 @@ class RunPodTranscriptionService(TranscriptionService):
         Args:
             audio_path: Path to audio file (WAV recommended, 16kHz mono)
             language: Language code (only 'sl', 'sl-SI', or 'auto' accepted)
-            beam_size: Not supported by RSDO (ignored with warning)
-            temperature: Not supported by RSDO (ignored with warning)
-            model: Not supported (uses fixed RSDO model, ignored with warning)
+            beam_size: Not supported (ignored with warning)
+            temperature: Not supported (ignored with warning)
+            model: Not supported (uses fixed PROTOVERB model, ignored with warning)
+            punctuate: Override default punctuation setting (optional)
+            denormalize: Override default denormalization setting (optional)
+            denormalize_style: Override default denormalization style (optional)
 
         Returns:
             Dict containing:
-                - text: Transcribed text
+                - text: Final processed text (after NLP pipeline)
+                - raw_text: Original ASR output (before NLP pipeline)
                 - language: "sl" (always Slovenian)
-                - segments: Empty list (RSDO doesn't provide segments)
+                - segments: Empty list (not supported)
                 - beam_size: None (not supported)
                 - temperature: None (not supported)
+                - pipeline: List of processing steps applied
+                - model_version: Model version identifier
                 - chunking_metadata: Optional dict with chunking stats
 
         Raises:
@@ -135,39 +171,64 @@ class RunPodTranscriptionService(TranscriptionService):
         # Validate language
         if language not in self.SUPPORTED_LANGUAGES:
             raise ValueError(
-                f"RunPod RSDO only supports Slovenian. "
+                f"RunPod PROTOVERB only supports Slovenian. "
                 f"Got: '{language}', supported: {self.SUPPORTED_LANGUAGES}"
             )
 
         # Log warnings for unsupported parameters
         if beam_size is not None:
-            logger.warning("beam_size parameter not supported by RunPod RSDO (ignored)")
+            logger.warning("beam_size parameter not supported by RunPod PROTOVERB (ignored)")
         if temperature is not None:
-            logger.warning("temperature parameter not supported by RunPod RSDO (ignored)")
+            logger.warning("temperature parameter not supported by RunPod PROTOVERB (ignored)")
         if model and model != self.model:
             logger.warning(
-                f"model parameter not supported by RunPod RSDO (ignored). "
+                f"model parameter not supported by RunPod PROTOVERB (ignored). "
                 f"Using fixed model: {self.model}"
             )
+
+        # Resolve NLP pipeline options (use instance defaults if not overridden)
+        do_punctuate = punctuate if punctuate is not None else self.punctuate
+        do_denormalize = denormalize if denormalize is not None else self.denormalize
+        style = denormalize_style if denormalize_style is not None else self.denormalize_style
+
+        # Validate denormalize_style
+        if style not in self.VALID_DENORMALIZE_STYLES:
+            logger.warning(f"Invalid denormalize_style '{style}', using 'default'")
+            style = "default"
 
         logger.info(
             "Starting RunPod transcription",
             audio_path=str(audio_path),
-            language=language
+            language=language,
+            punctuate=do_punctuate,
+            denormalize=do_denormalize,
+            denormalize_style=style
         )
+
+        # Build NLP options dict
+        nlp_options = {
+            "punctuate": do_punctuate,
+            "denormalize": do_denormalize,
+            "denormalize_style": style
+        }
 
         # Check if chunking is needed
         if self._chunker.needs_chunking(audio_path, self.CHUNK_THRESHOLD_SECONDS):
-            return await self._transcribe_with_chunking(audio_path)
+            return await self._transcribe_with_chunking(audio_path, nlp_options)
         else:
-            return await self._transcribe_single(audio_path)
+            return await self._transcribe_single(audio_path, nlp_options)
 
-    async def _transcribe_single(self, audio_path: Path) -> Dict[str, Any]:
+    async def _transcribe_single(
+        self,
+        audio_path: Path,
+        nlp_options: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Transcribe a single audio file without chunking.
 
         Args:
             audio_path: Path to audio file
+            nlp_options: Dict with punctuate, denormalize, denormalize_style
 
         Returns:
             Transcription result dict
@@ -178,36 +239,52 @@ class RunPodTranscriptionService(TranscriptionService):
         audio_bytes = audio_path.read_bytes()
         audio_base64 = base64.b64encode(audio_bytes).decode("utf-8")
 
-        # Call RunPod
+        # Call RunPod with NLP options
         result = await self._call_runpod_with_retry({
             "audio_base64": audio_base64,
-            "filename": audio_path.name
+            "filename": audio_path.name,
+            "punctuate": nlp_options["punctuate"],
+            "denormalize": nlp_options["denormalize"],
+            "denormalize_style": nlp_options["denormalize_style"]
         })
 
         text = result.get("text", "").strip()
+        raw_text = result.get("raw_text", text)  # Fallback to text if raw_text not provided
+        pipeline = result.get("pipeline", ["asr"])
+        model_version = result.get("model_version", "unknown")
 
         logger.info(
             "Single transcription completed",
             text_length=len(text),
+            pipeline=pipeline,
             processing_time=result.get("processing_time")
         )
 
         return {
             "text": text,
+            "raw_text": raw_text,
             "language": "sl",
             "segments": [],
             "beam_size": None,
             "temperature": None,
+            "pipeline": pipeline,
+            "model_version": model_version
         }
 
-    async def _transcribe_with_chunking(self, audio_path: Path) -> Dict[str, Any]:
+    async def _transcribe_with_chunking(
+        self,
+        audio_path: Path,
+        nlp_options: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Transcribe long audio with chunking.
 
         Splits audio into chunks, transcribes in parallel, and reassembles.
+        NLP processing is applied per-chunk.
 
         Args:
             audio_path: Path to audio file
+            nlp_options: Dict with punctuate, denormalize, denormalize_style
 
         Returns:
             Transcription result dict with chunking_metadata
@@ -228,41 +305,52 @@ class RunPodTranscriptionService(TranscriptionService):
             logger.info(f"Created {len(chunks)} chunks for transcription")
 
             # Transcribe chunks in parallel
-            results = await self._transcribe_chunks_parallel(chunks)
+            results = await self._transcribe_chunks_parallel(chunks, nlp_options)
 
             # Reassemble transcriptions
             combined_text = self._reassemble_transcriptions(results)
+            combined_raw_text = self._reassemble_transcriptions(results, use_raw=True)
 
             # Get chunking metadata
             chunking_metadata = self._chunker.get_chunk_metadata(chunks)
             chunking_metadata["successful_chunks"] = len(results)
             chunking_metadata["total_chunks"] = len(chunks)
 
+            # Get pipeline from first result (should be same for all)
+            pipeline = results[0].get("pipeline", ["asr"]) if results else ["asr"]
+            model_version = results[0].get("model_version", "unknown") if results else "unknown"
+
             logger.info(
                 "Chunked transcription completed",
                 num_chunks=len(chunks),
                 successful_chunks=len(results),
-                combined_text_length=len(combined_text)
+                combined_text_length=len(combined_text),
+                pipeline=pipeline
             )
 
             return {
                 "text": combined_text,
+                "raw_text": combined_raw_text,
                 "language": "sl",
                 "segments": [],
                 "beam_size": None,
                 "temperature": None,
+                "pipeline": pipeline,
+                "model_version": model_version,
                 "chunking_metadata": chunking_metadata
             }
 
     async def _transcribe_chunks_parallel(
         self,
-        chunks: List[AudioChunk]
+        chunks: List[AudioChunk],
+        nlp_options: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """
         Transcribe multiple chunks in parallel with concurrency limit.
 
         Args:
             chunks: List of AudioChunk objects
+            nlp_options: Dict with punctuate, denormalize, denormalize_style
 
         Returns:
             List of successful transcription results (sorted by chunk index)
@@ -272,7 +360,6 @@ class RunPodTranscriptionService(TranscriptionService):
         """
         semaphore = asyncio.Semaphore(self.max_concurrent_chunks)
         failed_chunks: List[int] = []
-        results: List[Optional[Dict[str, Any]]] = []
 
         async def process_chunk(chunk: AudioChunk) -> Optional[Dict[str, Any]]:
             async with semaphore:
@@ -285,13 +372,19 @@ class RunPodTranscriptionService(TranscriptionService):
 
                     result = await self._call_runpod_with_retry({
                         "audio_base64": audio_base64,
-                        "filename": chunk.path.name
+                        "filename": chunk.path.name,
+                        "punctuate": nlp_options["punctuate"],
+                        "denormalize": nlp_options["denormalize"],
+                        "denormalize_style": nlp_options["denormalize_style"]
                     })
 
                     return {
                         "chunk_index": chunk.index,
                         "text": result.get("text", "").strip(),
+                        "raw_text": result.get("raw_text", "").strip(),
                         "processing_time": result.get("processing_time"),
+                        "pipeline": result.get("pipeline", ["asr"]),
+                        "model_version": result.get("model_version", "unknown"),
                         "start_time_ms": chunk.start_time_ms,
                         "end_time_ms": chunk.end_time_ms
                     }
@@ -327,7 +420,11 @@ class RunPodTranscriptionService(TranscriptionService):
         # Sort by chunk index
         return sorted(successful, key=lambda r: r["chunk_index"])
 
-    def _reassemble_transcriptions(self, results: List[Dict[str, Any]]) -> str:
+    def _reassemble_transcriptions(
+        self,
+        results: List[Dict[str, Any]],
+        use_raw: bool = False
+    ) -> str:
         """
         Reassemble chunk transcriptions into final text.
 
@@ -336,11 +433,13 @@ class RunPodTranscriptionService(TranscriptionService):
 
         Args:
             results: List of chunk transcription results (sorted by index)
+            use_raw: If True, use raw_text instead of text
 
         Returns:
             Combined transcription text
         """
-        texts = [r["text"] for r in results if r.get("text")]
+        field = "raw_text" if use_raw else "text"
+        texts = [r.get(field, r.get("text", "")) for r in results if r.get(field) or r.get("text")]
         return " ".join(texts)
 
     async def _call_runpod_with_retry(
@@ -455,7 +554,7 @@ class RunPodTranscriptionService(TranscriptionService):
     def get_supported_languages(self) -> list[str]:
         """
         Get list of supported language codes.
-        RSDO model only supports Slovenian.
+        PROTOVERB model only supports Slovenian.
 
         Returns:
             List with 'sl', 'sl-SI', and 'auto' (auto defaults to Slovenian)
@@ -467,26 +566,30 @@ class RunPodTranscriptionService(TranscriptionService):
         Get the name/identifier of the model being used.
 
         Returns:
-            Model name with 'runpod-' prefix
+            Model name with 'clarinsi_slovene_asr-' prefix
         """
-        return f"runpod-{self.model}"
+        return f"clarinsi_slovene_asr-{self.model}"
 
     async def list_available_models(self) -> list[Dict[str, Any]]:
         """
         Get list of available models for this provider.
-        Currently only RSDO model is supported.
 
         Returns:
-            List with single RSDO model info
+            List with PROTOVERB model info
         """
         return [
             {
-                "id": "rsdo-slovenian-asr",
-                "name": "RSDO Slovenian ASR",
-                "description": "RSDO-DS2-ASR-E2E 2.0 - Purpose-built Slovenian speech recognition",
+                "id": "protoverb-slovenian-asr",
+                "name": "PROTOVERB Slovenian ASR",
+                "description": "PROTOVERB-ASR-E2E 1.0 with punctuation & denormalization pipeline",
                 "language": "sl",
-                "size": "~430MB",
-                "wer": "5.58%",
-                "notes": "Optimized for Slovenian, trained on 630h ARTUR corpus"
+                "size": "~820MB (ASR + Punctuator models)",
+                "wer": "~5% (9.8% improvement over RSDO 2.0)",
+                "features": ["punctuation", "denormalization"],
+                "pipeline_options": {
+                    "punctuate": "Add punctuation and capitalization",
+                    "denormalize": "Convert numbers, dates, times to written form",
+                    "denormalize_style": "Formatting style: default, technical, everyday"
+                }
             }
         ]
