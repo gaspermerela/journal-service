@@ -160,10 +160,17 @@ def load_denormalizer():
         if DENORMALIZER_PATH not in sys.path:
             sys.path.insert(0, DENORMALIZER_PATH)
 
-        from denormalizer import denormalize as denorm_func
-        DENORMALIZER = denorm_func
+        # The denormalizer uses hardcoded relative paths (data/...)
+        # We need to change to its directory before importing
+        original_cwd = os.getcwd()
+        os.chdir(DENORMALIZER_PATH)
 
-        logger.info("Denormalizer loaded successfully")
+        try:
+            from denormalizer import denormalize as denorm_func
+            DENORMALIZER = denorm_func
+            logger.info("Denormalizer loaded successfully")
+        finally:
+            os.chdir(original_cwd)
 
     except Exception as e:
         logger.error(f"Failed to load denormalizer: {e}")
@@ -221,7 +228,7 @@ def apply_denormalization(text: str, style: str = "default") -> str:
 
     try:
         # Call denormalizer with style config
-        result = DENORMALIZER(text, config=style)
+        result = DENORMALIZER(text, custom_config=style)
 
         # Extract denormalized string from result
         if isinstance(result, dict):
