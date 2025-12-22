@@ -1,29 +1,39 @@
 """
-RunPod serverless handler for RSDO Slovenian ASR.
+RunPod serverless handler for Slovenian ASR with NLP pipeline.
 
 This handler runs on RunPod serverless GPU and processes audio transcription
-requests using the RSDO NeMo model.
+requests using the PROTOVERB NeMo model with optional punctuation and denormalization.
+
+Pipeline:
+    Audio -> ASR (PROTOVERB) -> Punctuation (optional) -> Denormalization (optional)
 
 Input:
     {
         "input": {
             "audio_base64": "<base64 encoded WAV audio>",
-            "filename": "optional_filename.wav"
+            "filename": "optional_filename.wav",
+            "punctuate": true,           # Add punctuation & capitalization (default: true)
+            "denormalize": true,         # Convert numbers, dates, times (default: true)
+            "denormalize_style": "default"  # Options: default, technical, everyday
         }
     }
 
 Output:
     {
-        "text": "Transkriptirano slovensko besedilo",
-        "processing_time": 12.5
+        "text": "Včeraj sem spal 8 ur.",     # Final processed text
+        "raw_text": "včeraj sem spal osem ur",  # Original ASR output
+        "processing_time": 12.5,
+        "pipeline": ["asr", "punctuate", "denormalize"],
+        "model_version": "protoverb-1.0"
     }
 """
 import base64
 import logging
 import os
+import sys
 import tempfile
 import time
-from pathlib import Path
+from typing import Dict, Any, List
 
 import runpod
 
@@ -32,86 +42,262 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger("rsdo_handler")
+logger = logging.getLogger("slovene_asr_handler")
 
-# Global model instance - loaded once at container startup
-MODEL = None
+# Global model instances - loaded once at container startup
+ASR_MODEL = None
+PUNCTUATOR_MODEL = None
+DENORMALIZER = None
 
-# Model path - baked into Docker image or mounted volume
-MODEL_PATH = os.environ.get("MODEL_PATH", "/app/models/conformer_ctc_bpe.nemo")
+# Model paths - baked into Docker image
+ASR_MODEL_PATH = os.environ.get("ASR_MODEL_PATH", "/app/models/asr/conformer_ctc_bpe.nemo")
+PUNCTUATOR_MODEL_PATH = os.environ.get("PUNCTUATOR_MODEL_PATH", "/app/models/punctuator/nlp_tc_pc.nemo")
+
+# Denormalizer path (Python package)
+DENORMALIZER_PATH = os.environ.get("DENORMALIZER_PATH", "/app/Slovene_denormalizator")
 
 # Maximum audio size (50MB)
 MAX_AUDIO_SIZE = 50 * 1024 * 1024
 
+# Model version identifier
+MODEL_VERSION = "protoverb-1.0"
 
-def load_model():
+
+def load_asr_model():
     """
-    Load RSDO NeMo model at container startup.
-
-    The model is loaded once and kept in memory for subsequent requests.
-    This minimizes cold start impact for repeated requests.
+    Load PROTOVERB ASR model at container startup.
     """
-    global MODEL
+    global ASR_MODEL
 
-    if MODEL is not None:
-        logger.info("Model already loaded, skipping")
+    if ASR_MODEL is not None:
+        logger.info("ASR model already loaded, skipping")
         return
 
-    logger.info(f"Loading RSDO model from {MODEL_PATH}")
+    logger.info(f"Loading PROTOVERB ASR model from {ASR_MODEL_PATH}")
     start_time = time.time()
 
     try:
         import nemo.collections.asr as nemo_asr
 
-        MODEL = nemo_asr.models.EncDecCTCModelBPE.restore_from(MODEL_PATH)
+        ASR_MODEL = nemo_asr.models.EncDecCTCModelBPE.restore_from(ASR_MODEL_PATH)
 
         # Move to GPU if available
         cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
         if cuda_visible != "" and cuda_visible.lower() != "none":
-            MODEL = MODEL.cuda()
-            logger.info("Model moved to GPU")
+            ASR_MODEL = ASR_MODEL.cuda()
+            logger.info("ASR model moved to GPU")
         else:
-            logger.info("Running on CPU (no GPU available)")
+            logger.info("ASR model running on CPU")
 
-        MODEL.eval()
+        ASR_MODEL.eval()
 
         load_time = time.time() - start_time
-        logger.info(f"Model loaded successfully in {load_time:.2f}s")
+        logger.info(f"ASR model loaded successfully in {load_time:.2f}s")
 
     except Exception as e:
-        logger.error(f"Failed to load model: {e}")
+        logger.error(f"Failed to load ASR model: {e}")
         raise
 
 
-def handler(job):
+def load_punctuator_model():
     """
-    RunPod serverless handler for audio transcription.
+    Load Slovenian punctuation & capitalization model.
+    """
+    global PUNCTUATOR_MODEL
+
+    if PUNCTUATOR_MODEL is not None:
+        logger.info("Punctuator model already loaded, skipping")
+        return
+
+    if not os.path.exists(PUNCTUATOR_MODEL_PATH):
+        logger.warning(f"Punctuator model not found at {PUNCTUATOR_MODEL_PATH}, punctuation disabled")
+        return
+
+    logger.info(f"Loading punctuator model from {PUNCTUATOR_MODEL_PATH}")
+    start_time = time.time()
+
+    try:
+        from nemo.collections.nlp.models import PunctuationCapitalizationModel
+
+        PUNCTUATOR_MODEL = PunctuationCapitalizationModel.restore_from(PUNCTUATOR_MODEL_PATH)
+
+        # Move to GPU if available
+        cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+        if cuda_visible != "" and cuda_visible.lower() != "none":
+            PUNCTUATOR_MODEL = PUNCTUATOR_MODEL.cuda()
+            logger.info("Punctuator model moved to GPU")
+        else:
+            logger.info("Punctuator model running on CPU")
+
+        PUNCTUATOR_MODEL.eval()
+
+        load_time = time.time() - start_time
+        logger.info(f"Punctuator model loaded successfully in {load_time:.2f}s")
+
+    except Exception as e:
+        logger.error(f"Failed to load punctuator model: {e}")
+        # Don't raise - punctuation is optional
+
+
+def load_denormalizer():
+    """
+    Load Slovenian text denormalizer.
+    """
+    global DENORMALIZER
+
+    if DENORMALIZER is not None:
+        logger.info("Denormalizer already loaded, skipping")
+        return
+
+    if not os.path.exists(DENORMALIZER_PATH):
+        logger.warning(f"Denormalizer not found at {DENORMALIZER_PATH}, denormalization disabled")
+        return
+
+    logger.info(f"Loading denormalizer from {DENORMALIZER_PATH}")
+
+    try:
+        # Add denormalizer to path
+        if DENORMALIZER_PATH not in sys.path:
+            sys.path.insert(0, DENORMALIZER_PATH)
+
+        from denormalizer import denormalize as denorm_func
+        DENORMALIZER = denorm_func
+
+        logger.info("Denormalizer loaded successfully")
+
+    except Exception as e:
+        logger.error(f"Failed to load denormalizer: {e}")
+        # Don't raise - denormalization is optional
+
+
+def apply_punctuation(text: str) -> str:
+    """
+    Apply punctuation and capitalization to text.
+
+    Args:
+        text: Raw lowercase text without punctuation
+
+    Returns:
+        Text with punctuation and proper capitalization
+    """
+    global PUNCTUATOR_MODEL
+
+    if PUNCTUATOR_MODEL is None:
+        logger.warning("Punctuator not available, returning original text")
+        return text
+
+    if not text or not text.strip():
+        return text
+
+    try:
+        # NeMo punctuator expects list of strings
+        results = PUNCTUATOR_MODEL.add_punctuation_capitalization([text])
+        return results[0] if results else text
+
+    except Exception as e:
+        logger.error(f"Punctuation failed: {e}")
+        return text
+
+
+def apply_denormalization(text: str, style: str = "default") -> str:
+    """
+    Apply text denormalization (numbers, dates, times, etc.).
+
+    Args:
+        text: Text to denormalize
+        style: Denormalization style - "default", "technical", or "everyday"
+
+    Returns:
+        Denormalized text with proper number/date formatting
+    """
+    global DENORMALIZER
+
+    if DENORMALIZER is None:
+        logger.warning("Denormalizer not available, returning original text")
+        return text
+
+    if not text or not text.strip():
+        return text
+
+    try:
+        # Call denormalizer with style config
+        result = DENORMALIZER(text, config=style)
+
+        # Extract denormalized string from result
+        if isinstance(result, dict):
+            return result.get("denormalized_string", text)
+        return str(result)
+
+    except Exception as e:
+        logger.error(f"Denormalization failed: {e}")
+        return text
+
+
+def transcribe_audio(audio_path: str) -> str:
+    """
+    Transcribe audio file using PROTOVERB ASR model.
+
+    Args:
+        audio_path: Path to audio file
+
+    Returns:
+        Transcribed text (lowercase, no punctuation)
+    """
+    global ASR_MODEL
+
+    if ASR_MODEL is None:
+        raise RuntimeError("ASR model not loaded")
+
+    transcriptions = ASR_MODEL.transcribe([audio_path])
+    return transcriptions[0].strip() if transcriptions else ""
+
+
+def handler(job: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    RunPod serverless handler for audio transcription with NLP pipeline.
 
     Args:
         job: RunPod job dict with "input" containing:
             - audio_base64: Base64 encoded WAV audio
             - filename: Optional original filename
+            - punctuate: Whether to add punctuation (default: True)
+            - denormalize: Whether to denormalize text (default: True)
+            - denormalize_style: Denormalization style (default: "default")
 
     Returns:
         dict with:
-            - text: Transcribed Slovenian text
+            - text: Final processed text
+            - raw_text: Original ASR output
             - processing_time: Time taken in seconds
+            - pipeline: List of processing steps applied
+            - model_version: Model version identifier
         OR
-            - error: Error message if transcription failed
+            - error: Error message if processing failed
     """
-    global MODEL
+    global ASR_MODEL
 
-    # Load model if not already loaded (cold start)
-    if MODEL is None:
+    # Load models if not already loaded (cold start)
+    if ASR_MODEL is None:
         try:
-            load_model()
+            load_asr_model()
         except Exception as e:
-            return {"error": f"Failed to load model: {str(e)}"}
+            return {"error": f"Failed to load ASR model: {str(e)}"}
 
     # Extract input
     job_input = job.get("input", {})
     audio_base64 = job_input.get("audio_base64")
     filename = job_input.get("filename", "audio.wav")
+
+    # Processing options (defaults: both enabled)
+    do_punctuate = job_input.get("punctuate", True)
+    do_denormalize = job_input.get("denormalize", True)
+    denormalize_style = job_input.get("denormalize_style", "default")
+
+    # Validate denormalize_style
+    valid_styles = ["default", "technical", "everyday"]
+    if denormalize_style not in valid_styles:
+        logger.warning(f"Invalid denormalize_style '{denormalize_style}', using 'default'")
+        denormalize_style = "default"
 
     # Validate input
     if not audio_base64:
@@ -134,35 +320,54 @@ def handler(job):
     tmp_path = None
     try:
         start_time = time.time()
+        pipeline_steps: List[str] = []
 
         # Save to temp file (NeMo requires file path)
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
             tmp.write(audio_bytes)
             tmp_path = tmp.name
 
-        logger.info(f"Transcribing {filename} ({len(audio_bytes)} bytes)")
+        logger.info(f"Processing {filename} ({len(audio_bytes)} bytes)")
+        logger.info(f"Options: punctuate={do_punctuate}, denormalize={do_denormalize}, style={denormalize_style}")
 
-        # Transcribe using NeMo model
-        transcriptions = MODEL.transcribe([tmp_path])
+        # Step 1: ASR transcription
+        raw_text = transcribe_audio(tmp_path)
+        pipeline_steps.append("asr")
+        logger.info(f"ASR complete: {len(raw_text)} chars")
 
-        # Extract text
-        text = transcriptions[0] if transcriptions else ""
-        text = text.strip()
+        # Start with raw text
+        text = raw_text
+
+        # Step 2: Punctuation (optional)
+        if do_punctuate and PUNCTUATOR_MODEL is not None:
+            text = apply_punctuation(text)
+            pipeline_steps.append("punctuate")
+            logger.info(f"Punctuation complete: {len(text)} chars")
+
+        # Step 3: Denormalization (optional)
+        if do_denormalize and DENORMALIZER is not None:
+            text = apply_denormalization(text, style=denormalize_style)
+            pipeline_steps.append("denormalize")
+            logger.info(f"Denormalization complete: {len(text)} chars")
 
         processing_time = time.time() - start_time
 
         logger.info(
-            f"Transcription complete: {len(text)} chars in {processing_time:.2f}s"
+            f"Processing complete: pipeline={pipeline_steps}, "
+            f"time={processing_time:.2f}s, output={len(text)} chars"
         )
 
         return {
             "text": text,
-            "processing_time": processing_time
+            "raw_text": raw_text,
+            "processing_time": processing_time,
+            "pipeline": pipeline_steps,
+            "model_version": MODEL_VERSION
         }
 
     except Exception as e:
-        logger.error(f"Transcription failed: {e}")
-        return {"error": f"Transcription failed: {str(e)}"}
+        logger.error(f"Processing failed: {e}")
+        return {"error": f"Processing failed: {str(e)}"}
 
     finally:
         # Cleanup temp file
@@ -173,26 +378,39 @@ def handler(job):
                 pass
 
 
-def health_check():
+def health_check() -> bool:
     """
     Health check for the handler.
 
-    Returns True if model is loaded and ready.
+    Returns True if ASR model is loaded and ready.
+    Punctuator and denormalizer are optional.
     """
-    return MODEL is not None
+    return ASR_MODEL is not None
 
 
 # RunPod entry point
 if __name__ == "__main__":
-    logger.info("Starting RSDO ASR serverless handler")
+    logger.info("Starting Slovenian ASR serverless handler")
+    logger.info(f"Model version: {MODEL_VERSION}")
 
-    # Pre-load model during container initialization
-    # This reduces cold start latency for first request
+    # Pre-load all models during container initialization
     try:
-        load_model()
-        logger.info("Model pre-loaded during startup")
+        load_asr_model()
+        logger.info("ASR model pre-loaded")
     except Exception as e:
-        logger.warning(f"Failed to pre-load model (will load on first request): {e}")
+        logger.warning(f"Failed to pre-load ASR model: {e}")
+
+    try:
+        load_punctuator_model()
+        logger.info("Punctuator model pre-loaded")
+    except Exception as e:
+        logger.warning(f"Failed to pre-load punctuator: {e}")
+
+    try:
+        load_denormalizer()
+        logger.info("Denormalizer pre-loaded")
+    except Exception as e:
+        logger.warning(f"Failed to pre-load denormalizer: {e}")
 
     # Start RunPod serverless worker
     runpod.serverless.start({"handler": handler})
