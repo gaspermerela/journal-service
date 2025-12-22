@@ -33,6 +33,7 @@ import os
 import sys
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Dict, Any, List
 
 import runpod
@@ -177,6 +178,43 @@ def load_denormalizer():
         # Don't raise - denormalization is optional
 
 
+def load_models_parallel(need_asr: bool = True, need_punct: bool = True, need_denorm: bool = True):
+    """
+    Load required models in parallel.
+
+    Only loads models that are needed AND not already loaded.
+    If multiple models need loading, they load in parallel.
+    """
+    global ASR_MODEL, PUNCTUATOR_MODEL, DENORMALIZER
+
+    loaders = []
+    if need_asr and ASR_MODEL is None:
+        loaders.append(("ASR", load_asr_model))
+    if need_punct and PUNCTUATOR_MODEL is None:
+        loaders.append(("Punctuator", load_punctuator_model))
+    if need_denorm and DENORMALIZER is None:
+        loaders.append(("Denormalizer", load_denormalizer))
+
+    if not loaders:
+        return  # All already loaded
+
+    names = [name for name, _ in loaders]
+    logger.info(f"Loading models: {', '.join(names)}")
+    start_time = time.time()
+
+    if len(loaders) == 1:
+        # Single model - load directly
+        loaders[0][1]()
+    else:
+        # Multiple models - load in parallel
+        with ThreadPoolExecutor(max_workers=len(loaders)) as executor:
+            futures = [executor.submit(fn) for _, fn in loaders]
+            wait(futures)
+
+    load_time = time.time() - start_time
+    logger.info(f"Models loaded in {load_time:.2f}s")
+
+
 def apply_punctuation(text: str) -> str:
     """
     Apply punctuation and capitalization to text.
@@ -281,15 +319,6 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
         OR
             - error: Error message if processing failed
     """
-    global ASR_MODEL
-
-    # Load models if not already loaded (cold start)
-    if ASR_MODEL is None:
-        try:
-            load_asr_model()
-        except Exception as e:
-            return {"error": f"Failed to load ASR model: {str(e)}"}
-
     # Extract input
     job_input = job.get("input", {})
     audio_base64 = job_input.get("audio_base64")
@@ -299,6 +328,16 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
     do_punctuate = job_input.get("punctuate", True)
     do_denormalize = job_input.get("denormalize", True)
     denormalize_style = job_input.get("denormalize_style", "default")
+
+    # Load required models (parallel if multiple needed)
+    try:
+        load_models_parallel(
+            need_asr=True,
+            need_punct=do_punctuate,
+            need_denorm=do_denormalize
+        )
+    except Exception as e:
+        return {"error": f"Failed to load models: {str(e)}"}
 
     # Validate denormalize_style
     valid_styles = ["default", "technical", "everyday"]
@@ -400,24 +439,8 @@ if __name__ == "__main__":
     logger.info("Starting Slovenian ASR serverless handler")
     logger.info(f"Model version: {MODEL_VERSION}")
 
-    # Pre-load all models during container initialization
-    try:
-        load_asr_model()
-        logger.info("ASR model pre-loaded")
-    except Exception as e:
-        logger.warning(f"Failed to pre-load ASR model: {e}")
-
-    try:
-        load_punctuator_model()
-        logger.info("Punctuator model pre-loaded")
-    except Exception as e:
-        logger.warning(f"Failed to pre-load punctuator: {e}")
-
-    try:
-        load_denormalizer()
-        logger.info("Denormalizer pre-loaded")
-    except Exception as e:
-        logger.warning(f"Failed to pre-load denormalizer: {e}")
+    # Pre-load all models in parallel (optimizes for common full-pipeline case)
+    load_models_parallel(need_asr=True, need_punct=True, need_denorm=True)
 
     # Start RunPod serverless worker
     runpod.serverless.start({"handler": handler})

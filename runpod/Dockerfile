@@ -38,18 +38,22 @@ FROM runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04
 
 WORKDIR /app
 
-# Install system dependencies
+# =============================================================================
+# LAYER 1: System dependencies (rarely changes)
+# =============================================================================
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
     ffmpeg \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# =============================================================================
+# LAYER 2: Python dependencies (rarely changes)
+# =============================================================================
 # Cython must be installed first for NeMo dependencies
 RUN pip install --no-cache-dir Cython
 
-# Note: nemo_toolkit[all] includes ASR and NLP (for punctuation model)
+# nemo_toolkit[all] includes ASR and NLP (for punctuation model)
 # huggingface_hub<0.24 required for NeMo 1.21 (ModelFilter was removed in 0.24)
 RUN pip install --no-cache-dir \
     "huggingface_hub<0.24" \
@@ -57,10 +61,9 @@ RUN pip install --no-cache-dir \
     runpod>=1.6.0 \
     soundfile>=0.12.1
 
-# Copy handler and test script
-COPY handler.py /app/
-COPY test_local.py /app/
-
+# =============================================================================
+# LAYER 3: Models and data (rarely changes, slow to transfer)
+# =============================================================================
 # Copy ASR model (PROTOVERB - ~431MB)
 COPY models/asr/conformer_ctc_bpe.nemo /app/models/asr/
 
@@ -73,6 +76,9 @@ COPY Slovene_denormalizator /app/Slovene_denormalizator
 # Install denormalizer dependencies
 RUN pip install --no-cache-dir -r /app/Slovene_denormalizator/requirements.txt || true
 
+# =============================================================================
+# LAYER 4: Pre-download external data (slow, but cached)
+# =============================================================================
 # Pre-download NLTK data required by denormalizer
 RUN python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')"
 
@@ -82,7 +88,15 @@ RUN python -c "from transformers import AutoModel, AutoTokenizer; \
     AutoModel.from_pretrained('EMBEDDIA/sloberta'); \
     AutoTokenizer.from_pretrained('EMBEDDIA/sloberta')"
 
-# Set environment variables
+# =============================================================================
+# LAYER 5: Application code (changes frequently - LAST for best caching)
+# =============================================================================
+COPY handler.py /app/
+COPY test_local.py /app/
+
+# =============================================================================
+# Environment and entrypoint
+# =============================================================================
 ENV ASR_MODEL_PATH=/app/models/asr/conformer_ctc_bpe.nemo
 ENV PUNCTUATOR_MODEL_PATH=/app/models/punctuator/nlp_tc_pc.nemo
 ENV DENORMALIZER_PATH=/app/Slovene_denormalizator
