@@ -41,7 +41,7 @@ class RunPodTranscriptionService(TranscriptionService):
         self,
         api_key: str,
         endpoint_id: str,
-        model: str = "rsdo-slovenian-asr",
+        model: str = "protoverb-slovenian-asr",
         chunk_duration_seconds: int = 240,
         chunk_overlap_seconds: int = 5,
         use_silence_detection: bool = True,

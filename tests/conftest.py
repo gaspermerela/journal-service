@@ -17,8 +17,8 @@ from sqlalchemy.pool import NullPool
 # Set required environment variables before importing Settings to avoid validation error
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-testing-only-not-for-production")
 os.environ.setdefault("DATABASE_PASSWORD", "password")  # Matches TEST_DATABASE_URL
-os.environ.setdefault("TRANSCRIPTION_PROVIDER", "groq")  # Use Groq for E2E tests
-os.environ.setdefault("LLM_PROVIDER", "groq")  # Use Groq for E2E tests
+os.environ.setdefault("TRANSCRIPTION_PROVIDER", "noop")  # Use NoOp for unit/integration tests
+os.environ.setdefault("LLM_PROVIDER", "noop")  # Use NoOp for unit/integration tests
 os.environ["DB_SCHEMA"] = "journal_test"  # MUST be set before app imports to use test schema
 
 from app.config import Settings
@@ -158,6 +158,11 @@ async def client(db_session: AsyncSession, test_settings: Settings, encryption_s
     # Override settings
     from app import config
     config.settings = test_settings
+
+    # Update storage service to use test storage path
+    # (storage_service is a global singleton created at import time)
+    from app.services.storage import storage_service
+    storage_service.base_path = Path(test_settings.AUDIO_STORAGE_PATH)
 
     # Encryption service is required (encryption-only mode)
     app.state.encryption_service = encryption_service
