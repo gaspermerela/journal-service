@@ -95,7 +95,7 @@ def create_transcription_service(
 
     Args:
         provider: Provider name ("groq", "assemblyai", or "clarinsi_slovene_asr")
-        model_name: Name of the model (e.g., 'whisper-large-v3', 'universal', 'rsdo-slovenian-asr')
+        model_name: Name of the model (e.g., 'whisper-large-v3', 'universal', 'protoverb-slovenian-asr')
         api_key: API key for cloud providers (required for groq, assemblyai, runpod)
         endpoint_id: RunPod serverless endpoint ID (required for runpod provider)
 
