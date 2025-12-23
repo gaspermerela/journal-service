@@ -203,7 +203,6 @@ class SlovenianSpellCheckService(SpellCheckService):
                 pickle_path=str(self._pickle_path),
             )
 
-    # TODO: measure time and parallelize
     def check_text(self, text: str) -> List[SpellingIssue]:
         """
         Check text for spelling issues.
@@ -218,11 +217,14 @@ class SlovenianSpellCheckService(SpellCheckService):
             logger.warning("Spell-check called but dictionary not loaded")
             return []
 
+        start_time = time.time()
+
         # Tokenize text into words
         words = self._tokenize(text)
 
         # Track unique misspelled words (deduplicate)
         issues: dict[str, List[str]] = {}
+        words_checked = 0  # Count unique words actually checked
 
         for word in words:
             # Skip short words
@@ -236,6 +238,8 @@ class SlovenianSpellCheckService(SpellCheckService):
             if word_lower in issues:
                 continue
 
+            words_checked += 1
+
             # Check if word is in dictionary
             suggestions = self._symspell.lookup(
                 word_lower,
@@ -248,6 +252,18 @@ class SlovenianSpellCheckService(SpellCheckService):
             if suggestions and suggestions[0].term != word_lower:
                 suggestion_terms = [s.term for s in suggestions[: self._suggestion_count]]
                 issues[word_lower] = suggestion_terms
+
+        elapsed_ms = (time.time() - start_time) * 1000
+        issue_count = len(issues)
+        issue_ratio = (issue_count / words_checked * 100) if words_checked > 0 else 0
+
+        logger.info(
+            "Spell-check completed",
+            elapsed_ms=round(elapsed_ms, 2),
+            words_checked=words_checked,
+            issues_found=issue_count,
+            issue_ratio_pct=round(issue_ratio, 1),
+        )
 
         return [
             SpellingIssue(word=word, suggestions=suggestions)
