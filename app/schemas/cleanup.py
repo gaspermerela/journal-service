@@ -2,12 +2,13 @@
 Pydantic schemas for LLM cleanup operations.
 """
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.cleaned_entry import CleanupStatus
+from app.schemas.spellcheck import SpellingIssue
 
 
 class CleanupTriggerRequest(BaseModel):
@@ -72,6 +73,12 @@ class CleanedEntryDetail(BaseModel):
     # User edit fields
     user_edited_text: Optional[str] = Field(None, description="User-edited text (if edited)")
     user_edited_at: Optional[datetime] = Field(None, description="When user last edited")
+
+    # Spell-check (Slovenian only, computed on-the-fly)
+    spelling_issues: Optional[List[SpellingIssue]] = Field(
+        None,
+        description="Spelling issues found in cleaned text (Slovenian only, null for other languages)"
+    )
 
     class Config:
         from_attributes = True

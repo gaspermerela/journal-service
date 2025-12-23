@@ -46,3 +46,6 @@ cryptography==46.0.3
 
 # Groq API (for third-party transcription and LLM)
 groq==0.36.0
+
+# Spell Checking
+symspellpy==6.9.0

@@ -13,58 +13,18 @@ services:
     image: postgres:17
     container_name: journal-postgres
     environment:
-      POSTGRES_USER: journal_user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: postgres
+      POSTGRES_USER: ${DATABASE_USER:-journal_user}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-password}
+      POSTGRES_DB: ${DATABASE_NAME:-postgres}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
-      test: [ "CMD", "pg_isready", "-U", "journal_user", "-d", "postgres" ]
+      test: [ "CMD", "pg_isready", "-U", "${DATABASE_USER:-journal_user}", "-d", "${DATABASE_NAME:-postgres}" ]
       interval: 10s
       timeout: 5s
       retries: 5
-
-  # LLM TEXT CLEANUP
-  # https://collabnix.com/setting-up-ollama-models-with-docker-compose-a-step-by-step-guide/
-#  ollama:
-#    image: ollama/ollama:latest
-#    container_name: journal-ollama
-#    ports:
-#      - "11434:11434"
-#    volumes:
-#      - ollama_data:/root/.ollama
-#    healthcheck:
-#      test: [ "CMD", "/bin/ollama", "list" ]
-#      interval: 30s
-#      timeout: 10s
-#      retries: 3
-#      start_period: 30s
-#
-#  ollama-init:
-#    image: ollama/ollama:latest
-#    container_name: journal-ollama-init
-#    volumes:
-#      - ollama_data:/root/.ollama
-#    command: pull llama3.2:3b
-#    environment:
-#      - OLLAMA_HOST=http://ollama:11434
-#    depends_on:
-#      ollama:
-#        condition: service_healthy
-#    restart: "no"
-
-#  webui:
-#    image: ghcr.io/ollama-webui/ollama-webui:main
-#    container_name: ollama-webui
-#    ports:
-#      - "3000:8080"
-#    depends_on:
-#      - ollama
-#    environment:
-#      - OLLAMA_API_BASE_URL=http://ollama:11434/api
-#    restart: unless-stopped
 
   # APP
   app:
@@ -76,49 +36,29 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-#      ollama:
-#        condition: service_healthy
-#      ollama-init:
-#        condition: service_completed_successfully
     ports:
-      - "8000:8000"
+      - "${PORT:-8000}:${PORT:-8000}"
+
+    # Load from .env file
+    env_file:
+      - .env
+
+    # Override database host for docker network (postgres container name, not localhost)
     environment:
       - DATABASE_HOST=postgres
-      - DATABASE_PORT=5432
-      - DATABASE_NAME=postgres
-      - DATABASE_USER=journal_user
-      - DATABASE_PASSWORD=password
-      - HOST=0.0.0.0
-      - PORT=8000
-      - LOG_LEVEL=INFO
-      - MAX_FILE_SIZE_MB=100
-      - WHISPER_MODEL=tiny
-      - WHISPER_LANGUAGE=en
-      - WHISPER_DEVICE=cpu
-      - TORCH_NUM_THREADS=10
-      - CORS_ORIGINS=*
-      - WORKERS=1
-      - DB_POOL_SIZE=5
-      - DB_MAX_OVERFLOW=10
-      - DEBUG=true
-      - RELOAD=true
-      - JWT_SECRET_KEY=test-secret-key-for-testing-only-not-for-production
-      - JWT_ALGORITHM=HS256
-      - ACCESS_TOKEN_EXPIRE_DAYS=7
-      - REFRESH_TOKEN_EXPIRE_DAYS=30
-      - OLLAMA_BASE_URL=http://ollama:11434
-      - OLLAMA_MODEL=llama3.2:3b
-      - LLM_TIMEOUT_SECONDS=120
-      - LLM_MAX_RETRIES=2
+
     volumes:
       - ${AUDIO_STORAGE_PATH_HOST:-./data/audio}:/app/data/audio
+      - ${CACHE_PATH_HOST:-./data/cache}:/app/data/cache  # Spell-check pickle cache (persists across restarts)
       - ./app:/app/app  # Mount source code for hot reload
       - ./alembic:/app/alembic  # Mount alembic migrations
+
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+
     healthcheck:
       test: [ "CMD", "python", "-c", "import requests; r = requests.get('http://localhost:8000/health', timeout=5); exit(0 if r.status_code == 200 else 1)" ]
       interval: 60s
@@ -132,4 +72,3 @@ services:
 
 volumes:
   postgres_data:
-  ollama_data:
