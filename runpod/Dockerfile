@@ -106,6 +106,11 @@ RUN python -c "from nemo.collections.asr.models import EncDecClassificationModel
 RUN python -c "from nemo.collections.asr.models import EncDecSpeakerLabelModel; \
     EncDecSpeakerLabelModel.from_pretrained('titanet_large')"
 
+# Pre-download MMS alignment model for forced alignment (~2GB)
+# Used by ctc-forced-aligner for word-level timestamps
+RUN python -c "from ctc_forced_aligner import load_alignment_model; \
+    load_alignment_model('cpu')"
+
 # =============================================================================
 # LAYER 5: Application code (changes frequently - LAST for best caching)
 # =============================================================================

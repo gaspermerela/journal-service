@@ -779,15 +779,21 @@ def run_forced_alignment(
             # Determine device
             device = "cuda" if torch.cuda.is_available() else "cpu"
             dtype = torch.float16 if device == "cuda" else torch.float32
+            logger.info(f"NFA using device={device}, dtype={dtype}")
 
             # Load alignment model (uses pretrained multilingual Wav2Vec2/MMS)
             # This model is separate from PROTOVERB but works well for Slovenian
+            # NOTE: First run downloads ~2GB model from HuggingFace
+            logger.info("NFA: Loading alignment model (MMS)...")
+            model_load_start = time.time()
             alignment_model, alignment_tokenizer = load_alignment_model(
                 device,
                 dtype=dtype,
             )
+            logger.info(f"NFA: Model loaded in {time.time() - model_load_start:.1f}s")
 
             # Load and process audio
+            logger.info("NFA: Loading audio...")
             audio_waveform = load_audio(
                 audio_path,
                 alignment_model.dtype,
@@ -795,26 +801,34 @@ def run_forced_alignment(
             )
 
             # Generate emissions (log probabilities) from alignment model
+            logger.info("NFA: Generating emissions (this may take a while on CPU)...")
+            emissions_start = time.time()
             emissions, stride = generate_emissions(
                 alignment_model,
                 audio_waveform,
                 batch_size=16
             )
+            logger.info(f"NFA: Emissions generated in {time.time() - emissions_start:.1f}s")
 
             # Preprocess text (tokenize and prepare for alignment)
-            # romanize=False since Slovenian uses Latin alphabet
+            # romanize=True required because MMS model doesn't handle Slovenian diacritics (č, š, ž)
+            # We'll map timestamps back to original words afterwards to preserve diacritics
+            logger.info("NFA: Preprocessing text...")
             tokens_starred, text_starred = preprocess_text(
                 transcript,
-                romanize=False,
+                romanize=True,  # Required for MMS model compatibility
                 language="slv"  # ISO 639-3 code for Slovenian
             )
 
             # Get alignments using Viterbi algorithm
+            logger.info("NFA: Running Viterbi alignment...")
+            viterbi_start = time.time()
             segments, scores, blank_token = get_alignments(
                 emissions,
                 tokens_starred,
                 alignment_tokenizer
             )
+            logger.info(f"NFA: Viterbi complete in {time.time() - viterbi_start:.1f}s")
 
             # Get word-level spans
             spans = get_spans(tokens_starred, segments, blank_token)
@@ -827,11 +841,15 @@ def run_forced_alignment(
                 scores
             )
 
-            # Convert to our expected format
+            # Map timestamps back to original words (preserves diacritics)
+            # word_timestamps has romanized text ("pricevanja"), we need original ("pričevanja")
+            original_words = transcript.split()
             words = []
-            for item in word_timestamps:
+            for i, item in enumerate(word_timestamps):
+                # Use original word if index matches, otherwise fall back to aligned text
+                original_word = original_words[i] if i < len(original_words) else item["text"]
                 words.append({
-                    "word": item["text"],
+                    "word": original_word,
                     "start": item["start"],
                     "end": item["end"]
                 })
@@ -907,17 +925,44 @@ def merge_words_with_speakers(
     speaker_counter = 1
 
     def get_speaker_for_time(t: float) -> str | None:
-        """Find which speaker is active at time t."""
+        """
+        Find which speaker is active at time t.
+
+        First tries exact match (time falls within a segment).
+        If no exact match, falls back to nearest segment by time distance.
+        This handles gaps between diarization segments where words may fall.
+        """
         nonlocal speaker_counter  # Must be declared before any use
+
+        def get_or_create_speaker_name(speaker_id: str) -> str:
+            """Map internal speaker ID to friendly name (Speaker 1, Speaker 2, ...)"""
+            nonlocal speaker_counter
+            if speaker_id not in speaker_map:
+                speaker_map[speaker_id] = f"Speaker {speaker_counter}"
+                speaker_counter += 1
+            return speaker_map[speaker_id]
+
+        # First: try exact match (word falls within a speaker segment)
         for seg in sorted_segments:
             seg_start = seg["start"]
             seg_end = seg_start + seg["duration"]
             if seg_start <= t <= seg_end:
-                speaker_id = seg["speaker"]
-                if speaker_id not in speaker_map:
-                    speaker_map[speaker_id] = f"Speaker {speaker_counter}"
-                    speaker_counter += 1
-                return speaker_map[speaker_id]
+                return get_or_create_speaker_name(seg["speaker"])
+
+        # Fallback: find closest segment by time distance
+        # This handles words that fall in gaps between speaker segments
+        if sorted_segments:
+            def distance_to_segment(seg):
+                seg_start = seg["start"]
+                seg_end = seg_start + seg["duration"]
+                if t < seg_start:
+                    return seg_start - t  # Time is before segment
+                else:
+                    return t - seg_end  # Time is after segment
+
+            closest_seg = min(sorted_segments, key=distance_to_segment)
+            return get_or_create_speaker_name(closest_seg["speaker"])
+
         return None
 
     # Assign speaker to each word based on midpoint
