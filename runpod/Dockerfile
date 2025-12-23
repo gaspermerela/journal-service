@@ -64,6 +64,13 @@ RUN pip install --no-cache-dir \
     runpod>=1.6.0 \
     soundfile>=0.12.1
 
+# ctc-forced-aligner for word-level timestamps (NFA)
+# Pin transformers to version compatible with PyTorch 2.1.0 (base image)
+# Newer transformers (4.40+) uses torch._pytree API not available in PyTorch 2.1
+RUN pip install --no-cache-dir \
+    "transformers>=4.36.0,<4.40.0" \
+    git+https://github.com/MahmoudAshraf97/ctc-forced-aligner.git
+
 # =============================================================================
 # LAYER 3: Models and data (rarely changes, slow to transfer)
 # =============================================================================

@@ -712,7 +712,7 @@ def run_forced_alignment(
     transcript: str
 ) -> List[Dict[str, Any]]:
     """
-    Run NeMo Forced Aligner (NFA) to get word-level timestamps.
+    Run forced alignment to get word-level timestamps.
 
     ## What is Forced Alignment?
 
@@ -734,11 +734,11 @@ def run_forced_alignment(
     - Given transcript "hello", it finds which frames most likely correspond to h-e-l-l-o
     - Output: frame ranges for each character, aggregated into word timestamps
 
-    ## Pipeline
+    ## Implementation
 
-    1. Create manifest (JSON file linking audio + transcript)
-    2. Run NFA with the CTC model (reuses PROTOVERB - no extra model needed)
-    3. Parse CTM output files containing word timestamps
+    Uses ctc-forced-aligner library which provides a programmatic Python API
+    for CTC-based forced alignment. This is much simpler than NeMo's CLI-based
+    align.py tool and uses 5X less memory than TorchAudio's API.
 
     Args:
         audio_path: Path to audio file (WAV format)
@@ -758,117 +758,98 @@ def run_forced_alignment(
         logger.warning("Empty transcript, skipping forced alignment")
         return []
 
-    import json
-
-    # Create temp directories for NFA I/O
-    temp_dir = tempfile.mkdtemp(prefix="nfa_")
-    manifest_path = os.path.join(temp_dir, "manifest.json")
-    output_dir = os.path.join(temp_dir, "output")
-    os.makedirs(output_dir, exist_ok=True)
-
     try:
-        # MANIFEST FILE
-        # NeMo tools use JSON manifest files to specify input data.
-        # Each line is a JSON object with audio path and metadata.
-        # For NFA, we provide the transcript text that needs to be aligned.
-        #
-        # Format (JSON Lines - one JSON object per line):
-        #   {"audio_filepath": "/path/to/audio.wav", "text": "transcript here"}
-        #
-        # Why manifest? Allows batch processing of multiple files with one config.
-        manifest = {
-            "audio_filepath": audio_path,
-            "text": transcript
-        }
-
-        with open(manifest_path, "w") as f:
-            json.dump(manifest, f)
-            f.write("\n")  # JSON Lines format requires newline
-
         logger.info(f"Running forced alignment on {audio_path} ({len(transcript.split())} words)")
         start_time = time.time()
 
-        # Try to use NeMo's forced aligner
+        # Use ctc-forced-aligner library
+        # This provides a clean Python API for forced alignment with CTC models
         try:
-            from nemo.collections.asr.models import ASRModel
-            from omegaconf import OmegaConf
-
-            # NFA configuration
-            # The aligner reuses our loaded CTC model (PROTOVERB) - no separate model needed.
-            # This is possible because CTC models naturally produce frame-level outputs
-            # that can be decoded into alignments using the Viterbi algorithm.
-            aligner_config = OmegaConf.create({
-                "model_path": ASR_MODEL_PATH,
-                "manifest_filepath": manifest_path,
-                "output_dir": output_dir,
-                "batch_size": 1,
-                "additional_ctm_grouping_separator": " ",
-            })
-
-            # VITERBI ALIGNMENT
-            # The CTC model processes audio and outputs per-frame character probabilities.
-            # Viterbi algorithm then finds the optimal path through these probabilities
-            # that matches our known transcript, giving us character-level timestamps.
-            # These are aggregated into word-level timestamps in the CTM output.
-            ASR_MODEL.transcribe(
-                [audio_path],
-                batch_size=1,
+            import torch
+            from ctc_forced_aligner import (
+                load_audio,
+                load_alignment_model,
+                generate_emissions,
+                preprocess_text,
+                get_alignments,
+                get_spans,
+                postprocess_results,
             )
 
-            # CTM (Conversation Time Mark) FILES
-            # Standard format for word/phone alignments, used in speech research.
-            # Format: <utterance_id> <channel> <start_time> <duration> <word>
-            #
-            # Example CTM output:
-            #   audio 1 0.320 0.240 pozdravljeni
-            #   audio 1 0.560 0.180 kako
-            #   audio 1 0.740 0.120 ste
-            #
-            # This tells us "pozdravljeni" starts at 0.32s and lasts 0.24s (ends at 0.56s)
-            ctm_words_dir = os.path.join(output_dir, "ctm", "words")
-            ctm_files = []
+            # Determine device
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            dtype = torch.float16 if device == "cuda" else torch.float32
 
-            # Check multiple possible locations for CTM files
-            # (NeMo version differences may place output in different subdirectories)
-            for subdir in ["ctm/words", "ctm", ""]:
-                check_dir = os.path.join(output_dir, subdir) if subdir else output_dir
-                if os.path.exists(check_dir):
-                    ctm_files = [
-                        os.path.join(check_dir, f)
-                        for f in os.listdir(check_dir)
-                        if f.endswith(".ctm")
-                    ]
-                    if ctm_files:
-                        break
+            # Load alignment model (uses pretrained multilingual Wav2Vec2/MMS)
+            # This model is separate from PROTOVERB but works well for Slovenian
+            alignment_model, alignment_tokenizer = load_alignment_model(
+                device,
+                dtype=dtype,
+            )
 
-            if ctm_files:
-                words = parse_ctm_file(ctm_files[0])
-                alignment_time = time.time() - start_time
-                logger.info(f"Forced alignment complete in {alignment_time:.2f}s: {len(words)} words")
-                return words
+            # Load and process audio
+            audio_waveform = load_audio(
+                audio_path,
+                alignment_model.dtype,
+                alignment_model.device
+            )
 
-            # No CTM files found - NFA may not have produced output
-            logger.warning("No CTM files generated by forced alignment")
-            return []
+            # Generate emissions (log probabilities) from alignment model
+            emissions, stride = generate_emissions(
+                alignment_model,
+                audio_waveform,
+                batch_size=16
+            )
+
+            # Preprocess text (tokenize and prepare for alignment)
+            # romanize=False since Slovenian uses Latin alphabet
+            tokens_starred, text_starred = preprocess_text(
+                transcript,
+                romanize=False,
+                language="slv"  # ISO 639-3 code for Slovenian
+            )
+
+            # Get alignments using Viterbi algorithm
+            segments, scores, blank_token = get_alignments(
+                emissions,
+                tokens_starred,
+                alignment_tokenizer
+            )
+
+            # Get word-level spans
+            spans = get_spans(tokens_starred, segments, blank_token)
+
+            # Post-process results to get clean word timestamps
+            word_timestamps = postprocess_results(
+                text_starred,
+                spans,
+                stride,
+                scores
+            )
+
+            # Convert to our expected format
+            words = []
+            for item in word_timestamps:
+                words.append({
+                    "word": item["text"],
+                    "start": item["start"],
+                    "end": item["end"]
+                })
+
+            alignment_time = time.time() - start_time
+            logger.info(f"Forced alignment complete in {alignment_time:.2f}s: {len(words)} words")
+            return words
 
         except ImportError as e:
-            logger.warning(f"NFA dependencies not available: {e}")
-            return []
-        except Exception as e:
-            logger.warning(f"NFA alignment method failed: {e}")
+            logger.warning(f"ctc-forced-aligner not available: {e}")
+            logger.warning("Install with: pip install ctc-forced-aligner")
             return []
 
     except Exception as e:
         logger.error(f"Forced alignment failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return []
-
-    finally:
-        # Cleanup temp directory
-        try:
-            import shutil
-            shutil.rmtree(temp_dir)
-        except Exception:
-            pass
 
 
 def merge_words_with_speakers(
@@ -927,6 +908,7 @@ def merge_words_with_speakers(
 
     def get_speaker_for_time(t: float) -> str | None:
         """Find which speaker is active at time t."""
+        nonlocal speaker_counter  # Must be declared before any use
         for seg in sorted_segments:
             seg_start = seg["start"]
             seg_end = seg_start + seg["duration"]
@@ -934,7 +916,6 @@ def merge_words_with_speakers(
                 speaker_id = seg["speaker"]
                 if speaker_id not in speaker_map:
                     speaker_map[speaker_id] = f"Speaker {speaker_counter}"
-                    nonlocal speaker_counter
                     speaker_counter += 1
                 return speaker_map[speaker_id]
         return None

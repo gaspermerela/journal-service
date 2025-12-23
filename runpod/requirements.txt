@@ -9,3 +9,8 @@ runpod>=1.6.0
 
 # Audio file handling
 soundfile>=0.12.1
+
+# Forced alignment for word-level timestamps
+# Uses 5X less memory than TorchAudio's forced alignment API
+# Supports 1100+ languages via Wav2Vec2/HuBERT/MMS models
+git+https://github.com/MahmoudAshraf97/ctc-forced-aligner.git
