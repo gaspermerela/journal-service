@@ -2,7 +2,7 @@
 
 ## Problem
 
-The original NFA implementation in `runpod/handler.py` was not working - no CTM files were being generated. The code was incorrectly calling `ASR_MODEL.transcribe()` which just does ASR again, not forced alignment.
+The original NFA implementation in `handler.py` was not working - no CTM files were being generated. The code was incorrectly calling `ASR_MODEL.transcribe()` which just does ASR again, not forced alignment.
 
 **Broken implementation (lines 813-816):**
 ```python
@@ -112,13 +112,13 @@ Word timestamps: [{"word": str, "start": float, "end": float}, ...]
 
 ## Changes Required
 
-### 1. Code Changes (`runpod/handler.py`)
+### 1. Code Changes (`handler.py`)
 
 - **Lines 710-852**: Completely rewrote `run_forced_alignment()` function
 - **Removed**: NeMo align.py invocation, CTM file parsing, manifest creation
 - **Added**: ctc-forced-aligner integration with proper error handling
 
-### 2. Dependencies (`runpod/requirements.txt`)
+### 2. Dependencies (`requirements.txt`)
 
 Added:
 ```
@@ -133,7 +133,8 @@ git+https://github.com/MahmoudAshraf97/ctc-forced-aligner.git
 After adding the new dependency, rebuild the Docker image:
 
 ```bash
-docker build -t runpod-slovenian-asr:latest runpod/
+cd slovenian-asr/nemo-protoverb
+docker build -t slovene-asr-local .
 ```
 
 ## Technical Details

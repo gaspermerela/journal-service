@@ -10,11 +10,11 @@
 # Usage:
 #   ./scripts/download_rsdo_model.sh
 #
-# The model will be downloaded to: runpod/models/conformer_ctc_bpe.nemo
+# The model will be downloaded to: slovenian-asr/nemo-protoverb/models/conformer_ctc_bpe.nemo
 
 set -e
 
-MODEL_DIR="./runpod/models"
+MODEL_DIR="./slovenian-asr/nemo-protoverb/models"
 MODEL_URL="https://www.clarin.si/repository/xmlui/bitstream/handle/11356/1737/sl-SI_GEN_nemo-2.0.tar.zst"
 ARCHIVE_NAME="sl-SI_GEN_nemo-2.0.tar.zst"
 
@@ -94,5 +94,5 @@ echo "Model file: $MODEL_DIR/conformer_ctc_bpe.nemo"
 echo "Model info: $MODEL_DIR/model.info"
 echo ""
 echo "You can now build the RunPod Docker image:"
-echo "  cd runpod"
+echo "  cd slovenian-asr/nemo-protoverb"
 echo "  docker buildx build --platform linux/amd64 -t your-registry/protoverb-slovenian-asr:latest --push ."
