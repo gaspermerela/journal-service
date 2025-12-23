@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Local test script for Slovenian ASR pipeline.
+Local test script for Slovenian ASR pipeline with speaker diarization.
 
 This script imports and uses the same functions as handler.py,
 allowing you to test the pipeline locally before deploying to RunPod.
@@ -20,6 +20,12 @@ Usage:
 
     # Different denormalization style
     python test_local.py test_audio.wav --style technical
+
+    # With speaker diarization
+    python test_local.py test_audio.wav --diarize
+
+    # Diarization with known speaker count
+    python test_local.py test_audio.wav --diarize --speakers 2
 
     # Compare all pipeline configurations
     python test_local.py test_audio.wav --compare
@@ -74,7 +80,15 @@ def get_audio_info(audio_path: Path) -> dict:
     }
 
 
-def run_pipeline(audio_path: Path, punctuate: bool, denormalize: bool, style: str) -> dict:
+def run_pipeline(
+    audio_path: Path,
+    punctuate: bool,
+    denormalize: bool,
+    style: str,
+    diarize: bool = False,
+    speaker_count: int | None = None,
+    max_speakers: int = 10
+) -> dict:
     """Run the ASR pipeline with specified options."""
     # Read and encode audio
     audio_bytes = audio_path.read_bytes()
@@ -87,7 +101,10 @@ def run_pipeline(audio_path: Path, punctuate: bool, denormalize: bool, style: st
             "filename": audio_path.name,
             "punctuate": punctuate,
             "denormalize": denormalize,
-            "denormalize_style": style
+            "denormalize_style": style,
+            "enable_diarization": diarize,
+            "speaker_count": speaker_count,
+            "max_speakers": max_speakers
         }
     }
 
@@ -106,9 +123,12 @@ def print_header(audio_path: Path, audio_info: dict):
     print(f" Audio: {audio_path.name} ({audio_info['size_kb']:.0f}KB{duration_str})")
 
 
-def print_result(result: dict, punctuate: bool, denormalize: bool, style: str):
+def print_result(result: dict, punctuate: bool, denormalize: bool, style: str, diarize: bool = False, verbose: bool = False):
     """Print pipeline result."""
-    print(f" Options: punctuate={punctuate}, denormalize={denormalize}, style={style}")
+    opts = f"punctuate={punctuate}, denormalize={denormalize}, style={style}"
+    if diarize:
+        opts += f", diarize={diarize}"
+    print(f" Options: {opts}")
     print("-" * 70)
     print()
 
@@ -124,6 +144,23 @@ def print_result(result: dict, punctuate: bool, denormalize: bool, style: str):
     if "asr" in pipeline:
         print(f" [{step_num}] ASR ({result.get('model_version', 'unknown')})")
         print(f"     -> \"{result.get('raw_text', '')}\"")
+        print()
+        step_num += 1
+
+    if "diarize" in pipeline:
+        speaker_count = result.get("speaker_count_detected", 0)
+        segments = result.get("segments", [])
+        print(f" [{step_num}] Diarization ({speaker_count} speakers, {len(segments)} segments)")
+
+        # Show all segments in verbose mode, otherwise first 5
+        segments_to_show = segments if verbose else segments[:5]
+        for seg in segments_to_show:
+            text = seg.get('text', '')
+            text_display = f"{text[:50]}..." if len(text) > 50 and not verbose else text
+            print(f"     {seg.get('speaker')}: [{seg.get('start', 0):.1f}s-{seg.get('end', 0):.1f}s] \"{text_display}\"")
+
+        if not verbose and len(segments) > 5:
+            print(f"     ... and {len(segments) - 5} more segments (use --verbose to see all)")
         print()
         step_num += 1
 
@@ -149,6 +186,8 @@ def print_result(result: dict, punctuate: bool, denormalize: bool, style: str):
     print(f" Final: \"{result.get('text', '')}\"")
     print(f" Time:  {format_time(result.get('processing_time', 0))}")
     print(f" Steps: {' -> '.join(pipeline)}")
+    if result.get("diarization_applied"):
+        print(f" Speakers: {result.get('speaker_count_detected', 0)}")
     print("=" * 70)
     print()
 
@@ -205,6 +244,8 @@ Examples:
   python test_local.py audio.wav --no-punctuate     # Skip punctuation
   python test_local.py audio.wav --no-denormalize   # Skip denormalization
   python test_local.py audio.wav --style technical  # Technical style
+  python test_local.py audio.wav --diarize          # With speaker diarization
+  python test_local.py audio.wav --diarize --speakers 2  # Known speaker count
   python test_local.py audio.wav --compare          # Compare all modes
         """
     )
@@ -218,8 +259,16 @@ Examples:
                         help="Skip denormalization step")
     parser.add_argument("--style", choices=["default", "technical", "everyday"],
                         default="default", help="Denormalization style")
+    parser.add_argument("--diarize", action="store_true",
+                        help="Enable speaker diarization")
+    parser.add_argument("--speakers", type=int, default=None,
+                        help="Known number of speakers (1-10, default: auto-detect)")
+    parser.add_argument("--max-speakers", type=int, default=10,
+                        help="Maximum speakers for auto-detect (default: 10)")
     parser.add_argument("--compare", action="store_true",
                         help="Run and compare all pipeline configurations")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="Show all diarization segments and full text (not truncated)")
 
     args = parser.parse_args()
 
@@ -239,9 +288,18 @@ Examples:
         punctuate = not args.no_punctuate
         denormalize = not args.no_denormalize
 
+    diarize = args.diarize
+    speaker_count = args.speakers
+    max_speakers = args.max_speakers
+
     # Load only the models we need (in parallel)
     try:
-        load_models_parallel(need_asr=True, need_punct=punctuate, need_denorm=denormalize)
+        load_models_parallel(
+            need_asr=True,
+            need_punct=punctuate,
+            need_denorm=denormalize,
+            need_diarization=diarize
+        )
     except Exception as e:
         print(f"  Model loading FAILED: {e}")
         sys.exit(1)
@@ -253,14 +311,19 @@ Examples:
         print("  ✓ Punctuator ready")
     if handler_module.DENORMALIZER:
         print("  ✓ Denormalizer ready")
+    if handler_module.VAD_MODEL and handler_module.SPEAKER_MODEL:
+        print("  ✓ Diarization models ready")
 
     # Run test
     if args.compare:
         run_comparison(args.audio, audio_info, args.style)
     else:
         print_header(args.audio, audio_info)
-        result = run_pipeline(args.audio, punctuate, denormalize, args.style)
-        print_result(result, punctuate, denormalize, args.style)
+        result = run_pipeline(
+            args.audio, punctuate, denormalize, args.style,
+            diarize=diarize, speaker_count=speaker_count, max_speakers=max_speakers
+        )
+        print_result(result, punctuate, denormalize, args.style, diarize=diarize, verbose=args.verbose)
 
 
 if __name__ == "__main__":

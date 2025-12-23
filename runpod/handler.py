@@ -1,30 +1,56 @@
 """
-RunPod serverless handler for Slovenian ASR with NLP pipeline.
+RunPod serverless handler for Slovenian ASR with NLP pipeline and speaker diarization.
 
 This handler runs on RunPod serverless GPU and processes audio transcription
-requests using the PROTOVERB NeMo model with optional punctuation and denormalization.
+requests using the PROTOVERB NeMo model with optional punctuation, denormalization,
+and speaker diarization.
 
 Pipeline:
-    Audio -> ASR (PROTOVERB) -> Punctuation (optional) -> Denormalization (optional)
+    Without diarization:
+        Audio -> ASR (PROTOVERB) -> Punctuation (optional) -> Denormalization (optional)
+
+    With diarization:
+        Audio -> ASR (PROTOVERB) ─┬─> Merge -> Punctuation -> Denormalization
+                                  │
+                   -> Diarization  ───────┘
 
 Input:
     {
         "input": {
             "audio_base64": "<base64 encoded WAV audio>",
             "filename": "optional_filename.wav",
-            "punctuate": true,           # Add punctuation & capitalization (default: true)
-            "denormalize": true,         # Convert numbers, dates, times (default: true)
-            "denormalize_style": "default"  # Options: default, technical, everyday
+            "punctuate": true,              # Add punctuation & capitalization (default: true)
+            "denormalize": true,            # Convert numbers, dates, times (default: true)
+            "denormalize_style": "default", # Options: default, technical, everyday
+            "enable_diarization": false,    # Identify speakers (default: false)
+            "speaker_count": null,          # Known speaker count, null=auto (default: null)
+            "max_speakers": 10              # Max speakers for auto-detect (default: 10)
         }
     }
 
-Output:
+Output (without diarization):
     {
-        "text": "Včeraj sem spal 8 ur.",     # Final processed text
-        "raw_text": "včeraj sem spal osem ur",  # Original ASR output
+        "text": "Včeraj sem spal 8 ur.",
+        "raw_text": "včeraj sem spal osem ur",
         "processing_time": 12.5,
         "pipeline": ["asr", "punctuate", "denormalize"],
-        "model_version": "protoverb-1.0"
+        "model_version": "protoverb-1.0",
+        "diarization_applied": false
+    }
+
+Output (with diarization):
+    {
+        "text": "Speaker 1: Pozdravljeni. Speaker 2: Hvala.",
+        "raw_text": "pozdravljeni hvala",
+        "processing_time": 15.2,
+        "pipeline": ["asr", "diarize", "punctuate", "denormalize"],
+        "model_version": "protoverb-1.0",
+        "diarization_applied": true,
+        "speaker_count_detected": 2,
+        "segments": [
+            {"id": 0, "start": 0.0, "end": 1.5, "text": "Pozdravljeni.", "speaker": "Speaker 1"},
+            {"id": 1, "start": 1.8, "end": 3.2, "text": "Hvala.", "speaker": "Speaker 2"}
+        ]
     }
 """
 import base64
@@ -56,6 +82,23 @@ ASR_MODEL = None
 PUNCTUATOR_MODEL = None
 DENORMALIZER = None
 
+# Diarization models
+# Speaker diarization answers "WHO spoke WHEN" and requires two models:
+#
+# 1. VAD (Voice Activity Detection) - MarbleNet
+#    Detects WHEN someone is speaking vs silence/noise.
+#    Output: time ranges like [(0.0s-2.5s, speech), (2.5s-3.0s, silence), ...]
+#    Without VAD, we'd waste compute analyzing silence.
+#
+# 2. Speaker Embeddings - TitaNet-Large
+#    Creates a "voiceprint" (vector) for each speech segment.
+#    Similar voices → similar vectors → same speaker.
+#    These vectors are clustered to group segments by speaker.
+#
+# Pipeline: Audio → VAD (find speech) → TitaNet (who's speaking) → Clustering (group by speaker)
+VAD_MODEL = None
+SPEAKER_MODEL = None
+
 # Model paths - baked into Docker image
 ASR_MODEL_PATH = os.environ.get("ASR_MODEL_PATH", "/app/models/asr/conformer_ctc_bpe.nemo")
 PUNCTUATOR_MODEL_PATH = os.environ.get("PUNCTUATOR_MODEL_PATH", "/app/models/punctuator/nlp_tc_pc.nemo")
@@ -63,8 +106,8 @@ PUNCTUATOR_MODEL_PATH = os.environ.get("PUNCTUATOR_MODEL_PATH", "/app/models/pun
 # Denormalizer path (Python package)
 DENORMALIZER_PATH = os.environ.get("DENORMALIZER_PATH", "/app/Slovene_denormalizator")
 
-# Maximum audio size (50MB)
-MAX_AUDIO_SIZE = 50 * 1024 * 1024
+# Maximum audio size (100MB)
+MAX_AUDIO_SIZE = 100 * 1024 * 1024
 
 # Model version identifier
 MODEL_VERSION = "protoverb-1.0"
@@ -167,20 +210,36 @@ def load_denormalizer():
     logger.info(f"Loading denormalizer from {DENORMALIZER_PATH}")
 
     try:
-        # Add denormalizer to path
+        # Add denormalizer to Python's import path
+        # Python can only import modules from directories listed in sys.path.
+        # The denormalizer is a standalone package (not pip-installed), so we
+        # manually add its directory to sys.path to make "from denormalizer import ..."  work.
+        # See: https://docs.python.org/3/library/sys.html#sys.path
         if DENORMALIZER_PATH not in sys.path:
             sys.path.insert(0, DENORMALIZER_PATH)
 
-        # The denormalizer uses hardcoded relative paths (data/...)
-        # We need to change to its directory before importing
+        # The denormalizer uses hardcoded relative paths internally (e.g., "data/rules.json").
+        # These paths are relative to the current working directory (cwd), not to the package.
+        # We temporarily change cwd to the denormalizer's directory so its relative paths resolve.
+        #
+        # Example problem without this:
+        #   cwd = /app
+        #   denormalizer tries to open "data/rules.json"
+        #   Python looks for /app/data/rules.json → NOT FOUND!
+        #
+        # Solution: cd to /app/Slovene_denormalizator, import, then cd back.
         original_cwd = os.getcwd()
         os.chdir(DENORMALIZER_PATH)
 
         try:
+            start_time = time.time()
             from denormalizer import denormalize as denorm_func
             DENORMALIZER = denorm_func
-            logger.info("Denormalizer loaded successfully")
+            load_time = time.time() - start_time
+            logger.info(f"Denormalizer loaded successfully in {load_time:.2f}s")
         finally:
+            # IMPORTANT: Always restore original cwd, even if import fails.
+            # Other code may depend on the expected working directory.
             os.chdir(original_cwd)
 
     except Exception as e:
@@ -188,16 +247,73 @@ def load_denormalizer():
         # Don't raise - denormalization is optional
 
 
-def load_models_parallel(need_asr: bool = True, need_punct: bool = True, need_denorm: bool = True):
+def load_diarization_models():
+    """
+    Load VAD and speaker embedding models for diarization.
+
+    Models used:
+    - MarbleNet: Voice Activity Detection (VAD)
+    - TitaNet-Large: Speaker embeddings for clustering
+    """
+    global VAD_MODEL, SPEAKER_MODEL
+
+    if VAD_MODEL is not None and SPEAKER_MODEL is not None:
+        logger.info("Diarization models already loaded, skipping")
+        return
+
+    logger.info("Loading diarization models (VAD + TitaNet)")
+    start_time = time.time()
+
+    try:
+        # Suppress NeMo's verbose warnings
+        from nemo.utils import logging as nemo_logging
+        nemo_logging.setLevel(logging.ERROR)
+
+        # VAD model (MarbleNet)
+        from nemo.collections.asr.models import EncDecClassificationModel
+        VAD_MODEL = EncDecClassificationModel.from_pretrained("vad_marblenet")
+        VAD_MODEL.eval()
+        logger.info("VAD model (MarbleNet) loaded")
+
+        # Speaker embedding model (TitaNet-Large)
+        from nemo.collections.asr.models import EncDecSpeakerLabelModel
+        SPEAKER_MODEL = EncDecSpeakerLabelModel.from_pretrained("titanet_large")
+        SPEAKER_MODEL.eval()
+        logger.info("Speaker model (TitaNet-Large) loaded")
+
+        # Move to GPU if available
+        cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+        if cuda_visible != "" and cuda_visible.lower() != "none":
+            VAD_MODEL = VAD_MODEL.cuda()
+            SPEAKER_MODEL = SPEAKER_MODEL.cuda()
+            logger.info("Diarization models moved to GPU")
+        else:
+            logger.info("Diarization models running on CPU")
+
+        load_time = time.time() - start_time
+        logger.info(f"Diarization models loaded successfully in {load_time:.2f}s")
+
+    except Exception as e:
+        logger.error(f"Failed to load diarization models: {e}")
+        raise
+
+
+def load_models_parallel(
+    need_asr: bool = True,
+    need_punct: bool = True,
+    need_denorm: bool = True,
+    need_diarization: bool = False
+):
     """
     Load required models with safe parallelism.
 
-    NeMo models (ASR and Punctuator) cannot be loaded in parallel due to
-    shared temp directory conflicts. Solution:
-    - Phase 1: Load ASR + Denormalizer in parallel (different frameworks)
-    - Phase 2: Load Punctuator after ASR is done (avoids NeMo conflict)
+    NeMo models cannot be loaded in parallel due to shared module locks.
+    Solution:
+    - Phase 1: Load ASR + Denormalizer in parallel (Denormalizer is not NeMo)
+    - Phase 2: Load Diarization models sequentially (NeMo ASR models)
+    - Phase 3: Load Punctuator sequentially (NeMo NLP model)
     """
-    global ASR_MODEL, PUNCTUATOR_MODEL, DENORMALIZER
+    global ASR_MODEL, PUNCTUATOR_MODEL, DENORMALIZER, VAD_MODEL, SPEAKER_MODEL
 
     # Track what we're actually loading in this call
     loading = []
@@ -207,13 +323,15 @@ def load_models_parallel(need_asr: bool = True, need_punct: bool = True, need_de
         loading.append("Punctuator")
     if need_denorm and DENORMALIZER is None:
         loading.append("Denormalizer")
+    if need_diarization and (VAD_MODEL is None or SPEAKER_MODEL is None):
+        loading.append("Diarization")
 
     if not loading:
         return  # Everything already loaded
 
     start_time = time.time()
 
-    # Phase 1: ASR + Denormalizer in parallel (different frameworks, no conflict)
+    # Phase 1: ASR + Denormalizer in parallel (Denormalizer is not NeMo, no conflict)
     phase1_loaders = []
     if need_asr and ASR_MODEL is None:
         phase1_loaders.append(("ASR", load_asr_model))
@@ -231,9 +349,14 @@ def load_models_parallel(need_asr: bool = True, need_punct: bool = True, need_de
                 futures = [executor.submit(fn) for _, fn in phase1_loaders]
                 wait(futures)
 
-    # Phase 2: Punctuator (must wait for ASR to avoid NeMo conflicts)
+    # Phase 2: Diarization models (must be sequential - NeMo ASR models)
+    if need_diarization and (VAD_MODEL is None or SPEAKER_MODEL is None):
+        logger.info("Loading phase 2: Diarization")
+        load_diarization_models()
+
+    # Phase 3: Punctuator (must be sequential - NeMo NLP model)
     if need_punct and PUNCTUATOR_MODEL is None:
-        logger.info("Loading phase 2: Punctuator")
+        logger.info("Loading phase 3: Punctuator")
         load_punctuator_model()
 
     load_time = time.time() - start_time
@@ -303,6 +426,474 @@ def apply_denormalization(text: str, style: str = "default") -> str:
         return text
 
 
+def get_diarization_config(
+    manifest_path: str,
+    output_dir: str,
+    num_speakers: int | None = None,
+    max_speakers: int = 10
+) -> Dict[str, Any]:
+    """
+    Create ClusteringDiarizer configuration.
+
+    Uses 2-scale telephonic preset optimized for 1-2 speakers.
+
+    Args:
+        manifest_path: Path to manifest JSON file
+        output_dir: Directory for RTTM output
+        num_speakers: Known number of speakers (None for auto-detect)
+        max_speakers: Maximum speakers for auto-detect
+
+    Returns:
+        OmegaConf configuration dict
+    """
+    # Determine device
+    import torch
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    config = {
+        "name": "ClusteringDiarizer",
+        "num_workers": 1,
+        "sample_rate": 16000,
+        "batch_size": 64,
+        "device": device,  # Required by ClusteringDiarizer
+        "verbose": True,
+        "diarizer": {
+            "manifest_filepath": manifest_path,
+            "out_dir": output_dir,
+            "oracle_vad": False,
+            "collar": 0.25,
+            "ignore_overlap": True,
+
+            "vad": {
+                "model_path": "vad_marblenet",
+                "parameters": {
+                    "window_length_in_sec": 0.15,
+                    "shift_length_in_sec": 0.01,
+                    "smoothing": "median",
+                    "overlap": 0.5,
+                    "onset": 0.8,
+                    "offset": 0.6,
+                    "min_duration_on": 0.1,
+                    "min_duration_off": 0.1,
+                    "pad_onset": 0.1,
+                    "pad_offset": 0.1,
+                    "postprocessing_params": {
+                        "onset": 0.8,
+                        "offset": 0.6,
+                        "min_duration_on": 0.1,
+                        "min_duration_off": 0.1,
+                        "pad_onset": 0.1,
+                        "pad_offset": 0.1
+                    }
+                }
+            },
+
+            "speaker_embeddings": {
+                "model_path": "titanet_large",
+                "parameters": {
+                    # 2-scale telephonic preset (faster, good for 1-2 speakers)
+                    "window_length_in_sec": [1.5, 1.0],
+                    "shift_length_in_sec": [0.75, 0.5],
+                    "multiscale_weights": [1, 1],
+                    "save_embeddings": False
+                }
+            },
+
+            "clustering": {
+                "parameters": {
+                    "oracle_num_speakers": num_speakers is not None,
+                    "max_num_speakers": num_speakers if num_speakers else max_speakers,
+                    "enhanced_count_thres": 80,
+                    "max_rp_threshold": 0.25,
+                    "sparse_search_volume": 30
+                }
+            }
+        }
+    }
+
+    return config
+
+
+def parse_rttm(rttm_path: str) -> List[Dict[str, Any]]:
+    """
+    Parse RTTM file to list of speaker segments.
+
+    RTTM format: SPEAKER <file_id> <channel> <start> <duration> <NA> <NA> <speaker_id> <NA> <NA>
+
+    Args:
+        rttm_path: Path to RTTM file
+
+    Returns:
+        List of segments: [{"start": float, "duration": float, "speaker": str}, ...]
+    """
+    segments = []
+
+    try:
+        with open(rttm_path, 'r') as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 8 and parts[0] == "SPEAKER":
+                    segments.append({
+                        "start": float(parts[3]),
+                        "duration": float(parts[4]),
+                        "speaker": parts[7]
+                    })
+    except Exception as e:
+        logger.error(f"Failed to parse RTTM file {rttm_path}: {e}")
+        return []
+
+    # Sort by start time
+    return sorted(segments, key=lambda s: s["start"])
+
+
+def run_diarization(
+    audio_path: str,
+    num_speakers: int | None = None,
+    max_speakers: int = 10
+) -> List[Dict[str, Any]]:
+    """
+    Run speaker diarization on audio file.
+
+    Args:
+        audio_path: Path to audio file (WAV format)
+        num_speakers: Known number of speakers (None for auto-detect)
+        max_speakers: Maximum speakers for auto-detect
+
+    Returns:
+        List of speaker segments: [{"start": float, "duration": float, "speaker": str}, ...]
+    """
+    global VAD_MODEL, SPEAKER_MODEL
+
+    if VAD_MODEL is None or SPEAKER_MODEL is None:
+        raise RuntimeError("Diarization models not loaded")
+
+    import json
+    from omegaconf import OmegaConf
+    from nemo.collections.asr.models import ClusteringDiarizer
+
+    # Create temp directories for manifest and output
+    temp_dir = tempfile.mkdtemp(prefix="diarization_")
+    manifest_path = os.path.join(temp_dir, "manifest.json")
+    output_dir = os.path.join(temp_dir, "output")
+    os.makedirs(output_dir, exist_ok=True)
+
+    try:
+        # Create manifest file
+        manifest = {
+            "audio_filepath": audio_path,
+            "offset": 0,
+            "duration": None,
+            "label": "infer",
+            "text": "-",
+            "num_speakers": num_speakers,
+            "rttm_filepath": None,
+            "uem_filepath": None
+        }
+
+        with open(manifest_path, "w") as f:
+            json.dump(manifest, f)
+            f.write("\n")
+
+        logger.info(f"Running diarization on {audio_path} (num_speakers={num_speakers}, max={max_speakers})")
+        start_time = time.time()
+
+        # Get config and create diarizer
+        config_dict = get_diarization_config(
+            manifest_path=manifest_path,
+            output_dir=output_dir,
+            num_speakers=num_speakers,
+            max_speakers=max_speakers
+        )
+        config = OmegaConf.create(config_dict)
+
+        # Run diarization
+        diarizer = ClusteringDiarizer(cfg=config)
+        diarizer.diarize()
+
+        diarization_time = time.time() - start_time
+        logger.info(f"Diarization complete in {diarization_time:.2f}s")
+
+        # Find and parse RTTM output
+        # NeMo outputs RTTM files to pred_rttms/ subdirectory
+        pred_rttms_dir = os.path.join(output_dir, "pred_rttms")
+
+        # Check both locations (direct and pred_rttms subdirectory)
+        rttm_files = []
+        if os.path.exists(pred_rttms_dir):
+            rttm_files = [os.path.join(pred_rttms_dir, f)
+                         for f in os.listdir(pred_rttms_dir) if f.endswith(".rttm")]
+
+        if not rttm_files:
+            # Fallback: check output_dir directly
+            rttm_files = [os.path.join(output_dir, f)
+                         for f in os.listdir(output_dir) if f.endswith(".rttm")]
+
+        if not rttm_files:
+            # Debug: list what files were actually created
+            logger.warning(f"No RTTM file generated. Output dir contents: {os.listdir(output_dir)}")
+            if os.path.exists(pred_rttms_dir):
+                logger.warning(f"pred_rttms contents: {os.listdir(pred_rttms_dir)}")
+            return []
+
+        rttm_path = rttm_files[0]
+        logger.info(f"Found RTTM file: {rttm_path}")
+        segments = parse_rttm(rttm_path)
+
+        logger.info(f"Found {len(segments)} speaker segments")
+        return segments
+
+    except Exception as e:
+        logger.error(f"Diarization failed: {e}")
+        return []
+
+    finally:
+        # Cleanup temp directory
+        try:
+            import shutil
+            shutil.rmtree(temp_dir)
+        except Exception:
+            pass
+
+
+def merge_transcript_with_speakers(
+    transcript: str,
+    speaker_segments: List[Dict[str, Any]],
+    audio_duration: float | None = None
+) -> List[Dict[str, Any]]:
+    """
+    Merge ASR transcript with speaker diarization segments.
+
+    Since we don't have word-level timestamps from ASR,
+    we split the transcript proportionally across speaker segments.
+
+    Example:
+        ASR output: "hello how are you I am fine thanks"  (8 words)
+
+        Diarization segments:
+          - Speaker A: 0.0s - 2.0s  (2 sec, 40% of total)
+          - Speaker B: 2.0s - 5.0s  (3 sec, 60% of total)
+
+        Result (words split by duration ratio):
+          - Speaker A gets 40% of 8 words = 3 words: "hello how are"
+          - Speaker B gets 60% of 8 words = 5 words: "you I am fine thanks"
+
+        This is approximate - without word timestamps we can't know exactly
+        where speaker boundaries fall within the transcript.
+
+    !! LIMITATIONS (Important - Read Before Using) !!
+
+    1. ASSUMES CONSTANT SPEECH RATE
+       We assume all speakers talk at the same speed (words per second).
+       Reality: People talk at different speeds!
+
+       Example problem:
+         - Speaker A talks FAST: says 10 words in 2 seconds
+         - Speaker B talks SLOW: says 2 words in 3 seconds
+         - Total: 12 words in 5 seconds
+
+         Our algorithm:
+           - Speaker A (2s = 40%): gets 40% of 12 = 5 words  (WRONG! Should be 10)
+           - Speaker B (3s = 60%): gets 60% of 12 = 7 words  (WRONG! Should be 2)
+
+         Result: Speaker A's words are wrongly given to Speaker B!
+
+    2. SPEAKER BOUNDARIES ARE APPROXIMATE
+       A word might be spoken RIGHT at a speaker change, but we assign
+       the entire word to one speaker.
+
+       Example:
+         - Real audio: Speaker A says "hello how are" then Speaker B says "you"
+         - Diarization boundary: 1.5s (middle of "are")
+         - We can't split "are" - it goes entirely to one speaker
+
+    3. MANY SHORT SEGMENTS = INACCURATE
+       The more speaker turns there are, the more error accumulates.
+       Each proportional calculation has rounding error.
+
+       Example:
+         - 100 speaker turns with 200 words
+         - Each segment gets ~2 words on average
+         - Rounding errors: some segments get 1, some get 3
+         - After 100 segments, words are significantly misaligned
+
+    4. SILENCE IS NOT ACCOUNTED FOR
+       Diarization includes only speech segments. If there's silence
+       between speakers, we don't know about it.
+
+       Example:
+         - Audio: [Speaker A: 2s] [Silence: 5s] [Speaker B: 3s]
+         - Diarization: Speaker A (2s) + Speaker B (3s) = 5s total
+         - But the words were spoken over 10s of actual audio
+         - Our proportional split uses 5s, not 10s
+
+    5. MINIMUM 1 WORD PER SEGMENT
+       We force at least 1 word per segment (to avoid empty segments).
+       Very short segments may "steal" words from neighbors.
+
+       Example:
+         - Segment of 0.1s in 100s total with 500 words
+         - Should get: 0.1% of 500 = 0.5 words → rounds to 0
+         - We force: 1 word (which may belong to another speaker)
+
+    FUTURE IMPROVEMENT:
+       Use NeMo Forced Aligner (NFA) to get word-level timestamps.
+       This would allow precise speaker assignment at word boundaries.
+       See: https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/tools/nemo_forced_aligner.html
+
+    Args:
+        transcript: Full transcript text from ASR
+        speaker_segments: List from run_diarization()
+        audio_duration: Total audio duration (optional, for single-segment fallback)
+
+    Returns:
+        List of segments matching TranscriptionSegment format:
+        [{"id": int, "start": float, "end": float, "text": str, "speaker": str}, ...]
+    """
+    # =========================================================================
+    # STEP 1: Handle edge case - no diarization segments
+    # =========================================================================
+    if not speaker_segments:
+        # No diarization results - return the entire transcript as one segment
+        return [{
+            "id": 0,
+            "start": 0.0,
+            "end": audio_duration or 0.0,
+            "text": transcript,
+            "speaker": None
+        }]
+
+    # =========================================================================
+    # STEP 2: Prepare data for proportional splitting
+    # =========================================================================
+
+    # Sort diarization segments chronologically
+    # Input example: [{"start": 2.0, "duration": 3.0, "speaker": "speaker_1"},
+    #                 {"start": 0.0, "duration": 2.0, "speaker": "speaker_0"}]
+    # After sort:    [{"start": 0.0, ...}, {"start": 2.0, ...}]
+    sorted_segments = sorted(speaker_segments, key=lambda s: s["start"])
+
+    # Calculate total speaking time across all segments
+    # This is our denominator for calculating proportions
+    # Example: segment1 = 2.0s, segment2 = 3.0s → total = 5.0s
+    total_speaking_duration = sum(s["duration"] for s in sorted_segments)
+    if total_speaking_duration == 0:
+        total_speaking_duration = 1  # Avoid division by zero
+
+    # Split transcript into individual words for distribution
+    # Example: "hello how are you I am fine thanks" → ["hello", "how", "are", ...]
+    words = transcript.split() # This works because ASR output is without punctuation
+    total_words = len(words)  # Example: 8 words
+
+    # =========================================================================
+    # STEP 3: Distribute words across segments proportionally
+    # =========================================================================
+
+    result = []
+    word_index = 0  # Pointer tracking which word we're at in the words list
+
+    # Map internal speaker IDs (e.g., "speaker_0") to friendly names ("Speaker 1")
+    # We assign numbers in order of first appearance
+    speaker_map = {}
+    speaker_counter = 1
+
+    for i, seg in enumerate(sorted_segments):
+        speaker_id = seg["speaker"]  # e.g., "speaker_0"
+
+        # Assign friendly speaker name on first encounter
+        # Example: "speaker_0" → "Speaker 1", "speaker_1" → "Speaker 2"
+        if speaker_id not in speaker_map:
+            speaker_map[speaker_id] = f"Speaker {speaker_counter}"
+            speaker_counter += 1
+
+        # Calculate how many words this segment should get based on its duration
+        # Formula: words_for_segment = total_words * (segment_duration / total_duration)
+        #
+        # Example with 8 words, segment of 2s out of 5s total:
+        #   seg_ratio = 2.0 / 5.0 = 0.4 (40%)
+        #   words_for_segment = int(8 * 0.4) = 3 words
+        seg_ratio = seg["duration"] / total_speaking_duration
+        words_for_segment = max(1, int(total_words * seg_ratio))  # At least 1 word
+
+        # Extract words for this segment from our word list
+        if i == len(sorted_segments) - 1:
+            # LAST SEGMENT: Take all remaining words to avoid losing any
+            # This handles rounding errors (e.g., 8 words split 3+3 = 6, last gets remaining 2)
+            segment_words = words[word_index:]
+        else:
+            # NOT LAST: Take calculated number of words and advance pointer
+            segment_words = words[word_index:word_index + words_for_segment]
+            word_index += words_for_segment
+
+        # Skip if no words assigned (shouldn't happen, but safety check)
+        if not segment_words:
+            continue
+
+        # =====================================================================
+        # STEP 4: Build output segment with speaker label and timestamps
+        # =====================================================================
+        result.append({
+            "id": len(result),
+            "start": seg["start"],
+            "end": seg["start"] + seg["duration"],
+            "text": " ".join(segment_words),
+            "speaker": speaker_map[speaker_id] # Friendly name: "Speaker 1"
+        })
+
+    return result
+
+
+def format_transcript_with_speakers(segments: List[Dict[str, Any]]) -> str:
+    """
+    Format segments as speaker-labeled transcript text.
+
+    Consecutive segments from the same speaker are merged together,
+    producing a clean dialogue format where each speaker turn appears once.
+
+    Args:
+        segments: List of segments from merge_transcript_with_speakers().
+            Each segment should have 'speaker' and 'text' keys.
+
+    Returns:
+        Formatted string with speaker labels, e.g.:
+        "Speaker 1: Hello, how are you? Speaker 2: I'm doing well, thanks."
+
+    Example:
+        >>> segments = [
+        ...     {"speaker": "Speaker 1", "text": "Hello."},
+        ...     {"speaker": "Speaker 1", "text": "How are you?"},
+        ...     {"speaker": "Speaker 2", "text": "I'm fine."},
+        ... ]
+        >>> format_transcript_with_speakers(segments)
+        "Speaker 1: Hello. How are you? Speaker 2: I'm fine."
+    """
+    if not segments:
+        return ""
+
+    parts = []
+    current_speaker = None
+    current_text = []
+
+    for seg in segments:
+        speaker = seg.get("speaker")
+        text = seg.get("text", "")
+
+        if speaker != current_speaker:
+            # Flush previous speaker's text
+            if current_text and current_speaker:
+                parts.append(f"{current_speaker}: {' '.join(current_text)}")
+            current_speaker = speaker
+            current_text = [text] if text else []
+        else:
+            if text:
+                current_text.append(text)
+
+    # Flush final speaker's text
+    if current_text and current_speaker:
+        parts.append(f"{current_speaker}: {' '.join(current_text)}")
+
+    return " ".join(parts)
+
+
 def transcribe_audio(audio_path: str) -> str:
     """
     Transcribe audio file using PROTOVERB ASR model.
@@ -333,14 +924,20 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
             - punctuate: Whether to add punctuation (default: True)
             - denormalize: Whether to denormalize text (default: True)
             - denormalize_style: Denormalization style (default: "default")
+            - enable_diarization: Whether to identify speakers (default: False)
+            - speaker_count: Known number of speakers, null for auto-detect (default: null)
+            - max_speakers: Maximum speakers for auto-detect (default: 10)
 
     Returns:
         dict with:
-            - text: Final processed text
-            - raw_text: Original ASR output
+            - text: Final processed text (with speaker labels if diarization enabled)
+            - raw_text: Original ASR output (no punctuation/denormalization)
             - processing_time: Time taken in seconds
             - pipeline: List of processing steps applied
             - model_version: Model version identifier
+            - diarization_applied: Whether diarization was applied
+            - speaker_count_detected: Number of speakers detected (if diarization)
+            - segments: List of segments with speaker labels (if diarization)
         OR
             - error: Error message if processing failed
     """
@@ -354,12 +951,29 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
     do_denormalize = job_input.get("denormalize", True)
     denormalize_style = job_input.get("denormalize_style", "default")
 
+    # Diarization options (default: disabled)
+    do_diarization = job_input.get("enable_diarization", False)
+    speaker_count = job_input.get("speaker_count", None)  # None = auto-detect
+    max_speakers = job_input.get("max_speakers", 10)
+
+    # Validate speaker_count
+    if speaker_count is not None:
+        if not isinstance(speaker_count, int) or speaker_count < 1 or speaker_count > 20:
+            logger.warning(f"Invalid speaker_count '{speaker_count}', using auto-detect")
+            speaker_count = None
+
+    # Validate max_speakers
+    if not isinstance(max_speakers, int) or max_speakers < 1 or max_speakers > 20:
+        logger.warning(f"Invalid max_speakers '{max_speakers}', using 10")
+        max_speakers = 10
+
     # Load required models (parallel if multiple needed)
     try:
         load_models_parallel(
             need_asr=True,
             need_punct=do_punctuate,
-            need_denorm=do_denormalize
+            need_denorm=do_denormalize,
+            need_diarization=do_diarization
         )
     except Exception as e:
         return {"error": f"Failed to load models: {str(e)}"}
@@ -399,27 +1013,89 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
             tmp_path = tmp.name
 
         logger.info(f"Processing {filename} ({len(audio_bytes)} bytes)")
-        logger.info(f"Options: punctuate={do_punctuate}, denormalize={do_denormalize}, style={denormalize_style}")
+        logger.info(
+            f"Options: punctuate={do_punctuate}, denormalize={do_denormalize}, "
+            f"style={denormalize_style}, diarization={do_diarization}, "
+            f"speaker_count={speaker_count}, max_speakers={max_speakers}"
+        )
 
-        # Step 1: ASR transcription
-        raw_text = transcribe_audio(tmp_path)
-        pipeline_steps.append("asr")
-        logger.info(f"ASR complete: {len(raw_text)} chars")
+        # Run ASR and diarization (parallel if diarization enabled)
+        raw_text = ""
+        speaker_segments = []
+        diarization_applied = False
 
-        # Start with raw text
+        if do_diarization:
+            # Run ASR and diarization in parallel
+            logger.info("Running ASR and diarization in parallel")
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                asr_future = executor.submit(transcribe_audio, tmp_path)
+                diar_future = executor.submit(
+                    run_diarization, tmp_path, speaker_count, max_speakers
+                )
+
+                # Wait for both to complete
+                raw_text = asr_future.result()
+                speaker_segments = diar_future.result()
+
+            pipeline_steps.append("asr")
+            logger.info(f"ASR complete: {len(raw_text)} chars")
+
+            if speaker_segments:
+                pipeline_steps.append("diarize")
+                diarization_applied = True
+                logger.info(f"Diarization complete: {len(speaker_segments)} segments")
+            else:
+                logger.warning("Diarization returned no segments")
+        else:
+            # ASR only
+            raw_text = transcribe_audio(tmp_path)
+            pipeline_steps.append("asr")
+            logger.info(f"ASR complete: {len(raw_text)} chars")
+
+        # Process text based on diarization results
+        segments = []
         text = raw_text
+        speaker_count_detected = 0
 
-        # Step 2: Punctuation (optional)
-        if do_punctuate and PUNCTUATOR_MODEL is not None:
-            text = apply_punctuation(text)
-            pipeline_steps.append("punctuate")
-            logger.info(f"Punctuation complete: {len(text)} chars")
+        if diarization_applied and speaker_segments:
+            # Merge transcript with speaker segments
+            segments = merge_transcript_with_speakers(raw_text, speaker_segments)
 
-        # Step 3: Denormalization (optional)
-        if do_denormalize and DENORMALIZER is not None:
-            text = apply_denormalization(text, style=denormalize_style)
-            pipeline_steps.append("denormalize")
-            logger.info(f"Denormalization complete: {len(text)} chars")
+            # Count unique speakers
+            unique_speakers = set(seg.get("speaker") for seg in segments if seg.get("speaker"))
+            speaker_count_detected = len(unique_speakers)
+
+            # Apply punctuation and denormalization per segment
+            for seg in segments:
+                seg_text = seg["text"]
+
+                if do_punctuate and PUNCTUATOR_MODEL is not None:
+                    seg_text = apply_punctuation(seg_text)
+
+                if do_denormalize and DENORMALIZER is not None:
+                    seg_text = apply_denormalization(seg_text, style=denormalize_style)
+
+                seg["text"] = seg_text
+
+            if do_punctuate and PUNCTUATOR_MODEL is not None:
+                pipeline_steps.append("punctuate")
+            if do_denormalize and DENORMALIZER is not None:
+                pipeline_steps.append("denormalize")
+
+            # Format combined text with speaker labels
+            text = format_transcript_with_speakers(segments)
+            logger.info(f"Merged text with {speaker_count_detected} speakers: {len(text)} chars")
+        else:
+            # No diarization - apply punctuation and denormalization to full text
+            if do_punctuate and PUNCTUATOR_MODEL is not None:
+                text = apply_punctuation(text)
+                pipeline_steps.append("punctuate")
+                logger.info(f"Punctuation complete: {len(text)} chars")
+
+            if do_denormalize and DENORMALIZER is not None:
+                text = apply_denormalization(text, style=denormalize_style)
+                pipeline_steps.append("denormalize")
+                logger.info(f"Denormalization complete: {len(text)} chars")
 
         processing_time = time.time() - start_time
 
@@ -428,13 +1104,21 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
             f"time={processing_time:.2f}s, output={len(text)} chars"
         )
 
-        return {
+        result = {
             "text": text,
             "raw_text": raw_text,
             "processing_time": processing_time,
             "pipeline": pipeline_steps,
-            "model_version": MODEL_VERSION
+            "model_version": MODEL_VERSION,
+            "diarization_applied": diarization_applied,
         }
+
+        # Add diarization-specific fields
+        if diarization_applied:
+            result["speaker_count_detected"] = speaker_count_detected
+            result["segments"] = segments
+
+        return result
 
     except Exception as e:
         logger.error(f"Processing failed: {e}")

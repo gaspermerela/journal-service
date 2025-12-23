@@ -1,9 +1,12 @@
 # RunPod Serverless Container for Slovenian ASR with NLP Pipeline
 #
 # This Dockerfile creates a container that runs the PROTOVERB NeMo model
-# for Slovenian speech-to-text with optional punctuation and denormalization.
+# for Slovenian speech-to-text with optional punctuation, denormalization,
+# and speaker diarization.
 #
-# Pipeline: Audio -> ASR (PROTOVERB) -> Punctuation -> Denormalization
+# Pipeline:
+#   Without diarization: Audio -> ASR -> Punctuation -> Denormalization
+#   With diarization: Audio -> ASR + Diarization -> Merge -> Punctuation -> Denormalization
 #
 # Build for RunPod (from runpod/ directory):
 #   docker buildx build --platform linux/amd64 -t YOUR_DOCKERHUB/slovene-asr-pipeline:v2.0 --push .
@@ -87,6 +90,14 @@ RUN python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')"
 RUN python -c "from transformers import AutoModel, AutoTokenizer; \
     AutoModel.from_pretrained('EMBEDDIA/sloberta'); \
     AutoTokenizer.from_pretrained('EMBEDDIA/sloberta')"
+
+# Pre-download diarization models (VAD and speaker embedding)
+# MarbleNet for Voice Activity Detection (~5MB)
+# TitaNet-Large for speaker embeddings (~60MB)
+RUN python -c "from nemo.collections.asr.models import EncDecClassificationModel; \
+    EncDecClassificationModel.from_pretrained('vad_marblenet')"
+RUN python -c "from nemo.collections.asr.models import EncDecSpeakerLabelModel; \
+    EncDecSpeakerLabelModel.from_pretrained('titanet_large')"
 
 # =============================================================================
 # LAYER 5: Application code (changes frequently - LAST for best caching)
