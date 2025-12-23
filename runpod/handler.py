@@ -11,11 +11,11 @@ Pipeline:
 
     With diarization:
         Audio -> ASR (PROTOVERB) ─┬─> NFA alignment ──┬─> Merge -> Punctuation -> Denormalization
-                                  │                   │
-                                  └─> Diarization ────┘
+                                  │                      │                                    │
+                                  └─> Diarization  ────────────────┘
 
     NFA (NeMo Forced Aligner) provides word-level timestamps for precise speaker assignment.
-    If NFA fails, falls back to proportional word splitting.
+    If NFA fails, diarization is skipped.
 
 Input:
     {
@@ -712,15 +712,33 @@ def run_forced_alignment(
     transcript: str
 ) -> List[Dict[str, Any]]:
     """
-    Run NeMo Forced Aligner to get word-level timestamps.
+    Run NeMo Forced Aligner (NFA) to get word-level timestamps.
 
-    NFA uses the same CTC model as ASR (PROTOVERB) to align the transcript
-    to the audio, producing precise timestamps for each word.
+    ## What is Forced Alignment?
 
-    The alignment works by:
-    1. Creating a manifest file with audio path and transcript
-    2. Running NFA which uses Viterbi decoding on the CTC model
-    3. Parsing the CTM output files containing word timestamps
+    Forced alignment answers: "Given audio and its transcript, WHEN was each word spoken?"
+
+    Unlike ASR (which discovers WHAT was said), forced alignment already knows the text
+    and just needs to find WHERE each word occurs in the audio timeline.
+
+    ## How it works (CTC + Viterbi)
+
+    PROTOVERB is a CTC (Connectionist Temporal Classification) model:
+    - CTC outputs a probability distribution over characters for each audio frame (~20ms)
+    - Example: frame 15 might be 80% "a", 10% "b", 10% blank
+    - During ASR, we find the most likely CHARACTER sequence
+    - During alignment, we already KNOW the characters and find their most likely TIMES
+
+    Viterbi algorithm finds the optimal alignment:
+    - Dynamic programming algorithm that finds the most probable path through the CTC output
+    - Given transcript "hello", it finds which frames most likely correspond to h-e-l-l-o
+    - Output: frame ranges for each character, aggregated into word timestamps
+
+    ## Pipeline
+
+    1. Create manifest (JSON file linking audio + transcript)
+    2. Run NFA with the CTC model (reuses PROTOVERB - no extra model needed)
+    3. Parse CTM output files containing word timestamps
 
     Args:
         audio_path: Path to audio file (WAV format)
@@ -728,7 +746,7 @@ def run_forced_alignment(
 
     Returns:
         List of word timestamps: [{"word": str, "start": float, "end": float}, ...]
-        Empty list if alignment fails (triggers fallback to proportional merge).
+        Empty list if alignment fails (speaker attribution will be skipped).
     """
     global ASR_MODEL
 
@@ -749,7 +767,15 @@ def run_forced_alignment(
     os.makedirs(output_dir, exist_ok=True)
 
     try:
-        # Create manifest file for NFA (JSON lines format)
+        # MANIFEST FILE
+        # NeMo tools use JSON manifest files to specify input data.
+        # Each line is a JSON object with audio path and metadata.
+        # For NFA, we provide the transcript text that needs to be aligned.
+        #
+        # Format (JSON Lines - one JSON object per line):
+        #   {"audio_filepath": "/path/to/audio.wav", "text": "transcript here"}
+        #
+        # Why manifest? Allows batch processing of multiple files with one config.
         manifest = {
             "audio_filepath": audio_path,
             "text": transcript
@@ -757,7 +783,7 @@ def run_forced_alignment(
 
         with open(manifest_path, "w") as f:
             json.dump(manifest, f)
-            f.write("\n")
+            f.write("\n")  # JSON Lines format requires newline
 
         logger.info(f"Running forced alignment on {audio_path} ({len(transcript.split())} words)")
         start_time = time.time()
@@ -767,8 +793,10 @@ def run_forced_alignment(
             from nemo.collections.asr.models import ASRModel
             from omegaconf import OmegaConf
 
-            # NFA config for alignment
-            # Uses the loaded ASR model to align transcript to audio
+            # NFA configuration
+            # The aligner reuses our loaded CTC model (PROTOVERB) - no separate model needed.
+            # This is possible because CTC models naturally produce frame-level outputs
+            # that can be decoded into alignments using the Viterbi algorithm.
             aligner_config = OmegaConf.create({
                 "model_path": ASR_MODEL_PATH,
                 "manifest_filepath": manifest_path,
@@ -777,18 +805,31 @@ def run_forced_alignment(
                 "additional_ctm_grouping_separator": " ",
             })
 
-            # Run alignment - this creates CTM files in output_dir
-            # NFA uses Viterbi decoding to find optimal alignment
+            # VITERBI ALIGNMENT
+            # The CTC model processes audio and outputs per-frame character probabilities.
+            # Viterbi algorithm then finds the optimal path through these probabilities
+            # that matches our known transcript, giving us character-level timestamps.
+            # These are aggregated into word-level timestamps in the CTM output.
             ASR_MODEL.transcribe(
                 [audio_path],
                 batch_size=1,
             )
 
-            # Look for CTM output files
+            # CTM (Conversation Time Mark) FILES
+            # Standard format for word/phone alignments, used in speech research.
+            # Format: <utterance_id> <channel> <start_time> <duration> <word>
+            #
+            # Example CTM output:
+            #   audio 1 0.320 0.240 pozdravljeni
+            #   audio 1 0.560 0.180 kako
+            #   audio 1 0.740 0.120 ste
+            #
+            # This tells us "pozdravljeni" starts at 0.32s and lasts 0.24s (ends at 0.56s)
             ctm_words_dir = os.path.join(output_dir, "ctm", "words")
             ctm_files = []
 
             # Check multiple possible locations for CTM files
+            # (NeMo version differences may place output in different subdirectories)
             for subdir in ["ctm/words", "ctm", ""]:
                 check_dir = os.path.join(output_dir, subdir) if subdir else output_dir
                 if os.path.exists(check_dir):
@@ -946,193 +987,6 @@ def merge_words_with_speakers(
     return result
 
 
-def merge_transcript_with_speakers(
-    transcript: str,
-    speaker_segments: List[Dict[str, Any]],
-    audio_duration: float | None = None
-) -> List[Dict[str, Any]]:
-    """
-    Merge ASR transcript with speaker diarization segments.
-
-    Since we don't have word-level timestamps from ASR,
-    we split the transcript proportionally across speaker segments.
-
-    Example:
-        ASR output: "hello how are you I am fine thanks"  (8 words)
-
-        Diarization segments:
-          - Speaker A: 0.0s - 2.0s  (2 sec, 40% of total)
-          - Speaker B: 2.0s - 5.0s  (3 sec, 60% of total)
-
-        Result (words split by duration ratio):
-          - Speaker A gets 40% of 8 words = 3 words: "hello how are"
-          - Speaker B gets 60% of 8 words = 5 words: "you I am fine thanks"
-
-        This is approximate - without word timestamps we can't know exactly
-        where speaker boundaries fall within the transcript.
-
-    !! LIMITATIONS (Important - Read Before Using) !!
-
-    1. ASSUMES CONSTANT SPEECH RATE
-       We assume all speakers talk at the same speed (words per second).
-       Reality: People talk at different speeds!
-
-       Example problem:
-         - Speaker A talks FAST: says 10 words in 2 seconds
-         - Speaker B talks SLOW: says 2 words in 3 seconds
-         - Total: 12 words in 5 seconds
-
-         Our algorithm:
-           - Speaker A (2s = 40%): gets 40% of 12 = 5 words  (WRONG! Should be 10)
-           - Speaker B (3s = 60%): gets 60% of 12 = 7 words  (WRONG! Should be 2)
-
-         Result: Speaker A's words are wrongly given to Speaker B!
-
-    2. SPEAKER BOUNDARIES ARE APPROXIMATE
-       A word might be spoken RIGHT at a speaker change, but we assign
-       the entire word to one speaker.
-
-       Example:
-         - Real audio: Speaker A says "hello how are" then Speaker B says "you"
-         - Diarization boundary: 1.5s (middle of "are")
-         - We can't split "are" - it goes entirely to one speaker
-
-    3. MANY SHORT SEGMENTS = INACCURATE
-       The more speaker turns there are, the more error accumulates.
-       Each proportional calculation has rounding error.
-
-       Example:
-         - 100 speaker turns with 200 words
-         - Each segment gets ~2 words on average
-         - Rounding errors: some segments get 1, some get 3
-         - After 100 segments, words are significantly misaligned
-
-    4. SILENCE IS NOT ACCOUNTED FOR
-       Diarization includes only speech segments. If there's silence
-       between speakers, we don't know about it.
-
-       Example:
-         - Audio: [Speaker A: 2s] [Silence: 5s] [Speaker B: 3s]
-         - Diarization: Speaker A (2s) + Speaker B (3s) = 5s total
-         - But the words were spoken over 10s of actual audio
-         - Our proportional split uses 5s, not 10s
-
-    5. MINIMUM 1 WORD PER SEGMENT
-       We force at least 1 word per segment (to avoid empty segments).
-       Very short segments may "steal" words from neighbors.
-
-       Example:
-         - Segment of 0.1s in 100s total with 500 words
-         - Should get: 0.1% of 500 = 0.5 words → rounds to 0
-         - We force: 1 word (which may belong to another speaker)
-
-    FUTURE IMPROVEMENT:
-       Use NeMo Forced Aligner (NFA) to get word-level timestamps.
-       This would allow precise speaker assignment at word boundaries.
-       See: https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/tools/nemo_forced_aligner.html
-
-    Args:
-        transcript: Full transcript text from ASR
-        speaker_segments: List from run_diarization()
-        audio_duration: Total audio duration (optional, for single-segment fallback)
-
-    Returns:
-        List of segments matching TranscriptionSegment format:
-        [{"id": int, "start": float, "end": float, "text": str, "speaker": str}, ...]
-    """
-    # =========================================================================
-    # STEP 1: Handle edge case - no diarization segments
-    # =========================================================================
-    if not speaker_segments:
-        # No diarization results - return the entire transcript as one segment
-        return [{
-            "id": 0,
-            "start": 0.0,
-            "end": audio_duration or 0.0,
-            "text": transcript,
-            "speaker": None
-        }]
-
-    # =========================================================================
-    # STEP 2: Prepare data for proportional splitting
-    # =========================================================================
-
-    # Sort diarization segments chronologically
-    # Input example: [{"start": 2.0, "duration": 3.0, "speaker": "speaker_1"},
-    #                 {"start": 0.0, "duration": 2.0, "speaker": "speaker_0"}]
-    # After sort:    [{"start": 0.0, ...}, {"start": 2.0, ...}]
-    sorted_segments = sorted(speaker_segments, key=lambda s: s["start"])
-
-    # Calculate total speaking time across all segments
-    # This is our denominator for calculating proportions
-    # Example: segment1 = 2.0s, segment2 = 3.0s → total = 5.0s
-    total_speaking_duration = sum(s["duration"] for s in sorted_segments)
-    if total_speaking_duration == 0:
-        total_speaking_duration = 1  # Avoid division by zero
-
-    # Split transcript into individual words for distribution
-    # Example: "hello how are you I am fine thanks" → ["hello", "how", "are", ...]
-    words = transcript.split() # This works because ASR output is without punctuation
-    total_words = len(words)  # Example: 8 words
-
-    # =========================================================================
-    # STEP 3: Distribute words across segments proportionally
-    # =========================================================================
-
-    result = []
-    word_index = 0  # Pointer tracking which word we're at in the words list
-
-    # Map internal speaker IDs (e.g., "speaker_0") to friendly names ("Speaker 1")
-    # We assign numbers in order of first appearance
-    speaker_map = {}
-    speaker_counter = 1
-
-    for i, seg in enumerate(sorted_segments):
-        speaker_id = seg["speaker"]  # e.g., "speaker_0"
-
-        # Assign friendly speaker name on first encounter
-        # Example: "speaker_0" → "Speaker 1", "speaker_1" → "Speaker 2"
-        if speaker_id not in speaker_map:
-            speaker_map[speaker_id] = f"Speaker {speaker_counter}"
-            speaker_counter += 1
-
-        # Calculate how many words this segment should get based on its duration
-        # Formula: words_for_segment = total_words * (segment_duration / total_duration)
-        #
-        # Example with 8 words, segment of 2s out of 5s total:
-        #   seg_ratio = 2.0 / 5.0 = 0.4 (40%)
-        #   words_for_segment = int(8 * 0.4) = 3 words
-        seg_ratio = seg["duration"] / total_speaking_duration
-        words_for_segment = max(1, int(total_words * seg_ratio))  # At least 1 word
-
-        # Extract words for this segment from our word list
-        if i == len(sorted_segments) - 1:
-            # LAST SEGMENT: Take all remaining words to avoid losing any
-            # This handles rounding errors (e.g., 8 words split 3+3 = 6, last gets remaining 2)
-            segment_words = words[word_index:]
-        else:
-            # NOT LAST: Take calculated number of words and advance pointer
-            segment_words = words[word_index:word_index + words_for_segment]
-            word_index += words_for_segment
-
-        # Skip if no words assigned (shouldn't happen, but safety check)
-        if not segment_words:
-            continue
-
-        # =====================================================================
-        # STEP 4: Build output segment with speaker label and timestamps
-        # =====================================================================
-        result.append({
-            "id": len(result),
-            "start": seg["start"],
-            "end": seg["start"] + seg["duration"],
-            "text": " ".join(segment_words),
-            "speaker": speaker_map[speaker_id] # Friendly name: "Speaker 1"
-        })
-
-    return result
-
-
 def format_transcript_with_speakers(segments: List[Dict[str, Any]]) -> str:
     """
     Format segments as speaker-labeled transcript text.
@@ -1141,7 +995,7 @@ def format_transcript_with_speakers(segments: List[Dict[str, Any]]) -> str:
     producing a clean dialogue format where each speaker turn appears once.
 
     Args:
-        segments: List of segments from merge_transcript_with_speakers().
+        segments: List of segments from merge_words_with_speakers().
             Each segment should have 'speaker' and 'text' keys.
 
     Returns:
@@ -1341,7 +1195,7 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
                 nfa_applied = True
                 logger.info(f"NFA alignment complete: {len(word_timestamps)} words")
             else:
-                logger.warning("NFA alignment failed, will use proportional fallback")
+                logger.warning("NFA alignment failed - speaker attribution will be skipped")
 
             if speaker_segments:
                 pipeline_steps.append("diarize")
@@ -1361,15 +1215,17 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
         speaker_count_detected = 0
 
         if diarization_applied and speaker_segments:
-            # Choose merge strategy based on NFA success
+            # NFA is required for accurate speaker attribution
             if nfa_applied and word_timestamps:
                 # Use precise word-level merge
                 logger.info("Using word-level merge (NFA)")
                 segments = merge_words_with_speakers(word_timestamps, speaker_segments)
             else:
-                # Fallback to proportional merge
-                logger.info("Using proportional merge (fallback)")
-                segments = merge_transcript_with_speakers(raw_text, speaker_segments)
+                # NFA failed - cannot do accurate speaker attribution
+                # Skip diarization rather than provide inaccurate results
+                logger.warning("NFA failed - skipping speaker attribution (would be inaccurate)")
+                diarization_applied = False
+                segments = []
 
             # Count unique speakers
             unique_speakers = set(seg.get("speaker") for seg in segments if seg.get("speaker"))
@@ -1427,7 +1283,7 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
         if diarization_applied:
             result["speaker_count_detected"] = speaker_count_detected
             result["segments"] = segments
-            # Indicate whether word-level timestamps were used (NFA) vs proportional splitting
+            # Indicates NFA was used for precise word-level timestamps
             result["word_level_timestamps"] = nfa_applied
 
         return result
