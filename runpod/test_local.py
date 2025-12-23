@@ -147,17 +147,33 @@ def print_result(result: dict, punctuate: bool, denormalize: bool, style: str, d
         print()
         step_num += 1
 
+    if "align" in pipeline:
+        print(f" [{step_num}] NFA Alignment (word-level timestamps)")
+        print(f"     -> Word timestamps extracted for precise speaker assignment")
+        print()
+        step_num += 1
+
     if "diarize" in pipeline:
         speaker_count = result.get("speaker_count_detected", 0)
         segments = result.get("segments", [])
+        word_level = result.get("word_level_timestamps", False)
+        merge_method = "word-level (NFA)" if word_level else "proportional (fallback)"
         print(f" [{step_num}] Diarization ({speaker_count} speakers, {len(segments)} segments)")
+        print(f"     Merge method: {merge_method}")
 
         # Show all segments in verbose mode, otherwise first 5
         segments_to_show = segments if verbose else segments[:5]
         for seg in segments_to_show:
             text = seg.get('text', '')
             text_display = f"{text[:50]}..." if len(text) > 50 and not verbose else text
-            print(f"     {seg.get('speaker')}: [{seg.get('start', 0):.1f}s-{seg.get('end', 0):.1f}s] \"{text_display}\"")
+            print(f"     {seg.get('speaker')}: [{seg.get('start', 0):.2f}s-{seg.get('end', 0):.2f}s] \"{text_display}\"")
+
+            # Show word-level details in verbose mode if available
+            if verbose and "words" in seg:
+                for word_info in seg["words"][:10]:  # Limit to first 10 words
+                    print(f"       • \"{word_info['word']}\" [{word_info['start']:.2f}s-{word_info['end']:.2f}s]")
+                if len(seg.get("words", [])) > 10:
+                    print(f"       ... and {len(seg['words']) - 10} more words")
 
         if not verbose and len(segments) > 5:
             print(f"     ... and {len(segments) - 5} more segments (use --verbose to see all)")
@@ -188,6 +204,10 @@ def print_result(result: dict, punctuate: bool, denormalize: bool, style: str, d
     print(f" Steps: {' -> '.join(pipeline)}")
     if result.get("diarization_applied"):
         print(f" Speakers: {result.get('speaker_count_detected', 0)}")
+        if result.get("word_level_timestamps"):
+            print(f" Word timestamps: Yes (NFA)")
+        else:
+            print(f" Word timestamps: No (proportional fallback)")
     print("=" * 70)
     print()
 
