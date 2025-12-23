@@ -75,6 +75,19 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize encryption service: {e}", exc_info=True)
         raise RuntimeError(f"Cannot start application without encryption service: {e}") from e
 
+    # Initialize Slovenian spell-check service (optional - graceful degradation)
+    if settings.SPELLCHECK_ENABLED:
+        from app.services.spellcheck import initialize_slovenian_spellcheck
+        try:
+            if initialize_slovenian_spellcheck():
+                logger.info("Slovenian spell-check service initialized")
+            else:
+                logger.warning("Slovenian spell-check service failed to initialize (spell-check disabled)")
+        except Exception as e:
+            logger.warning(f"Spell-check initialization error (disabled): {e}")
+    else:
+        logger.info("Spell-check service disabled via configuration")
+
     yield
 
     # Shutdown

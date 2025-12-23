@@ -30,6 +30,7 @@ from app.services.provider_registry import (
     get_llm_service_for_provider,
 )
 from app.config import settings
+from app.services.spellcheck import get_slovenian_spellcheck_service
 from app.utils.encryption_helpers import (
     decrypt_text,
     encrypt_text,
@@ -467,6 +468,26 @@ async def get_cleaned_entry(
             user_id=current_user.id,
         )
 
+    # Run spell-check for Slovenian text (on-the-fly)
+    spelling_issues = None
+    if (
+        decrypted_text
+        and cleaned_entry.status == CleanupStatus.COMPLETED
+        and settings.SPELLCHECK_ENABLED
+    ):
+        # Get transcription to check language
+        # TODO: Maybe add language to cleanup table as well?
+        transcription = await db_service.get_transcription_by_id(
+            db=db,
+            transcription_id=cleaned_entry.transcription_id,
+        )
+        if transcription and transcription.language_code == "sl":
+            spellcheck_service = get_slovenian_spellcheck_service()
+            if spellcheck_service and spellcheck_service.is_loaded():
+                # Use user-edited text if available, otherwise use cleaned text
+                text_to_check = decrypted_user_edit or decrypted_text
+                spelling_issues = spellcheck_service.check_text(text_to_check)
+
     return CleanedEntryDetail(
         id=cleaned_entry.id,
         voice_entry_id=cleaned_entry.voice_entry_id,
@@ -489,6 +510,7 @@ async def get_cleaned_entry(
         prompt_description=cleaned_entry.prompt_template.description if cleaned_entry.prompt_template else None,
         user_edited_text=decrypted_user_edit,
         user_edited_at=cleaned_entry.user_edited_at,
+        spelling_issues=spelling_issues,
     )
 
 

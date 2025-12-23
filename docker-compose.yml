@@ -32,6 +32,7 @@ services:
     # Mount volumes for persistent data
     volumes:
       - ${AUDIO_STORAGE_PATH_HOST:-./data/audio}:/app/data/audio
+      - ${CACHE_PATH_HOST:-./data/cache}:/app/data/cache  # Spell-check pickle cache (persists across restarts)
 
     # Logging configuration
     logging:

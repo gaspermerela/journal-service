@@ -111,6 +111,15 @@ class Settings(BaseSettings):
     # Envelope Encryption Configuration
     ENCRYPTION_PROVIDER: str = "local"  # Options: local (future: aws-kms, gcp-kms)
 
+    # Spell-check Configuration
+    SPELLCHECK_ENABLED: bool = True  # Enable spell-checking for supported languages
+    SPELLCHECK_WORDLIST_PATH: str = "/app/data/dictionaries/sl-words.txt"  # Word list (baked into image)
+    SPELLCHECK_CACHE_PATH: str = "/app/data/cache"  # Pickle cache (mounted volume for persistence)
+    SPELLCHECK_MAX_EDIT_DISTANCE: int = 2  # Max edit distance for suggestions (1-3)
+    SPELLCHECK_PREFIX_LENGTH: int = 7  # SymSpell optimization parameter
+    SPELLCHECK_SUGGESTION_COUNT: int = 5  # Max suggestions per misspelled word
+    SPELLCHECK_MIN_WORD_LENGTH: int = 2  # Skip words shorter than this
+
     # Test Configuration (Optional - only used in E2E tests)
     NOTION_TEST_API_KEY: Optional[str] = None
     NOTION_TEST_DATABASE_ID: Optional[str] = None
