@@ -50,7 +50,7 @@ class TranscriptionTriggerRequest(BaseModel):
     )
     transcription_provider: Optional[str] = Field(
         default=None,
-        description="Transcription provider (e.g., 'groq', 'assemblyai', 'clarinsi_slovene_asr'). If not provided, uses configured default."
+        description="Transcription provider (e.g., 'groq', 'assemblyai', 'clarin-slovene-asr-pyannote'). If not provided, uses configured default."
     )
     enable_diarization: bool = Field(
         default=False,

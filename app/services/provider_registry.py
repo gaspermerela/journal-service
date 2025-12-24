@@ -25,9 +25,18 @@ TRANSCRIPTION_PROVIDERS: Dict[str, Dict[str, Any]] = {
         "required_settings": ["ASSEMBLYAI_API_KEY"],
         "description": "AssemblyAI API"
     },
-    "clarinsi_slovene_asr": {
-        "required_settings": ["RUNPOD_API_KEY", "RUNPOD_ENDPOINT_ID"],
-        "description": "RunPod RSDO Slovenian ASR"
+    # Slovenian ASR pipelines with diarization support
+    "clarin-slovene-asr-nfa": {
+        "required_settings": ["RUNPOD_API_KEY", "SLOVENE_ASR_NFA_ENDPOINT_ID"],
+        "description": "Slovenian ASR with NeMo diarization + NFA alignment"
+    },
+    "clarin-slovene-asr-mms": {
+        "required_settings": ["RUNPOD_API_KEY", "SLOVENE_ASR_MMS_ENDPOINT_ID"],
+        "description": "Slovenian ASR with NeMo diarization + MMS alignment"
+    },
+    "clarin-slovene-asr-pyannote": {
+        "required_settings": ["RUNPOD_API_KEY", "SLOVENE_ASR_PYANNOTE_ENDPOINT_ID"],
+        "description": "Slovenian ASR with pyannote 3.1 diarization (best quality)"
     },
     "noop": {
         "required_settings": [],  # Always available for testing
@@ -73,7 +82,7 @@ def is_transcription_provider_configured(provider: str) -> bool:
     Check if a transcription provider has all required settings configured.
 
     Args:
-        provider: Provider name (e.g., "groq", "assemblyai", "clarinsi_slovene_asr")
+        provider: Provider name (e.g., "groq", "assemblyai", "clarin-slovene-asr-pyannote")
 
     Returns:
         True if provider is valid and configured, False otherwise
@@ -161,7 +170,7 @@ def get_transcription_service_for_provider(provider: str) -> TranscriptionServic
     Uses settings to get API keys and configuration.
 
     Args:
-        provider: Provider name (e.g., "groq", "assemblyai", "clarinsi_slovene_asr")
+        provider: Provider name (e.g., "groq", "assemblyai", "clarin-slovene-asr-pyannote")
 
     Returns:
         TranscriptionService instance
@@ -199,12 +208,26 @@ def get_transcription_service_for_provider(provider: str) -> TranscriptionServic
             api_key=settings.ASSEMBLYAI_API_KEY,
             model_name=settings.ASSEMBLYAI_MODEL
         )
-    elif provider == "clarinsi_slovene_asr":
+    elif provider == "clarin-slovene-asr-nfa":
         return create_transcription_service(
-            provider="clarinsi_slovene_asr",
+            provider="clarin-slovene-asr",
             api_key=settings.RUNPOD_API_KEY,
-            endpoint_id=settings.RUNPOD_ENDPOINT_ID,
-            model_name=settings.RUNPOD_MODEL
+            endpoint_id=settings.SLOVENE_ASR_NFA_ENDPOINT_ID,
+            variant="nfa"
+        )
+    elif provider == "clarin-slovene-asr-mms":
+        return create_transcription_service(
+            provider="clarin-slovene-asr",
+            api_key=settings.RUNPOD_API_KEY,
+            endpoint_id=settings.SLOVENE_ASR_MMS_ENDPOINT_ID,
+            variant="mms"
+        )
+    elif provider == "clarin-slovene-asr-pyannote":
+        return create_transcription_service(
+            provider="clarin-slovene-asr",
+            api_key=settings.RUNPOD_API_KEY,
+            endpoint_id=settings.SLOVENE_ASR_PYANNOTE_ENDPOINT_ID,
+            variant="pyannote"
         )
     elif provider == "noop":
         from app.services.transcription_noop import NoOpTranscriptionService
