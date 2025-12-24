@@ -1,7 +1,7 @@
 # RunPod Handler Dependencies
 # These are installed in the Docker image
 
-# NeMo ASR toolkit (required by RSDO model)
+# NeMo ASR toolkit (required by PROTOVERB model)
 nemo_toolkit[asr]==1.21.0
 
 # RunPod serverless SDK
@@ -9,6 +9,10 @@ runpod>=1.6.0
 
 # Audio file handling
 soundfile>=0.12.1
+
+# pyannote speaker diarization (replaces NeMo ClusteringDiarizer)
+# MIT license, requires HuggingFace token for model download
+pyannote.audio==3.1.1
 
 # NFA (Forced Alignment) for word-level timestamps
 # Uses aligner_utils.py copied from NeMo 2.x (compatible with 1.21.0)

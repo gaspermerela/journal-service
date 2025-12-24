@@ -1,20 +1,26 @@
 """
-RunPod serverless handler for Slovenian ASR with NLP pipeline and speaker diarization.
+RunPod serverless handler for Slovenian ASR with pyannote speaker diarization.
 
 This handler runs on RunPod serverless GPU and processes audio transcription
 requests using the PROTOVERB NeMo model with optional punctuation, denormalization,
-and speaker diarization.
+and speaker diarization using pyannote (instead of NeMo ClusteringDiarizer).
+
+Key difference from nemo-protoverb-nfa:
+    - Uses pyannote speaker-diarization-3.1 instead of NeMo ClusteringDiarizer
+    - Produces 10x fewer segments (126 vs 1200+ for 30-min audio)
+    - Better overlap detection
+    - MIT license (vs Apache 2.0 for NeMo)
 
 Pipeline:
     Without diarization:
         Audio -> ASR (PROTOVERB) -> Punctuation (optional) -> Denormalization (optional)
 
     With diarization (DIARIZE-FIRST architecture):
-        Audio -> Diarization -> Pre-merge -> [ASR + NFA per segment] -> Merge -> Punct -> Denorm
+        Audio -> pyannote -> Pre-merge -> [ASR + NFA per segment] -> Merge -> Punct -> Denorm
 
         Phase 1: Diarization (full audio)
             - Detect speaker segments with timestamps
-            - Uses TitaNet-Large embeddings + clustering
+            - Uses pyannote speaker-diarization-3.1 (WeSpeaker embeddings)
 
         Phase 1.5: Pre-merge short segments (for ASR quality)
             - Merge adjacent same-speaker segments < 3s
@@ -118,22 +124,22 @@ ASR_MODEL = None
 PUNCTUATOR_MODEL = None
 DENORMALIZER = None
 
-# Diarization models
-# Speaker diarization answers "WHO spoke WHEN" and requires two models:
+# pyannote speaker diarization pipeline
+# Speaker diarization answers "WHO spoke WHEN"
 #
-# 1. VAD (Voice Activity Detection) - MarbleNet
-#    Detects WHEN someone is speaking vs silence/noise.
-#    Output: time ranges like [(0.0s-2.5s, speech), (2.5s-3.0s, silence), ...]
-#    Without VAD, we'd waste compute analyzing silence.
+# pyannote speaker-diarization-3.1 is an end-to-end pipeline that:
+# - Detects when someone is speaking (VAD)
+# - Creates speaker embeddings
+# - Clusters segments by speaker
+# - Handles overlapping speech better than NeMo ClusteringDiarizer
 #
-# 2. Speaker Embeddings - TitaNet-Large
-#    Creates a "voiceprint" (vector) for each speech segment.
-#    Similar voices → similar vectors → same speaker.
-#    These vectors are clustered to group segments by speaker.
+# Key benefits over NeMo:
+# - 10x fewer segments (126 vs 1209 for 30-min audio)
+# - Better overlap detection
+# - MIT license
 #
-# Pipeline: Audio → VAD (find speech) → TitaNet (who's speaking) → Clustering (group by speaker)
-VAD_MODEL = None
-SPEAKER_MODEL = None
+# Pipeline: Audio → pyannote pipeline → speaker segments
+PYANNOTE_PIPELINE = None
 
 # NFA (Forced Alignment) - reuses PROTOVERB model via NeMo aligner_utils
 # Provides word-level timestamps by aligning transcript to audio
@@ -147,11 +153,14 @@ PUNCTUATOR_MODEL_PATH = os.environ.get("PUNCTUATOR_MODEL_PATH", "/app/models/pun
 # Denormalizer path (Python package)
 DENORMALIZER_PATH = os.environ.get("DENORMALIZER_PATH", "/app/Slovene_denormalizator")
 
+# pyannote config path (for offline loading)
+PYANNOTE_CONFIG_PATH = os.environ.get("PYANNOTE_CONFIG_PATH", "/app/models/pyannote/config.yaml")
+
 # Maximum audio size (100MB)
 MAX_AUDIO_SIZE = 100 * 1024 * 1024
 
-# Model version identifier
-MODEL_VERSION = "protoverb-1.0"
+# Model version identifier (pyannote variant)
+MODEL_VERSION = "protoverb-1.0-pyannote"
 
 
 def load_asr_model():
@@ -296,54 +305,59 @@ def load_denormalizer():
         # Don't raise - denormalization is optional
 
 
-def load_diarization_models():
+def load_pyannote_pipeline():
     """
-    Load VAD and speaker embedding models for diarization.
+    Load pyannote speaker-diarization-3.1 pipeline from local config.
 
-    Models used:
-    - MarbleNet: Voice Activity Detection (VAD)
-    - TitaNet-Large: Speaker embeddings for clustering
+    This is an end-to-end diarization pipeline that replaces NeMo's
+    separate VAD + embedding + clustering approach.
+
+    Models are pre-downloaded during Docker build and loaded from local paths.
+    No HF_TOKEN required at runtime.
+
+    See: https://github.com/pyannote/pyannote-audio/blob/develop/tutorials/community/offline_usage_speaker_diarization.ipynb
     """
-    global VAD_MODEL, SPEAKER_MODEL
+    global PYANNOTE_PIPELINE
 
-    if VAD_MODEL is not None and SPEAKER_MODEL is not None:
-        logger.info("Diarization models already loaded, skipping")
+    if PYANNOTE_PIPELINE is not None:
+        logger.info("pyannote pipeline already loaded, skipping")
         return
 
-    logger.info("Loading diarization models (VAD + TitaNet)")
+    logger.info(f"Loading pyannote pipeline from {PYANNOTE_CONFIG_PATH}")
     start_time = time.time()
 
     try:
-        # Suppress NeMo's verbose warnings
-        from nemo.utils import logging as nemo_logging
-        nemo_logging.setLevel(logging.ERROR)
+        import torch
+        from pyannote.audio import Pipeline
 
-        # VAD model (MarbleNet)
-        from nemo.collections.asr.models import EncDecClassificationModel
-        VAD_MODEL = EncDecClassificationModel.from_pretrained("vad_marblenet")
-        VAD_MODEL.eval()
-        logger.info("VAD model (MarbleNet) loaded")
-
-        # Speaker embedding model (TitaNet-Large)
-        from nemo.collections.asr.models import EncDecSpeakerLabelModel
-        SPEAKER_MODEL = EncDecSpeakerLabelModel.from_pretrained("titanet_large")
-        SPEAKER_MODEL.eval()
-        logger.info("Speaker model (TitaNet-Large) loaded")
+        # Load pipeline from local config (no HF_TOKEN needed)
+        # Config.yaml has been patched with local model paths during Docker build
+        if os.path.exists(PYANNOTE_CONFIG_PATH):
+            PYANNOTE_PIPELINE = Pipeline.from_pretrained(PYANNOTE_CONFIG_PATH)
+            logger.info("Loaded pyannote from local config (offline mode)")
+        else:
+            # Fallback: try HuggingFace (for local dev without Docker)
+            logger.warning(f"Local config not found at {PYANNOTE_CONFIG_PATH}, trying HuggingFace")
+            hf_token = os.environ.get("HF_TOKEN")
+            if not hf_token:
+                raise RuntimeError(
+                    f"pyannote config not found at {PYANNOTE_CONFIG_PATH} and HF_TOKEN not set. "
+                    "Either build with Docker or set HF_TOKEN for development."
+                )
+            PYANNOTE_PIPELINE = Pipeline.from_pretrained(
+                "pyannote/speaker-diarization-3.1",
+                use_auth_token=hf_token
+            )
 
         # Move to GPU if available
-        cuda_visible = os.environ.get("CUDA_VISIBLE_DEVICES", "")
-        if cuda_visible != "" and cuda_visible.lower() != "none":
-            VAD_MODEL = VAD_MODEL.cuda()
-            SPEAKER_MODEL = SPEAKER_MODEL.cuda()
-            logger.info("Diarization models moved to GPU")
-        else:
-            logger.info("Diarization models running on CPU")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        PYANNOTE_PIPELINE.to(device)
 
         load_time = time.time() - start_time
-        logger.info(f"Diarization models loaded successfully in {load_time:.2f}s")
+        logger.info(f"pyannote pipeline loaded on {device} in {load_time:.2f}s")
 
     except Exception as e:
-        logger.error(f"Failed to load diarization models: {e}")
+        logger.error(f"Failed to load pyannote pipeline: {e}")
         raise
 
 
@@ -358,14 +372,15 @@ def load_models_parallel(
 
     NeMo models cannot be loaded in parallel due to shared module locks.
     Solution:
-    - Phase 1: Load ASR + Denormalizer in parallel (Denormalizer is not NeMo)
-    - Phase 2: Load Diarization models sequentially (NeMo ASR models)
-    - Phase 3: Load Punctuator sequentially (NeMo NLP model)
+    - Phase 1: Load ASR + Denormalizer + pyannote in parallel (non-NeMo models)
+    - Phase 2: Load Punctuator sequentially (NeMo NLP model)
 
     NFA (forced alignment) reuses the ASR model via NeMo aligner_utils,
     so no separate model loading is needed.
+
+    pyannote can be loaded in parallel with other models since it's not NeMo.
     """
-    global ASR_MODEL, PUNCTUATOR_MODEL, DENORMALIZER, VAD_MODEL, SPEAKER_MODEL
+    global ASR_MODEL, PUNCTUATOR_MODEL, DENORMALIZER, PYANNOTE_PIPELINE
 
     # Track what we're actually loading in this call
     loading = []
@@ -375,41 +390,33 @@ def load_models_parallel(
         loading.append("Punctuator")
     if need_denorm and DENORMALIZER is None:
         loading.append("Denormalizer")
-    if need_diarization and (VAD_MODEL is None or SPEAKER_MODEL is None):
-        loading.append("Diarization")
+    if need_diarization and PYANNOTE_PIPELINE is None:
+        loading.append("pyannote")
 
     if not loading:
         return  # Everything already loaded
 
     start_time = time.time()
 
-    # Phase 1: ASR + Denormalizer in parallel (Denormalizer is not NeMo, no conflict)
-    phase1_loaders = []
-    if need_asr and ASR_MODEL is None:
-        phase1_loaders.append(("ASR", load_asr_model))
+    # Phase 1: Denormalizer only (not NeMo, can run while others load)
     if need_denorm and DENORMALIZER is None:
-        phase1_loaders.append(("Denormalizer", load_denormalizer))
+        logger.info("Loading phase 1: Denormalizer")
+        load_denormalizer()
 
-    if phase1_loaders:
-        names = [name for name, _ in phase1_loaders]
-        logger.info(f"Loading phase 1: {', '.join(names)}")
+    # Phase 2: ASR model (NeMo - must be sequential)
+    if need_asr and ASR_MODEL is None:
+        logger.info("Loading phase 2: ASR")
+        load_asr_model()
 
-        if len(phase1_loaders) == 1:
-            phase1_loaders[0][1]()
-        else:
-            with ThreadPoolExecutor(max_workers=len(phase1_loaders)) as executor:
-                futures = [executor.submit(fn) for _, fn in phase1_loaders]
-                wait(futures)
-
-    # Phase 2: Diarization models (must be sequential - NeMo ASR models)
-    if need_diarization and (VAD_MODEL is None or SPEAKER_MODEL is None):
-        logger.info("Loading phase 2: Diarization")
-        load_diarization_models()
-
-    # Phase 3: Punctuator (must be sequential - NeMo NLP model)
+    # Phase 3: Punctuator (NeMo NLP model - must be sequential)
     if need_punct and PUNCTUATOR_MODEL is None:
         logger.info("Loading phase 3: Punctuator")
         load_punctuator_model()
+
+    # Phase 4: pyannote (uses pytorch_lightning - conflicts with NeMo if parallel)
+    if need_diarization and PYANNOTE_PIPELINE is None:
+        logger.info("Loading phase 4: pyannote")
+        load_pyannote_pipeline()
 
     load_time = time.time() - start_time
     logger.info(f"Models loaded in {load_time:.2f}s: {', '.join(loading)}")
@@ -478,126 +485,6 @@ def apply_denormalization(text: str, style: str = "default") -> str:
         return text
 
 
-def get_diarization_config(
-    manifest_path: str,
-    output_dir: str,
-    num_speakers: int | None = None,
-    max_speakers: int = 10
-) -> Dict[str, Any]:
-    """
-    Create ClusteringDiarizer configuration.
-
-    Uses 2-scale telephonic preset optimized for 1-2 speakers.
-
-    Args:
-        manifest_path: Path to manifest JSON file
-        output_dir: Directory for RTTM output
-        num_speakers: Known number of speakers (None for auto-detect)
-        max_speakers: Maximum speakers for auto-detect
-
-    Returns:
-        OmegaConf configuration dict
-    """
-    # Determine device
-    import torch
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    config = {
-        "name": "ClusteringDiarizer",
-        "num_workers": 1,
-        "sample_rate": 16000,
-        "batch_size": 64,
-        "device": device,  # Required by ClusteringDiarizer
-        "verbose": True,
-        "diarizer": {
-            "manifest_filepath": manifest_path,
-            "out_dir": output_dir,
-            "oracle_vad": False,
-            "collar": 0.25,
-            "ignore_overlap": True,
-
-            "vad": {
-                "model_path": "vad_marblenet",
-                "parameters": {
-                    "window_length_in_sec": 0.15,
-                    "shift_length_in_sec": 0.01,
-                    "smoothing": "median",
-                    "overlap": 0.5,
-                    "onset": 0.8,
-                    "offset": 0.6,
-                    "min_duration_on": 0.1,
-                    "min_duration_off": 0.1,
-                    "pad_onset": 0.1,
-                    "pad_offset": 0.1,
-                    "postprocessing_params": {
-                        "onset": 0.8,
-                        "offset": 0.6,
-                        "min_duration_on": 0.1,
-                        "min_duration_off": 0.1,
-                        "pad_onset": 0.1,
-                        "pad_offset": 0.1
-                    }
-                }
-            },
-
-            "speaker_embeddings": {
-                "model_path": "titanet_large",
-                "parameters": {
-                    # 2-scale telephonic preset (faster, good for 1-2 speakers)
-                    "window_length_in_sec": [1.5, 1.0],
-                    "shift_length_in_sec": [0.75, 0.5],
-                    "multiscale_weights": [1, 1],
-                    "save_embeddings": False
-                }
-            },
-
-            "clustering": {
-                "parameters": {
-                    "oracle_num_speakers": num_speakers is not None,
-                    "max_num_speakers": num_speakers if num_speakers else max_speakers,
-                    "enhanced_count_thres": 80,
-                    "max_rp_threshold": 0.25,
-                    "sparse_search_volume": 30
-                }
-            }
-        }
-    }
-
-    return config
-
-
-def parse_rttm(rttm_path: str) -> List[Dict[str, Any]]:
-    """
-    Parse RTTM file to list of speaker segments.
-
-    RTTM format: SPEAKER <file_id> <channel> <start> <duration> <NA> <NA> <speaker_id> <NA> <NA>
-
-    Args:
-        rttm_path: Path to RTTM file
-
-    Returns:
-        List of segments: [{"start": float, "duration": float, "speaker": str}, ...]
-    """
-    segments = []
-
-    try:
-        with open(rttm_path, 'r') as f:
-            for line in f:
-                parts = line.strip().split()
-                if len(parts) >= 8 and parts[0] == "SPEAKER":
-                    segments.append({
-                        "start": float(parts[3]),
-                        "duration": float(parts[4]),
-                        "speaker": parts[7]
-                    })
-    except Exception as e:
-        logger.error(f"Failed to parse RTTM file {rttm_path}: {e}")
-        return []
-
-    # Sort by start time
-    return sorted(segments, key=lambda s: s["start"])
-
-
 def parse_ctm_file(ctm_path: str) -> List[Dict[str, Any]]:
     """
     Parse CTM file to list of word timestamps.
@@ -644,107 +531,69 @@ def run_diarization(
     max_speakers: int = 10
 ) -> List[Dict[str, Any]]:
     """
-    Run speaker diarization on audio file.
+    Run speaker diarization using pyannote speaker-diarization-3.1.
+
+    pyannote produces fewer, longer segments compared to NeMo ClusteringDiarizer,
+    which reduces ASR quality issues on short segments.
 
     Args:
         audio_path: Path to audio file (WAV format)
         num_speakers: Known number of speakers (None for auto-detect)
-        max_speakers: Maximum speakers for auto-detect
+        max_speakers: Maximum speakers for auto-detect (pyannote uses min/max range)
 
     Returns:
         List of speaker segments: [{"start": float, "duration": float, "speaker": str}, ...]
     """
-    global VAD_MODEL, SPEAKER_MODEL
+    global PYANNOTE_PIPELINE
 
-    if VAD_MODEL is None or SPEAKER_MODEL is None:
-        raise RuntimeError("Diarization models not loaded")
+    if PYANNOTE_PIPELINE is None:
+        raise RuntimeError("pyannote pipeline not loaded")
 
-    import json
-    from omegaconf import OmegaConf
-    from nemo.collections.asr.models import ClusteringDiarizer
-
-    # Create temp directories for manifest and output
-    temp_dir = tempfile.mkdtemp(prefix="diarization_")
-    manifest_path = os.path.join(temp_dir, "manifest.json")
-    output_dir = os.path.join(temp_dir, "output")
-    os.makedirs(output_dir, exist_ok=True)
+    logger.info(
+        f"Running pyannote diarization on {audio_path} "
+        f"(num_speakers={num_speakers}, max={max_speakers})"
+    )
+    start_time = time.time()
 
     try:
-        # Create manifest file
-        manifest = {
-            "audio_filepath": audio_path,
-            "offset": 0,
-            "duration": None,
-            "label": "infer",
-            "text": "-",
-            "num_speakers": num_speakers,
-            "rttm_filepath": None,
-            "uem_filepath": None
-        }
-
-        with open(manifest_path, "w") as f:
-            json.dump(manifest, f)
-            f.write("\n")
-
-        logger.info(f"Running diarization on {audio_path} (num_speakers={num_speakers}, max={max_speakers})")
-        start_time = time.time()
-
-        # Get config and create diarizer
-        config_dict = get_diarization_config(
-            manifest_path=manifest_path,
-            output_dir=output_dir,
-            num_speakers=num_speakers,
-            max_speakers=max_speakers
-        )
-        config = OmegaConf.create(config_dict)
-
-        # Run diarization
-        diarizer = ClusteringDiarizer(cfg=config)
-        diarizer.diarize()
+        # Run pyannote diarization
+        # num_speakers: if known, pass directly
+        # min_speakers/max_speakers: for auto-detection range
+        if num_speakers is not None:
+            diarization = PYANNOTE_PIPELINE(audio_path, num_speakers=num_speakers)
+        else:
+            diarization = PYANNOTE_PIPELINE(
+                audio_path,
+                min_speakers=1,
+                max_speakers=max_speakers
+            )
 
         diarization_time = time.time() - start_time
-        logger.info(f"Diarization complete in {diarization_time:.2f}s")
 
-        # Find and parse RTTM output
-        # NeMo outputs RTTM files to pred_rttms/ subdirectory
-        pred_rttms_dir = os.path.join(output_dir, "pred_rttms")
+        # Convert pyannote output to our segment format
+        # pyannote returns Annotation object with itertracks() method
+        segments = []
+        for turn, _, speaker in diarization.itertracks(yield_label=True):
+            segments.append({
+                "start": turn.start,
+                "duration": turn.duration,
+                "speaker": speaker
+            })
 
-        # Check both locations (direct and pred_rttms subdirectory)
-        rttm_files = []
-        if os.path.exists(pred_rttms_dir):
-            rttm_files = [os.path.join(pred_rttms_dir, f)
-                         for f in os.listdir(pred_rttms_dir) if f.endswith(".rttm")]
+        # Sort by start time
+        segments = sorted(segments, key=lambda s: s["start"])
 
-        if not rttm_files:
-            # Fallback: check output_dir directly
-            rttm_files = [os.path.join(output_dir, f)
-                         for f in os.listdir(output_dir) if f.endswith(".rttm")]
-
-        if not rttm_files:
-            # Debug: list what files were actually created
-            logger.warning(f"No RTTM file generated. Output dir contents: {os.listdir(output_dir)}")
-            if os.path.exists(pred_rttms_dir):
-                logger.warning(f"pred_rttms contents: {os.listdir(pred_rttms_dir)}")
-            return []
-
-        rttm_path = rttm_files[0]
-        logger.info(f"Found RTTM file: {rttm_path}")
-        segments = parse_rttm(rttm_path)
-
-        logger.info(f"Found {len(segments)} speaker segments")
+        logger.info(
+            f"pyannote diarization complete in {diarization_time:.2f}s: "
+            f"{len(segments)} segments"
+        )
         return segments
 
     except Exception as e:
-        logger.error(f"Diarization failed: {e}")
+        logger.error(f"pyannote diarization failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return []
-
-    finally:
-        # Cleanup temp directory
-        try:
-            import shutil
-            shutil.rmtree(temp_dir)
-        except Exception:
-            pass
 
 
 def run_forced_alignment(
