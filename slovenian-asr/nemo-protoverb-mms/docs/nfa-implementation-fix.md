@@ -4,6 +4,26 @@ This document chronicles the iterative development of word-level timestamps (NFA
 
 ---
 
+> **Note: Alternative Approach Under Development**
+>
+> This implementation uses **MMS (Meta's Massively Multilingual Speech)** model via `ctc-forced-aligner` with a **diarize-first architecture**. We have since identified a potentially better approach:
+>
+> | Aspect | This Approach (MMS) | New Approach (NeMo NFA) |
+> |--------|---------------------|-------------------------|
+> | Architecture | Diarize-first | ASR-first with VAD chunking |
+> | Alignment model | MMS (CC-BY-NC 4.0) | NeMo NFA (Apache 2.0) |
+> | Commercial use | **Not allowed** | Allowed |
+> | ASR context | Limited (short segments) | Full (30s chunks with stride) |
+>
+> **Why keep this approach?** For A/B quality comparison testing between:
+> - Diarize-first vs ASR-first architectures
+> - MMS vs NeMo NFA alignment accuracy
+> - Short segment ASR vs chunked full-context ASR
+>
+> See `../nemo-protoverb-nfa/` for the NFA implementation and `../nemo-protoverb-asr-first/` for the ASR-first experiment. 
+
+---
+
 ## Introduction: Key Concepts
 
 ### What is Forced Alignment (NFA)?
