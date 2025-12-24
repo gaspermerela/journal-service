@@ -331,8 +331,8 @@ Examples:
         print("  ✓ Punctuator ready")
     if handler_module.DENORMALIZER:
         print("  ✓ Denormalizer ready")
-    if handler_module.VAD_MODEL and handler_module.SPEAKER_MODEL:
-        print("  ✓ Diarization models ready")
+    if handler_module.PYANNOTE_PIPELINE:
+        print("  ✓ pyannote diarization ready")
 
     # Run test
     if args.compare:
