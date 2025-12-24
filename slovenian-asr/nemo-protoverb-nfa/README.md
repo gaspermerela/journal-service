@@ -22,7 +22,7 @@ Audio -> ASR (PROTOVERB) -> Punctuation -> Denormalization
 ### 1. Download Models
 
 ```bash
-cd slovenian-asr/nemo-protoverb
+cd slovenian-asr/nemo-protoverb-nfa
 ./download_models.sh
 ```
 
@@ -31,7 +31,7 @@ Or manually - see [Dockerfile](./Dockerfile) for URLs.
 ### 2. Build Docker Image
 
 ```bash
-# For RunPod (from slovenian-asr/nemo-protoverb/ directory)
+# For RunPod (from slovenian-asr/nemo-protoverb-nfa/ directory)
 docker buildx build --platform linux/amd64 \
   -t your-dockerhub/slovene-asr-pipeline:v2.0 --push .
 

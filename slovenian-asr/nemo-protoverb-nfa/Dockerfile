@@ -8,7 +8,7 @@
 #   Without diarization: Audio -> ASR -> Punctuation -> Denormalization
 #   With diarization: Audio -> ASR + Diarization -> Merge -> Punctuation -> Denormalization
 #
-# Build for RunPod (from slovenian-asr/nemo-protoverb/ directory):
+# Build for RunPod (from slovenian-asr/nemo-protoverb-nfa/ directory):
 #   docker buildx build --platform linux/amd64 -t YOUR_DOCKERHUB/slovene-asr-pipeline:v2.0 --push .
 #
 # Build for local testing (M1/M2 Mac):
