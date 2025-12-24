@@ -31,6 +31,7 @@ Pipeline:
 
     Quality optimizations:
         - MIN_SEGMENT_FOR_ASR (3.0s): Pre-merge short segments for context
+        - MAX_SEGMENT_FOR_ASR (30.0s): Cap merged segments to prevent NFA slowdown
         - CONTEXT_PADDING (0.5s): Add audio context around segment boundaries
         - MIN_SEGMENT_FOR_NFA (2.0s): Skip NFA on tiny segments (overhead not worth it)
 
@@ -133,6 +134,12 @@ DENORMALIZER = None
 # Pipeline: Audio → VAD (find speech) → TitaNet (who's speaking) → Clustering (group by speaker)
 VAD_MODEL = None
 SPEAKER_MODEL = None
+
+# NFA (Forced Alignment) model - uses MMS (Massively Multilingual Speech)
+# Provides word-level timestamps by aligning transcript to audio
+# Loaded once and reused for all segments (saves ~2s per segment on CPU)
+NFA_MODEL = None
+NFA_TOKENIZER = None
 
 # Model paths - baked into Docker image
 ASR_MODEL_PATH = os.environ.get("ASR_MODEL_PATH", "/app/models/asr/conformer_ctc_bpe.nemo")
@@ -333,6 +340,47 @@ def load_diarization_models():
         raise
 
 
+def load_nfa_model():
+    """
+    Load NFA (Forced Alignment) model for word-level timestamps.
+
+    Uses MMS (Massively Multilingual Speech) model via ctc-forced-aligner.
+    Model is loaded once and reused for all segments.
+    """
+    global NFA_MODEL, NFA_TOKENIZER
+
+    if NFA_MODEL is not None and NFA_TOKENIZER is not None:
+        logger.info("NFA model already loaded, skipping")
+        return
+
+    logger.info("Loading NFA alignment model (MMS)")
+    start_time = time.time()
+
+    try:
+        import torch
+        from ctc_forced_aligner import load_alignment_model
+
+        # Determine device
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        dtype = torch.float16 if device == "cuda" else torch.float32
+
+        logger.info(f"NFA using device={device}, dtype={dtype}")
+
+        # Load alignment model (uses pretrained multilingual Wav2Vec2/MMS)
+        NFA_MODEL, NFA_TOKENIZER = load_alignment_model(device, dtype=dtype)
+
+        load_time = time.time() - start_time
+        logger.info(f"NFA model loaded successfully in {load_time:.2f}s")
+
+    except ImportError as e:
+        logger.warning(f"ctc-forced-aligner not available: {e}")
+        logger.warning("NFA alignment will be disabled")
+
+    except Exception as e:
+        logger.error(f"Failed to load NFA model: {e}")
+        raise
+
+
 def load_models_parallel(
     need_asr: bool = True,
     need_punct: bool = True,
@@ -347,8 +395,10 @@ def load_models_parallel(
     - Phase 1: Load ASR + Denormalizer in parallel (Denormalizer is not NeMo)
     - Phase 2: Load Diarization models sequentially (NeMo ASR models)
     - Phase 3: Load Punctuator sequentially (NeMo NLP model)
+    - Phase 4: Load NFA model (not NeMo, can run after NeMo models)
     """
     global ASR_MODEL, PUNCTUATOR_MODEL, DENORMALIZER, VAD_MODEL, SPEAKER_MODEL
+    global NFA_MODEL, NFA_TOKENIZER
 
     # Track what we're actually loading in this call
     loading = []
@@ -360,6 +410,8 @@ def load_models_parallel(
         loading.append("Denormalizer")
     if need_diarization and (VAD_MODEL is None or SPEAKER_MODEL is None):
         loading.append("Diarization")
+    if need_diarization and NFA_MODEL is None:
+        loading.append("NFA")
 
     if not loading:
         return  # Everything already loaded
@@ -393,6 +445,11 @@ def load_models_parallel(
     if need_punct and PUNCTUATOR_MODEL is None:
         logger.info("Loading phase 3: Punctuator")
         load_punctuator_model()
+
+    # Phase 4: NFA model (not NeMo, but loads after NeMo to avoid conflicts)
+    if need_diarization and NFA_MODEL is None:
+        logger.info("Loading phase 4: NFA")
+        load_nfa_model()
 
     load_time = time.time() - start_time
     logger.info(f"Models loaded in {load_time:.2f}s: {', '.join(loading)}")
@@ -771,10 +828,10 @@ def run_forced_alignment(
         List of word timestamps: [{"word": str, "start": float, "end": float}, ...]
         Empty list if alignment fails (speaker attribution will be skipped).
     """
-    global ASR_MODEL
+    global NFA_MODEL, NFA_TOKENIZER
 
-    if ASR_MODEL is None:
-        logger.error("ASR model not loaded, cannot run forced alignment")
+    if NFA_MODEL is None or NFA_TOKENIZER is None:
+        logger.warning("NFA model not loaded, skipping forced alignment")
         return []
 
     if not transcript or not transcript.strip():
@@ -785,13 +842,10 @@ def run_forced_alignment(
         logger.info(f"Running forced alignment on {audio_path} ({len(transcript.split())} words)")
         start_time = time.time()
 
-        # Use ctc-forced-aligner library
-        # This provides a clean Python API for forced alignment with CTC models
+        # Use ctc-forced-aligner library with cached model
         try:
-            import torch
             from ctc_forced_aligner import (
                 load_audio,
-                load_alignment_model,
                 generate_emissions,
                 preprocess_text,
                 get_alignments,
@@ -799,24 +853,11 @@ def run_forced_alignment(
                 postprocess_results,
             )
 
-            # Determine device
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            dtype = torch.float16 if device == "cuda" else torch.float32
-            logger.info(f"NFA using device={device}, dtype={dtype}")
-
-            # Load alignment model (uses pretrained multilingual Wav2Vec2/MMS)
-            # This model is separate from PROTOVERB but works well for Slovenian
-            # NOTE: First run downloads ~2GB model from HuggingFace
-            logger.info("NFA: Loading alignment model (MMS)...")
-            model_load_start = time.time()
-            alignment_model, alignment_tokenizer = load_alignment_model(
-                device,
-                dtype=dtype,
-            )
-            logger.info(f"NFA: Model loaded in {time.time() - model_load_start:.1f}s")
+            # Use cached model (loaded once at startup)
+            alignment_model = NFA_MODEL
+            alignment_tokenizer = NFA_TOKENIZER
 
             # Load and process audio
-            logger.info("NFA: Loading audio...")
             audio_waveform = load_audio(
                 audio_path,
                 alignment_model.dtype,
@@ -824,19 +865,17 @@ def run_forced_alignment(
             )
 
             # Generate emissions (log probabilities) from alignment model
-            logger.info("NFA: Generating emissions (this may take a while on CPU)...")
             emissions_start = time.time()
             emissions, stride = generate_emissions(
                 alignment_model,
                 audio_waveform,
                 batch_size=16
             )
-            logger.info(f"NFA: Emissions generated in {time.time() - emissions_start:.1f}s")
+            logger.debug(f"NFA: Emissions generated in {time.time() - emissions_start:.1f}s")
 
             # Preprocess text (tokenize and prepare for alignment)
             # romanize=True required because MMS model doesn't handle Slovenian diacritics (č, š, ž)
             # We'll map timestamps back to original words afterwards to preserve diacritics
-            logger.info("NFA: Preprocessing text...")
             tokens_starred, text_starred = preprocess_text(
                 transcript,
                 romanize=True,  # Required for MMS model compatibility
@@ -844,14 +883,13 @@ def run_forced_alignment(
             )
 
             # Get alignments using Viterbi algorithm
-            logger.info("NFA: Running Viterbi alignment...")
             viterbi_start = time.time()
             segments, scores, blank_token = get_alignments(
                 emissions,
                 tokens_starred,
                 alignment_tokenizer
             )
-            logger.info(f"NFA: Viterbi complete in {time.time() - viterbi_start:.1f}s")
+            logger.debug(f"NFA: Viterbi complete in {time.time() - viterbi_start:.1f}s")
 
             # Get word-level spans
             spans = get_spans(tokens_starred, segments, blank_token)
@@ -1161,13 +1199,15 @@ def extract_audio_segment(
 
 # Configuration for segment processing
 MIN_SEGMENT_FOR_ASR = 3.0  # Merge segments shorter than this (seconds)
+MAX_SEGMENT_FOR_ASR = 30.0  # Don't merge if result would exceed this (seconds)
 CONTEXT_PADDING = 0.5  # Add this much audio before/after for ASR context (seconds)
 MIN_SEGMENT_FOR_NFA = 2.0  # Skip NFA for segments shorter than this (seconds)
 
 
 def merge_short_segments_for_asr(
     segments: List[Dict[str, Any]],
-    min_duration: float = MIN_SEGMENT_FOR_ASR
+    min_duration: float = MIN_SEGMENT_FOR_ASR,
+    max_duration: float = MAX_SEGMENT_FOR_ASR
 ) -> List[Dict[str, Any]]:
     """
     Merge adjacent short segments from the same speaker BEFORE running ASR.
@@ -1176,9 +1216,15 @@ def merge_short_segments_for_asr(
     because it lacks acoustic context. This function merges adjacent same-speaker
     segments to ensure each segment has enough context for quality transcription.
 
+    Constraints:
+    - Only merges same-speaker segments
+    - Only merges if at least one segment is < min_duration
+    - Never creates segments > max_duration (prevents NFA slowdown)
+
     Args:
         segments: Raw diarization segments from run_diarization()
         min_duration: Minimum segment duration in seconds (default: 3.0)
+        max_duration: Maximum segment duration in seconds (default: 30.0)
 
     Returns:
         List of merged segments where short same-speaker segments are combined
@@ -1188,7 +1234,7 @@ def merge_short_segments_for_asr(
 
     logger.info(
         f"Pre-merging short segments: {len(segments)} segments, "
-        f"min_duration={min_duration}s"
+        f"min_duration={min_duration}s, max_duration={max_duration}s"
     )
 
     merged = []
@@ -1205,16 +1251,31 @@ def merge_short_segments_for_asr(
                 "duration": duration,
                 "speaker": speaker
             }
-        elif speaker == current["speaker"] and duration < min_duration:
-            # Same speaker and short segment - merge
+        elif speaker == current["speaker"]:
+            # Same speaker - check if we should merge
             new_end = seg["start"] + duration
-            current["duration"] = new_end - current["start"]
-        elif speaker == current["speaker"] and current["duration"] < min_duration:
-            # Same speaker and current is short - merge
-            new_end = seg["start"] + duration
-            current["duration"] = new_end - current["start"]
+            potential_duration = new_end - current["start"]
+
+            # Only merge if:
+            # 1. At least one segment is short (< min_duration)
+            # 2. Result won't exceed max_duration
+            should_merge = (
+                (duration < min_duration or current["duration"] < min_duration)
+                and potential_duration <= max_duration
+            )
+
+            if should_merge:
+                current["duration"] = potential_duration
+            else:
+                # Can't merge - flush current and start new
+                merged.append(current)
+                current = {
+                    "start": seg["start"],
+                    "duration": duration,
+                    "speaker": speaker
+                }
         else:
-            # Different speaker or both segments are long enough
+            # Different speaker - flush current and start new
             merged.append(current)
             current = {
                 "start": seg["start"],
