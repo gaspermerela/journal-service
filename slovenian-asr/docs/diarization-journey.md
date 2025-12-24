@@ -1,4 +1,4 @@
-# NFA Implementation Journey
+# Diarization Journey
 
 This document chronicles the iterative development of word-level timestamps (NFA) for the Slovenian ASR diarization pipeline.
 
@@ -49,9 +49,9 @@ PROTOVERB is optimized for transcription, not alignment. Implementing a custom V
 | Metric | Value | Notes |
 |--------|-------|-------|
 | **RTF (Real-Time Factor)** | ~5-7% | ~3-4 min processing per hour of audio |
-| **Memory (GPU)** | ~12GB total | PROTOVERB 4GB + TitaNet 3GB + MMS 2GB + VAD 1GB |
-| **Memory (CPU)** | ~8GB | Models run slower but fit in less memory |
-| **Alignment accuracy** | ~95% | Word-to-speaker attribution |
+| **Memory (GPU)** | ~10GB total | PROTOVERB 4GB + TitaNet 3GB + VAD 1GB (Phase 7: no separate MMS) |
+| **Memory (CPU)** | ~6GB | Models run slower but fit in less memory |
+| **Alignment accuracy** | ~95% | Word-to-speaker attribution (Viterbi via PROTOVERB) |
 | **WER baseline** | 6.4-9.8% | PROTOVERB on ARTUR/SloBENCH test sets |
 
 ### Glossary
@@ -236,16 +236,11 @@ MIN_SEGMENT_FOR_NFA = 2.0   # Skip NFA below this
 
 ## Known Limitations
 
-### 1. MMS Forced Aligner Licensing
+### ~~1. MMS Forced Aligner Licensing~~ ✅ RESOLVED (Phase 7)
 
-**Problem**: The MMS model used by ctc-forced-aligner has **CC-BY-NC 4.0** license - **non-commercial use only**.
+**Problem**: The MMS model used by ctc-forced-aligner had **CC-BY-NC 4.0** license.
 
-**Impact**: Legal risk if deploying commercially.
-
-**Solution**: Switch to NeMo Forced Aligner (NFA) which is Apache 2.0 licensed and offers:
-- ~20% better alignment accuracy
-- ~30% faster processing
-- Full commercial usage rights
+**Solution**: Switched to NeMo Forced Aligner (Apache 2.0) in December 2025 - see Phase 7.
 
 ### 2. Short Segment CTC Degradation
 
@@ -257,9 +252,11 @@ MIN_SEGMENT_FOR_NFA = 2.0   # Skip NFA below this
 
 ### 3. Separate Model Overhead
 
-**Problem**: Running 4 separate models (PROTOVERB + TitaNet + MarbleNet + MMS).
+**Problem**: Running 3 separate models (PROTOVERB + TitaNet + MarbleNet).
 
-**Impact**: ~12GB VRAM total, 3 loading phases, complex pipeline.
+**Impact**: ~10GB VRAM total, multiple loading phases.
+
+**Improvement (Phase 7)**: Removed MMS model (~2GB), NFA now reuses PROTOVERB.
 
 **Future**: End-to-end ASR+diarization models eliminate this, but not ready for Slovenian.
 
@@ -349,18 +346,118 @@ Better diarization (pyannote) helps ~3-5%, but won't fix the 16% medical vocabul
 
 ---
 
+## Phase 7: MMS → NeMo NFA Migration (Licensing Fix)
+
+**Date**: December 2025
+
+**Problem**: ctc-forced-aligner uses MMS model with **CC-BY-NC 4.0** license - blocking commercial deployment. We also want to test different, possibly more accurate approaches.
+
+**Research**: Explored multiple approaches:
+
+| Approach | Verdict | Reason |
+|----------|---------|--------|
+| NeMo 2.x `aligner_utils.py` | ✅ **CHOSEN** | Viterbi-optimal (~95%), Apache 2.0, reuses PROTOVERB |
+| Greedy CTC timestamp extraction | ❌ Rejected | Only ~70-80% accuracy (local decisions only) |
+| ASRDecoderTimeStamps | ❌ Rejected | Complex API, requires manifest files |
+| NeMo CLI subprocess | ❌ Rejected | Fragile, manifest parsing overhead |
+
+**Solution**: Copy `aligner_utils.py` from NeMo 2.x main branch to `nemo_compat/` directory.
+
+**Key Discovery**: `aligner_utils.py` does NOT exist in NeMo 1.21.0 (only in NeMo 2.x), but its dependencies (`ASRModel`, `Hypothesis`) DO exist in 1.21.0 - making the backport possible.
+
+### Implementation Details
+
+**New files created**:
+```
+nemo_compat/
+├── __init__.py           # Module marker with documentation
+└── aligner_utils.py      # Copied from NeMo 2.x (Apache 2.0)
+```
+
+**API usage** (critical gotchas discovered through testing):
+
+```python
+from nemo_compat.aligner_utils import (
+    get_batch_variables,
+    viterbi_decoding,
+    add_t_start_end_to_utt_obj,
+    Segment,
+    Word,
+)
+
+# CRITICAL: Both audio and gt_text_batch MUST be lists of same length
+log_probs, y, T, U, utt_objs, timestep_duration = get_batch_variables(
+    audio=[audio_path],           # LIST, not string!
+    model=ASR_MODEL,
+    gt_text_batch=[transcript],   # LIST of same length
+    output_timestep_duration=OUTPUT_TIMESTEP_DURATION,
+)
+
+# Viterbi alignment
+alignments = viterbi_decoding(log_probs, y, T, U, viterbi_device=device)
+
+# Add timestamps to utterance object
+utt_obj = add_t_start_end_to_utt_obj(
+    utt_obj=utt_objs[0],
+    alignment_utt=alignments[0],
+    output_timestep_duration=timestep_duration,
+)
+
+# CRITICAL: Navigate data structure correctly
+# NOT: utt_obj.segments (doesn't exist!)
+# YES: utt_obj.segments_and_tokens → filter for Segment → segment.words_and_tokens → filter for Word
+words = []
+for item in utt_obj.segments_and_tokens:
+    if isinstance(item, Segment):
+        for word_item in item.words_and_tokens:
+            if isinstance(word_item, Word) and word_item.t_start is not None:
+                words.append({
+                    "word": word_item.text,
+                    "start": round(word_item.t_start + segment_start, 3),
+                    "end": round(word_item.t_end + segment_start, 3),
+                })
+```
+
+**Data structures** (from aligner_utils.py):
+```
+Utterance
+├── text: str
+├── segments_and_tokens: List[Token | Segment]
+│   ├── Token (for punctuation/spaces between segments)
+│   └── Segment
+│       ├── text: str
+│       ├── t_start: float (after alignment)
+│       ├── t_end: float (after alignment)
+│       └── words_and_tokens: List[Token | Word]
+│           ├── Token (for spaces between words)
+│           └── Word
+│               ├── text: str
+│               ├── t_start: float
+│               └── t_end: float
+```
+
+**Result**:
+- ✅ Commercial deployment unblocked (Apache 2.0)
+- ✅ ~2GB less memory (no separate MMS model)
+- ✅ Faster cold starts
+- ✅ Same ~95% accuracy (Viterbi algorithm)
+- ✅ No romanization needed (MMS required č→c conversion)
+
+---
+
 ## Future Improvements
 
 ### Completed
 1. ~~Bake NFA model into Docker~~ ✅ (pre-downloaded in Dockerfile)
 2. ~~Cache NFA model globally~~ ✅
+3. ~~Switch MMS → NeMo NFA~~ ✅ (Phase 7 - December 2025)
 
 ### Recommended Roadmap
 
-| Action | Priority | Expected WER Improvement | Effort |
-|--------|----------|-------------------------|--------|
-| Switch MMS → NeMo NFA | CRITICAL | +0.5-1% (+ licensing fix) | 2 days |
-| Benchmark pyannote 3.1 | HIGH | +3-5% | 1 week |
+| Action | Priority | Expected WER Improvement |
+|--------|----------|-------------------------|
+| Benchmark pyannote 3.1 | HIGH | +3-5% |
+| Test Whisper large-v3 for medical calls | MEDIUM | Unknown (broader training) |
 
 ---
 
@@ -379,13 +476,19 @@ Better diarization (pyannote) helps ~3-5%, but won't fix the 16% medical vocabul
 
 ## License Summary
 
+### Current Stack (Phase 7+)
+
 | Component | License | Commercial Use |
 |-----------|---------|----------------|
-| ctc-forced-aligner library | BSD | ✅ OK |
-| MMS alignment model | CC-BY-NC 4.0 | ❌ **NO** |
-| NeMo NFA | Apache 2.0 | ✅ OK |
-| pyannote-audio | MIT | ✅ OK |
+| NeMo NFA (aligner_utils) | Apache 2.0 | ✅ OK |
+| NeMo ClusteringDiarizer | Apache 2.0 | ✅ OK |
 | PROTOVERB | CC-BY-SA 4.0 | ✅ OK (with attribution) |
-| Sortformer | CC-BY-NC 4.0 | ❌ **NO** |
+| pyannote-audio | MIT | ✅ OK |
 
-**Action Required**: Switch MMS → NeMo NFA before commercial deployment.
+### Historical / Not Used
+
+| Component | License | Commercial Use | Status |
+|-----------|---------|----------------|--------|
+| ctc-forced-aligner library | BSD | ✅ OK | Removed in Phase 7 |
+| MMS alignment model | CC-BY-NC 4.0 | ❌ **NO** | Removed in Phase 7 |
+| Sortformer | CC-BY-NC 4.0 | ❌ **NO** | Not recommended |

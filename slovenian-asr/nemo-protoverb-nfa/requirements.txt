@@ -10,7 +10,7 @@ runpod>=1.6.0
 # Audio file handling
 soundfile>=0.12.1
 
-# Forced alignment for word-level timestamps
-# Uses 5X less memory than TorchAudio's forced alignment API
-# Supports 1100+ languages via Wav2Vec2/HuBERT/MMS models
-git+https://github.com/MahmoudAshraf97/ctc-forced-aligner.git
+# NFA (Forced Alignment) for word-level timestamps
+# Uses aligner_utils.py copied from NeMo 2.x (compatible with 1.21.0)
+# Provides Viterbi-optimal alignment (~95% accuracy)
+# No additional dependencies needed - reuses PROTOVERB ASR model
