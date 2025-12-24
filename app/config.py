@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 100
 
     # Transcription Configuration
-    TRANSCRIPTION_PROVIDER: str = "groq"  # Options: groq, assemblyai, clarinsi_slovene_asr (Slovenian)
+    TRANSCRIPTION_PROVIDER: str = "groq"  # Options: groq, assemblyai, clarin-slovene-asr-{nfa,mms,pyannote}
 
     # Audio Preprocessing Configuration
     ENABLE_AUDIO_PREPROCESSING: bool = True  # Enable ffmpeg preprocessing pipeline
@@ -62,7 +62,7 @@ class Settings(BaseSettings):
 
     # RunPod API Configuration (for Slovenian transcription using PROTOVERB model)
     RUNPOD_API_KEY: Optional[str] = None  # Required when using RunPod provider
-    RUNPOD_ENDPOINT_ID: Optional[str] = None  # RunPod serverless endpoint ID
+    RUNPOD_ENDPOINT_ID: Optional[str] = None  # RunPod serverless endpoint ID (legacy, use pipeline-specific IDs)
     RUNPOD_MODEL: str = "protoverb-slovenian-asr"  # PROTOVERB Slovenian ASR model
     RUNPOD_CHUNK_DURATION_SECONDS: int = 240  # Target chunk duration (4 minutes)
     RUNPOD_CHUNK_OVERLAP_SECONDS: int = 5  # Overlap between chunks to avoid cutting words
@@ -75,6 +75,12 @@ class Settings(BaseSettings):
     RUNPOD_PUNCTUATE: bool = True  # Enable punctuation & capitalization by default
     RUNPOD_DENORMALIZE: bool = True  # Enable text denormalization by default
     RUNPOD_DENORMALIZE_STYLE: str = "default"  # Options: default, technical, everyday
+
+    # Slovenian ASR Pipeline Endpoint IDs (RunPod)
+    # Each pipeline has its own RunPod endpoint deployment
+    SLOVENE_ASR_NFA_ENDPOINT_ID: Optional[str] = None  # NeMo ClusteringDiarizer + NFA alignment
+    SLOVENE_ASR_MMS_ENDPOINT_ID: Optional[str] = None  # NeMo ClusteringDiarizer + MMS alignment
+    SLOVENE_ASR_PYANNOTE_ENDPOINT_ID: Optional[str] = None  # pyannote 3.1 diarization + NFA alignment
 
     # CORS Configuration
     CORS_ORIGINS: str = "*"
@@ -181,7 +187,8 @@ TRANSCRIPTION_PROVIDER_PARAMETERS = {
         }
     },
     "assemblyai": {},  # AssemblyAI - no configurable parameters (no beam_size/temperature support)
-    "clarinsi_slovene_asr": {
+    # Slovenian ASR pipelines with diarization support
+    "clarin-slovene-asr-nfa": {
         "punctuate": {
             "type": "bool",
             "default": True,
@@ -197,6 +204,99 @@ TRANSCRIPTION_PROVIDER_PARAMETERS = {
             "options": ["default", "technical", "everyday"],
             "default": "default",
             "description": "Denormalization style preset"
+        },
+        "enable_diarization": {
+            "type": "bool",
+            "default": False,
+            "description": "Enable speaker diarization (NeMo ClusteringDiarizer + NFA alignment)"
+        },
+        "speaker_count": {
+            "type": "int",
+            "min": 1,
+            "max": 20,
+            "default": None,
+            "description": "Known speaker count (null for auto-detect)"
+        },
+        "max_speakers": {
+            "type": "int",
+            "min": 1,
+            "max": 20,
+            "default": 10,
+            "description": "Maximum speakers for auto-detection"
+        }
+    },
+    "clarin-slovene-asr-mms": {
+        "punctuate": {
+            "type": "bool",
+            "default": True,
+            "description": "Add punctuation and capitalization to transcription"
+        },
+        "denormalize": {
+            "type": "bool",
+            "default": True,
+            "description": "Convert spoken numbers, dates, times to written form"
+        },
+        "denormalize_style": {
+            "type": "string",
+            "options": ["default", "technical", "everyday"],
+            "default": "default",
+            "description": "Denormalization style preset"
+        },
+        "enable_diarization": {
+            "type": "bool",
+            "default": False,
+            "description": "Enable speaker diarization (NeMo ClusteringDiarizer + MMS alignment)"
+        },
+        "speaker_count": {
+            "type": "int",
+            "min": 1,
+            "max": 20,
+            "default": None,
+            "description": "Known speaker count (null for auto-detect)"
+        },
+        "max_speakers": {
+            "type": "int",
+            "min": 1,
+            "max": 20,
+            "default": 10,
+            "description": "Maximum speakers for auto-detection"
+        }
+    },
+    "clarin-slovene-asr-pyannote": {
+        "punctuate": {
+            "type": "bool",
+            "default": True,
+            "description": "Add punctuation and capitalization to transcription"
+        },
+        "denormalize": {
+            "type": "bool",
+            "default": True,
+            "description": "Convert spoken numbers, dates, times to written form"
+        },
+        "denormalize_style": {
+            "type": "string",
+            "options": ["default", "technical", "everyday"],
+            "default": "default",
+            "description": "Denormalization style preset"
+        },
+        "enable_diarization": {
+            "type": "bool",
+            "default": False,
+            "description": "Enable speaker diarization (pyannote 3.1 + NFA alignment, best quality)"
+        },
+        "speaker_count": {
+            "type": "int",
+            "min": 1,
+            "max": 20,
+            "default": None,
+            "description": "Known speaker count (null for auto-detect)"
+        },
+        "max_speakers": {
+            "type": "int",
+            "min": 1,
+            "max": 20,
+            "default": 10,
+            "description": "Maximum speakers for auto-detection"
         }
     },
     "noop": {}  # Test provider - no configurable parameters

@@ -2,8 +2,14 @@
 Transcription service for audio-to-text conversion.
 Provides abstract base class and factory function.
 
-Note: Local Whisper support has been removed. Use API-based providers
-(groq, assemblyai, clarinsi_slovene_asr) instead.
+Supported providers:
+- groq: Groq API (Whisper large-v3)
+- assemblyai: AssemblyAI API
+- clarin-slovene-asr-nfa: Slovenian ASR with NeMo diarization + NFA alignment
+- clarin-slovene-asr-mms: Slovenian ASR with NeMo diarization + MMS alignment
+- clarin-slovene-asr-pyannote: Slovenian ASR with pyannote 3.1 diarization (best quality)
+
+Note: Local Whisper support has been removed. Use API-based providers instead.
 """
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -101,7 +107,8 @@ def create_transcription_service(
     provider: str = "groq",
     model_name: Optional[str] = None,
     api_key: Optional[str] = None,
-    endpoint_id: Optional[str] = None
+    endpoint_id: Optional[str] = None,
+    variant: Optional[str] = None
 ) -> TranscriptionService:
     """
     Factory function to create transcription service based on provider.
@@ -109,10 +116,11 @@ def create_transcription_service(
     Note: Local Whisper support has been removed. Only API-based providers are supported.
 
     Args:
-        provider: Provider name ("groq", "assemblyai", or "clarinsi_slovene_asr")
+        provider: Provider name ("groq", "assemblyai", or "clarin-slovene-asr")
         model_name: Name of the model (e.g., 'whisper-large-v3', 'universal', 'protoverb-slovenian-asr')
         api_key: API key for cloud providers (required for groq, assemblyai, runpod)
         endpoint_id: RunPod serverless endpoint ID (required for runpod provider)
+        variant: Pipeline variant for clarin-slovene-asr ("nfa", "mms", or "pyannote")
 
     Returns:
         TranscriptionService implementation
@@ -162,34 +170,42 @@ def create_transcription_service(
                 f"AssemblyAI provider selected but httpx package not installed. "
                 f"Install with: pip install httpx"
             ) from e
-    elif provider == "clarinsi_slovene_asr":
+    elif provider == "clarin-slovene-asr":
         if api_key is None:
-            raise ValueError("api_key is required for runpod provider")
+            raise ValueError("api_key is required for clarin-slovene-asr provider")
         if endpoint_id is None:
-            raise ValueError("endpoint_id is required for runpod provider")
+            raise ValueError("endpoint_id is required for clarin-slovene-asr provider")
+        if variant is None:
+            raise ValueError(
+                "variant is required for clarin-slovene-asr provider. "
+                "Must be one of: nfa, mms, pyannote"
+            )
 
         try:
-            from app.services.transcription_runpod import RunPodTranscriptionService
+            from app.services.transcription_slovene_asr import SloveneASRTranscriptionService
             from app.config import settings
 
-            return RunPodTranscriptionService(
+            return SloveneASRTranscriptionService(
                 api_key=api_key,
                 endpoint_id=endpoint_id,
-                model=model_name or settings.RUNPOD_MODEL,
+                variant=variant,
                 chunk_duration_seconds=settings.RUNPOD_CHUNK_DURATION_SECONDS,
                 chunk_overlap_seconds=settings.RUNPOD_CHUNK_OVERLAP_SECONDS,
                 use_silence_detection=settings.RUNPOD_USE_SILENCE_DETECTION,
                 max_concurrent_chunks=settings.RUNPOD_MAX_CONCURRENT_CHUNKS,
                 max_retries=settings.RUNPOD_MAX_RETRIES,
-                timeout=settings.RUNPOD_TIMEOUT
+                timeout=settings.RUNPOD_TIMEOUT,
+                punctuate=settings.RUNPOD_PUNCTUATE,
+                denormalize=settings.RUNPOD_DENORMALIZE,
+                denormalize_style=settings.RUNPOD_DENORMALIZE_STYLE
             )
         except ImportError as e:
             raise ValueError(
-                f"clarinsi_slovene_asr provider selected but required packages not installed. "
+                f"clarin-slovene-asr provider selected but required packages not installed. "
                 f"Install with: pip install httpx mutagen"
             ) from e
     else:
         raise ValueError(
             f"Unsupported transcription provider: {provider}. "
-            f"Supported providers: groq, assemblyai, clarinsi_slovene_asr"
+            f"Supported providers: groq, assemblyai, clarin-slovene-asr"
         )
