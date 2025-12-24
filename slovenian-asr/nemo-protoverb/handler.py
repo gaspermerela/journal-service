@@ -9,13 +9,27 @@ Pipeline:
     Without diarization:
         Audio -> ASR (PROTOVERB) -> Punctuation (optional) -> Denormalization (optional)
 
-    With diarization:
-        Audio -> ASR (PROTOVERB) ─┬─> NFA alignment ──┬─> Merge -> Punctuation -> Denormalization
-                                  │                      │                                    │
-                                  └─> Diarization  ────────────────┘
+    With diarization (DIARIZE-FIRST architecture):
+        Audio -> Diarization -> Split by speaker -> [ASR + NFA per segment] -> Merge -> Punct -> Denorm
 
-    NFA (NeMo Forced Aligner) provides word-level timestamps for precise speaker assignment.
-    If NFA fails, diarization is skipped.
+        Phase 1: Diarization (full audio)
+            - Detect speaker segments with timestamps
+            - Uses TitaNet-Large embeddings + clustering
+
+        Phase 2: Process segments in parallel
+            - Extract audio for each speaker segment
+            - Run ASR on segment (captures words that would be dropped on full audio)
+            - Run NFA for word-level timestamps within segment
+
+        Phase 3: Merge consecutive same-speaker segments
+
+        Phase 4: Apply punctuation and denormalization per segment
+
+    Why DIARIZE-FIRST?
+        The old architecture (ASR first, then diarize) had a critical flaw:
+        ASR on long audio (3-5 min) would drop words during speaker transitions.
+        By diarizing first and running ASR on short segments (5-30s), we capture
+        all utterances that would otherwise be lost.
 
 Input:
     {
@@ -1084,6 +1098,272 @@ def transcribe_audio(audio_path: str) -> str:
     return transcriptions[0].strip() if transcriptions else ""
 
 
+def extract_audio_segment(audio_path: str, start: float, end: float) -> str:
+    """
+    Extract audio segment to a temporary file.
+
+    Uses soundfile for efficient audio slicing without re-encoding.
+
+    Args:
+        audio_path: Path to source audio file
+        start: Start time in seconds
+        end: End time in seconds
+
+    Returns:
+        Path to temporary file containing the segment
+    """
+    import soundfile as sf
+    import numpy as np
+
+    # Read audio file
+    audio_data, sample_rate = sf.read(audio_path)
+
+    # Calculate sample indices
+    start_sample = int(start * sample_rate)
+    end_sample = int(end * sample_rate)
+
+    # Clamp to valid range
+    start_sample = max(0, start_sample)
+    end_sample = min(len(audio_data), end_sample)
+
+    # Extract segment
+    segment_data = audio_data[start_sample:end_sample]
+
+    # Write to temp file
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        sf.write(tmp.name, segment_data, sample_rate)
+        return tmp.name
+
+
+def process_diarization_segment(
+    audio_path: str,
+    segment: Dict[str, Any],
+    segment_index: int
+) -> Dict[str, Any]:
+    """
+    Process a single diarization segment: extract audio, run ASR, run NFA.
+
+    This function is designed to be run in parallel for each segment.
+
+    Args:
+        audio_path: Path to full audio file
+        segment: Diarization segment {"start": float, "duration": float, "speaker": str}
+        segment_index: Index of this segment (for logging)
+
+    Returns:
+        Processed segment with text and word timestamps:
+        {
+            "id": int,
+            "start": float,
+            "end": float,
+            "speaker": str,
+            "text": str,
+            "words": [{"word": str, "start": float, "end": float}, ...]
+        }
+    """
+    start = segment["start"]
+    duration = segment["duration"]
+    end = start + duration
+    speaker = segment["speaker"]
+
+    segment_audio_path = None
+    try:
+        # Extract audio segment
+        segment_audio_path = extract_audio_segment(audio_path, start, end)
+
+        # Run ASR on segment
+        segment_text = transcribe_audio(segment_audio_path)
+
+        if not segment_text.strip():
+            logger.debug(f"Segment {segment_index}: empty transcription")
+            return {
+                "id": segment_index,
+                "start": start,
+                "end": end,
+                "speaker": speaker,
+                "text": "",
+                "words": []
+            }
+
+        # Run NFA on segment for word-level timestamps
+        word_timestamps = run_forced_alignment(segment_audio_path, segment_text)
+
+        # Adjust word timestamps to absolute time (add segment start offset)
+        words = []
+        for w in word_timestamps:
+            words.append({
+                "word": w["word"],
+                "start": round(start + w["start"], 2),
+                "end": round(start + w["end"], 2)
+            })
+
+        logger.debug(
+            f"Segment {segment_index} [{start:.1f}s-{end:.1f}s] {speaker}: "
+            f"{len(segment_text)} chars, {len(words)} words"
+        )
+
+        return {
+            "id": segment_index,
+            "start": start,
+            "end": end,
+            "speaker": speaker,
+            "text": segment_text,
+            "words": words
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to process segment {segment_index}: {e}")
+        return {
+            "id": segment_index,
+            "start": start,
+            "end": end,
+            "speaker": speaker,
+            "text": "",
+            "words": [],
+            "error": str(e)
+        }
+
+    finally:
+        # Cleanup temp file
+        if segment_audio_path:
+            try:
+                os.unlink(segment_audio_path)
+            except Exception:
+                pass
+
+
+def process_segments_parallel(
+    audio_path: str,
+    segments: List[Dict[str, Any]],
+    max_workers: int = 4
+) -> List[Dict[str, Any]]:
+    """
+    Process all diarization segments in parallel.
+
+    Runs ASR + NFA on each segment concurrently using ThreadPoolExecutor.
+
+    Args:
+        audio_path: Path to full audio file
+        segments: List of diarization segments from run_diarization()
+        max_workers: Maximum parallel workers (default: 4)
+
+    Returns:
+        List of processed segments with text and word timestamps,
+        sorted by start time
+    """
+    if not segments:
+        return []
+
+    logger.info(f"Processing {len(segments)} segments in parallel (max_workers={max_workers})")
+    start_time = time.time()
+
+    results = []
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all segments for processing
+        futures = {
+            executor.submit(
+                process_diarization_segment,
+                audio_path,
+                segment,
+                i
+            ): i for i, segment in enumerate(segments)
+        }
+
+        # Collect results as they complete
+        for future in futures:
+            try:
+                result = future.result()
+                results.append(result)
+            except Exception as e:
+                segment_idx = futures[future]
+                logger.error(f"Segment {segment_idx} failed: {e}")
+
+    # Sort by start time
+    results.sort(key=lambda s: s["start"])
+
+    # Reassign IDs after sorting
+    for i, seg in enumerate(results):
+        seg["id"] = i
+
+    elapsed = time.time() - start_time
+    total_words = sum(len(s.get("words", [])) for s in results)
+    logger.info(
+        f"Parallel processing complete in {elapsed:.1f}s: "
+        f"{len(results)} segments, {total_words} words"
+    )
+
+    return results
+
+
+def merge_consecutive_speaker_segments(segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Merge consecutive segments from the same speaker.
+
+    Diarization often produces many small segments. This merges consecutive
+    segments from the same speaker into longer segments for cleaner output.
+
+    Args:
+        segments: List of processed segments with speaker labels
+
+    Returns:
+        List of merged segments where consecutive same-speaker segments are combined
+    """
+    if not segments:
+        return []
+
+    # Map internal speaker IDs to friendly names
+    speaker_map = {}
+    speaker_counter = 1
+
+    def get_speaker_name(speaker_id: str) -> str:
+        nonlocal speaker_counter
+        if speaker_id not in speaker_map:
+            speaker_map[speaker_id] = f"Speaker {speaker_counter}"
+            speaker_counter += 1
+        return speaker_map[speaker_id]
+
+    merged = []
+    current = None
+
+    for seg in segments:
+        speaker_name = get_speaker_name(seg["speaker"])
+
+        if current is None:
+            # First segment
+            current = {
+                "id": 0,
+                "start": seg["start"],
+                "end": seg["end"],
+                "speaker": speaker_name,
+                "text": seg["text"],
+                "words": list(seg.get("words", []))
+            }
+        elif speaker_name == current["speaker"]:
+            # Same speaker - merge
+            current["end"] = seg["end"]
+            if seg["text"]:
+                current["text"] = (current["text"] + " " + seg["text"]).strip()
+            current["words"].extend(seg.get("words", []))
+        else:
+            # Different speaker - flush current and start new
+            merged.append(current)
+            current = {
+                "id": len(merged),
+                "start": seg["start"],
+                "end": seg["end"],
+                "speaker": speaker_name,
+                "text": seg["text"],
+                "words": list(seg.get("words", []))
+            }
+
+    # Flush final segment
+    if current:
+        merged.append(current)
+
+    return merged
+
+
 def handler(job: Dict[str, Any]) -> Dict[str, Any]:
     """
     RunPod serverless handler for audio transcription with NLP pipeline.
@@ -1190,74 +1470,85 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
             f"speaker_count={speaker_count}, max_speakers={max_speakers}"
         )
 
-        # Run ASR and diarization (parallel if diarization enabled)
+        # Run ASR and diarization
         raw_text = ""
-        speaker_segments = []
-        word_timestamps = []
+        segments = []
         diarization_applied = False
         nfa_applied = False
 
         if do_diarization:
-            # Phase 1: Run ASR first (NFA needs transcript as input)
-            raw_text = transcribe_audio(tmp_path)
-            pipeline_steps.append("asr")
-            logger.info(f"ASR complete: {len(raw_text)} chars")
+            # ================================================================
+            # DIARIZE-FIRST ARCHITECTURE
+            # ================================================================
+            # This architecture solves the "dropped words" problem where ASR
+            # on long audio would miss utterances during speaker transitions.
+            #
+            # Flow:
+            #   1. Diarization (full audio) → speaker segments with timestamps
+            #   2. For each segment in parallel:
+            #      - Extract segment audio
+            #      - ASR on segment → text
+            #      - NFA on segment → word timestamps
+            #   3. Merge consecutive same-speaker segments
+            #   4. Apply punctuation/denormalization per segment
+            #
+            # Why this works better:
+            #   - ASR on short segments (5-30s) captures words that would be
+            #     dropped on full 3-5 minute audio
+            #   - NFA is faster and more accurate on short segments
+            #   - Each segment is already attributed to a speaker
+            # ================================================================
 
-            # Phase 2: Run NFA and diarization in parallel
-            # Both need only audio + transcript, so they can run concurrently
-            logger.info("Running NFA alignment and diarization in parallel")
-            with ThreadPoolExecutor(max_workers=2) as executor:
-                nfa_future = executor.submit(run_forced_alignment, tmp_path, raw_text)
-                diar_future = executor.submit(
-                    run_diarization, tmp_path, speaker_count, max_speakers
-                )
+            # Phase 1: Run diarization first on full audio
+            logger.info("Phase 1: Running diarization on full audio")
+            speaker_segments = run_diarization(tmp_path, speaker_count, max_speakers)
 
-                # Wait for both to complete
-                word_timestamps = nfa_future.result()
-                speaker_segments = diar_future.result()
-
-            if word_timestamps:
-                pipeline_steps.append("align")
-                nfa_applied = True
-                logger.info(f"NFA alignment complete: {len(word_timestamps)} words")
+            if not speaker_segments:
+                logger.warning("Diarization returned no segments - falling back to ASR only")
+                raw_text = transcribe_audio(tmp_path)
+                pipeline_steps.append("asr")
+                logger.info(f"ASR complete: {len(raw_text)} chars")
             else:
-                logger.warning("NFA alignment failed - speaker attribution will be skipped")
-
-            if speaker_segments:
                 pipeline_steps.append("diarize")
                 diarization_applied = True
-                logger.info(f"Diarization complete: {len(speaker_segments)} segments")
-            else:
-                logger.warning("Diarization returned no segments")
+                logger.info(f"Diarization complete: {len(speaker_segments)} raw segments")
+
+                # Phase 2: Process each segment in parallel (ASR + NFA per segment)
+                logger.info("Phase 2: Processing segments in parallel (ASR + NFA per segment)")
+                processed_segments = process_segments_parallel(
+                    tmp_path,
+                    speaker_segments,
+                    max_workers=4
+                )
+                pipeline_steps.append("asr")
+                pipeline_steps.append("align")
+                nfa_applied = True
+
+                # Phase 3: Merge consecutive segments from same speaker
+                logger.info("Phase 3: Merging consecutive speaker segments")
+                segments = merge_consecutive_speaker_segments(processed_segments)
+                logger.info(f"Merged into {len(segments)} speaker turns")
+
+                # Collect raw text (for backward compatibility)
+                raw_text = " ".join(seg["text"] for seg in segments if seg.get("text"))
+
         else:
-            # ASR only
+            # ASR only (no diarization)
             raw_text = transcribe_audio(tmp_path)
             pipeline_steps.append("asr")
             logger.info(f"ASR complete: {len(raw_text)} chars")
 
         # Process text based on diarization results
-        segments = []
         text = raw_text
         speaker_count_detected = 0
 
-        if diarization_applied and speaker_segments:
-            # NFA is required for accurate speaker attribution
-            if nfa_applied and word_timestamps:
-                # Use precise word-level merge
-                logger.info("Using word-level merge (NFA)")
-                segments = merge_words_with_speakers(word_timestamps, speaker_segments)
-            else:
-                # NFA failed - cannot do accurate speaker attribution
-                # Skip diarization rather than provide inaccurate results
-                logger.warning("NFA failed - skipping speaker attribution (would be inaccurate)")
-                diarization_applied = False
-                segments = []
-
+        if diarization_applied and segments:
             # Count unique speakers
             unique_speakers = set(seg.get("speaker") for seg in segments if seg.get("speaker"))
             speaker_count_detected = len(unique_speakers)
 
             # Apply punctuation and denormalization per segment
+            logger.info("Phase 4: Applying punctuation and denormalization per segment")
             for seg in segments:
                 seg_text = seg["text"]
 
@@ -1276,7 +1567,7 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
 
             # Format combined text with speaker labels
             text = format_transcript_with_speakers(segments)
-            logger.info(f"Merged text with {speaker_count_detected} speakers: {len(text)} chars")
+            logger.info(f"Final output: {speaker_count_detected} speakers, {len(text)} chars")
         else:
             # No diarization - apply punctuation and denormalization to full text
             if do_punctuate and PUNCTUATOR_MODEL is not None:
