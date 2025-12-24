@@ -64,13 +64,6 @@ RUN pip install --no-cache-dir \
     runpod>=1.6.0 \
     soundfile>=0.12.1
 
-# ctc-forced-aligner for word-level timestamps (NFA)
-# Pin transformers to version compatible with PyTorch 2.1.0 (base image)
-# Newer transformers (4.40+) uses torch._pytree API not available in PyTorch 2.1
-RUN pip install --no-cache-dir \
-    "transformers>=4.36.0,<4.40.0" \
-    git+https://github.com/MahmoudAshraf97/ctc-forced-aligner.git
-
 # =============================================================================
 # LAYER 3: Models and data (rarely changes, slow to transfer)
 # =============================================================================
@@ -106,16 +99,17 @@ RUN python -c "from nemo.collections.asr.models import EncDecClassificationModel
 RUN python -c "from nemo.collections.asr.models import EncDecSpeakerLabelModel; \
     EncDecSpeakerLabelModel.from_pretrained('titanet_large')"
 
-# Pre-download MMS alignment model for forced alignment (~2GB)
-# Used by ctc-forced-aligner for word-level timestamps
-RUN python -c "from ctc_forced_aligner import load_alignment_model; \
-    load_alignment_model('cpu')"
+# NFA (Forced Alignment) reuses PROTOVERB model via NeMo aligner_utils
+# No separate model download needed (saves ~2GB vs MMS approach)
 
 # =============================================================================
 # LAYER 5: Application code (changes frequently - LAST for best caching)
 # =============================================================================
 COPY handler.py /app/
 COPY test_local.py /app/
+
+# NeMo 2.x compatibility module (aligner_utils.py for Viterbi word timestamps)
+COPY nemo_compat /app/nemo_compat
 
 # =============================================================================
 # Environment and entrypoint

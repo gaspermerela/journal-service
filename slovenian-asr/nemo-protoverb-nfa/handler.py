@@ -135,11 +135,10 @@ DENORMALIZER = None
 VAD_MODEL = None
 SPEAKER_MODEL = None
 
-# NFA (Forced Alignment) model - uses MMS (Massively Multilingual Speech)
+# NFA (Forced Alignment) - reuses PROTOVERB model via NeMo aligner_utils
 # Provides word-level timestamps by aligning transcript to audio
-# Loaded once and reused for all segments (saves ~2s per segment on CPU)
-NFA_MODEL = None
-NFA_TOKENIZER = None
+# OUTPUT_TIMESTEP_DURATION is set after ASR model loads (from model config)
+OUTPUT_TIMESTEP_DURATION = None
 
 # Model paths - baked into Docker image
 ASR_MODEL_PATH = os.environ.get("ASR_MODEL_PATH", "/app/models/asr/conformer_ctc_bpe.nemo")
@@ -158,8 +157,10 @@ MODEL_VERSION = "protoverb-1.0"
 def load_asr_model():
     """
     Load PROTOVERB ASR model at container startup.
+
+    Also sets OUTPUT_TIMESTEP_DURATION from model config for NFA alignment.
     """
-    global ASR_MODEL
+    global ASR_MODEL, OUTPUT_TIMESTEP_DURATION
 
     if ASR_MODEL is not None:
         logger.info("ASR model already loaded, skipping")
@@ -186,6 +187,12 @@ def load_asr_model():
             logger.info("ASR model running on CPU")
 
         ASR_MODEL.eval()
+
+        # Set OUTPUT_TIMESTEP_DURATION for NFA alignment (from model config)
+        # This is the audio frame duration in seconds (~0.04s for PROTOVERB)
+        cfg = ASR_MODEL.cfg
+        OUTPUT_TIMESTEP_DURATION = cfg.preprocessor.window_stride
+        logger.info(f"NFA timestep duration set to {OUTPUT_TIMESTEP_DURATION}s")
 
         load_time = time.time() - start_time
         logger.info(f"ASR model loaded successfully in {load_time:.2f}s")
@@ -340,47 +347,6 @@ def load_diarization_models():
         raise
 
 
-def load_nfa_model():
-    """
-    Load NFA (Forced Alignment) model for word-level timestamps.
-
-    Uses MMS (Massively Multilingual Speech) model via ctc-forced-aligner.
-    Model is loaded once and reused for all segments.
-    """
-    global NFA_MODEL, NFA_TOKENIZER
-
-    if NFA_MODEL is not None and NFA_TOKENIZER is not None:
-        logger.info("NFA model already loaded, skipping")
-        return
-
-    logger.info("Loading NFA alignment model (MMS)")
-    start_time = time.time()
-
-    try:
-        import torch
-        from ctc_forced_aligner import load_alignment_model
-
-        # Determine device
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        dtype = torch.float16 if device == "cuda" else torch.float32
-
-        logger.info(f"NFA using device={device}, dtype={dtype}")
-
-        # Load alignment model (uses pretrained multilingual Wav2Vec2/MMS)
-        NFA_MODEL, NFA_TOKENIZER = load_alignment_model(device, dtype=dtype)
-
-        load_time = time.time() - start_time
-        logger.info(f"NFA model loaded successfully in {load_time:.2f}s")
-
-    except ImportError as e:
-        logger.warning(f"ctc-forced-aligner not available: {e}")
-        logger.warning("NFA alignment will be disabled")
-
-    except Exception as e:
-        logger.error(f"Failed to load NFA model: {e}")
-        raise
-
-
 def load_models_parallel(
     need_asr: bool = True,
     need_punct: bool = True,
@@ -395,10 +361,11 @@ def load_models_parallel(
     - Phase 1: Load ASR + Denormalizer in parallel (Denormalizer is not NeMo)
     - Phase 2: Load Diarization models sequentially (NeMo ASR models)
     - Phase 3: Load Punctuator sequentially (NeMo NLP model)
-    - Phase 4: Load NFA model (not NeMo, can run after NeMo models)
+
+    NFA (forced alignment) reuses the ASR model via NeMo aligner_utils,
+    so no separate model loading is needed.
     """
     global ASR_MODEL, PUNCTUATOR_MODEL, DENORMALIZER, VAD_MODEL, SPEAKER_MODEL
-    global NFA_MODEL, NFA_TOKENIZER
 
     # Track what we're actually loading in this call
     loading = []
@@ -410,8 +377,6 @@ def load_models_parallel(
         loading.append("Denormalizer")
     if need_diarization and (VAD_MODEL is None or SPEAKER_MODEL is None):
         loading.append("Diarization")
-    if need_diarization and NFA_MODEL is None:
-        loading.append("NFA")
 
     if not loading:
         return  # Everything already loaded
@@ -445,11 +410,6 @@ def load_models_parallel(
     if need_punct and PUNCTUATOR_MODEL is None:
         logger.info("Loading phase 3: Punctuator")
         load_punctuator_model()
-
-    # Phase 4: NFA model (not NeMo, but loads after NeMo to avoid conflicts)
-    if need_diarization and NFA_MODEL is None:
-        logger.info("Loading phase 4: NFA")
-        load_nfa_model()
 
     load_time = time.time() - start_time
     logger.info(f"Models loaded in {load_time:.2f}s: {', '.join(loading)}")
@@ -789,10 +749,11 @@ def run_diarization(
 
 def run_forced_alignment(
     audio_path: str,
-    transcript: str
+    transcript: str,
+    segment_start: float = 0.0
 ) -> List[Dict[str, Any]]:
     """
-    Run forced alignment to get word-level timestamps.
+    Run forced alignment to get word-level timestamps using NeMo Forced Aligner.
 
     ## What is Forced Alignment?
 
@@ -804,7 +765,7 @@ def run_forced_alignment(
     ## How it works (CTC + Viterbi)
 
     PROTOVERB is a CTC (Connectionist Temporal Classification) model:
-    - CTC outputs a probability distribution over characters for each audio frame (~20ms)
+    - CTC outputs a probability distribution over characters for each audio frame (~40ms)
     - Example: frame 15 might be 80% "a", 10% "b", 10% blank
     - During ASR, we find the most likely CHARACTER sequence
     - During alignment, we already KNOW the characters and find their most likely TIMES
@@ -816,22 +777,23 @@ def run_forced_alignment(
 
     ## Implementation
 
-    Uses ctc-forced-aligner library which provides a programmatic Python API
-    for CTC-based forced alignment. This is much simpler than NeMo's CLI-based
-    align.py tool and uses 5X less memory than TorchAudio's API.
+    Uses NeMo's aligner_utils Python API which reuses the PROTOVERB ASR model
+    for alignment. No separate model needed (saves ~2GB memory vs MMS approach).
+    Apache 2.0 licensed (commercial use allowed).
 
     Args:
         audio_path: Path to audio file (WAV format)
         transcript: Full transcript text from ASR
+        segment_start: Offset to add to all timestamps (for segment-based processing)
 
     Returns:
         List of word timestamps: [{"word": str, "start": float, "end": float}, ...]
-        Empty list if alignment fails (speaker attribution will be skipped).
+        Empty list if alignment fails (falls back to proportional splitting).
     """
-    global NFA_MODEL, NFA_TOKENIZER
+    global ASR_MODEL, OUTPUT_TIMESTEP_DURATION
 
-    if NFA_MODEL is None or NFA_TOKENIZER is None:
-        logger.warning("NFA model not loaded, skipping forced alignment")
+    if ASR_MODEL is None:
+        logger.warning("ASR model not loaded, skipping forced alignment")
         return []
 
     if not transcript or not transcript.strip():
@@ -839,96 +801,65 @@ def run_forced_alignment(
         return []
 
     try:
-        logger.info(f"Running forced alignment on {audio_path} ({len(transcript.split())} words)")
+        import torch
+        from nemo_compat.aligner_utils import (
+            get_batch_variables,
+            viterbi_decoding,
+            add_t_start_end_to_utt_obj,
+        )
+
+        logger.info(f"Running NFA alignment on {audio_path} ({len(transcript.split())} words)")
         start_time = time.time()
 
-        # Use ctc-forced-aligner library with cached model
-        try:
-            from ctc_forced_aligner import (
-                load_audio,
-                generate_emissions,
-                preprocess_text,
-                get_alignments,
-                get_spans,
-                postprocess_results,
-            )
+        # Step 1: Get CTC log probabilities using PROTOVERB model
+        # Note: Both audio and gt_text_batch must be lists of same length
+        log_probs, y, T, U, utt_objs, timestep_duration = get_batch_variables(
+            audio=[audio_path],
+            model=ASR_MODEL,
+            gt_text_batch=[transcript],
+            output_timestep_duration=OUTPUT_TIMESTEP_DURATION,
+        )
 
-            # Use cached model (loaded once at startup)
-            alignment_model = NFA_MODEL
-            alignment_tokenizer = NFA_TOKENIZER
+        # Step 2: Viterbi alignment to find optimal character-to-frame mapping
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        alignments = viterbi_decoding(log_probs, y, T, U, viterbi_device=device)
 
-            # Load and process audio
-            audio_waveform = load_audio(
-                audio_path,
-                alignment_model.dtype,
-                alignment_model.device
-            )
+        # Step 3: Map frame alignments to word timestamps
+        utt_obj = add_t_start_end_to_utt_obj(
+            utt_obj=utt_objs[0],
+            alignment_utt=alignments[0],
+            output_timestep_duration=timestep_duration,
+        )
 
-            # Generate emissions (log probabilities) from alignment model
-            emissions_start = time.time()
-            emissions, stride = generate_emissions(
-                alignment_model,
-                audio_waveform,
-                batch_size=16
-            )
-            logger.debug(f"NFA: Emissions generated in {time.time() - emissions_start:.1f}s")
+        # Step 4: Extract words with timestamps
+        # Utterance.segments_and_tokens contains Segment and Token objects
+        # Segment.words_and_tokens contains Word and Token objects
+        from nemo_compat.aligner_utils import Segment, Word
 
-            # Preprocess text (tokenize and prepare for alignment)
-            # romanize=True required because MMS model doesn't handle Slovenian diacritics (č, š, ž)
-            # We'll map timestamps back to original words afterwards to preserve diacritics
-            tokens_starred, text_starred = preprocess_text(
-                transcript,
-                romanize=True,  # Required for MMS model compatibility
-                language="slv"  # ISO 639-3 code for Slovenian
-            )
+        words = []
+        for item in utt_obj.segments_and_tokens:
+            if isinstance(item, Segment):
+                for word_item in item.words_and_tokens:
+                    if isinstance(word_item, Word) and word_item.t_start is not None:
+                        words.append({
+                            "word": word_item.text,
+                            "start": round(word_item.t_start + segment_start, 3),
+                            "end": round(word_item.t_end + segment_start, 3),
+                        })
 
-            # Get alignments using Viterbi algorithm
-            viterbi_start = time.time()
-            segments, scores, blank_token = get_alignments(
-                emissions,
-                tokens_starred,
-                alignment_tokenizer
-            )
-            logger.debug(f"NFA: Viterbi complete in {time.time() - viterbi_start:.1f}s")
+        alignment_time = time.time() - start_time
+        logger.info(f"NFA alignment complete in {alignment_time:.2f}s: {len(words)} words")
+        return words
 
-            # Get word-level spans
-            spans = get_spans(tokens_starred, segments, blank_token)
-
-            # Post-process results to get clean word timestamps
-            word_timestamps = postprocess_results(
-                text_starred,
-                spans,
-                stride,
-                scores
-            )
-
-            # Map timestamps back to original words (preserves diacritics)
-            # word_timestamps has romanized text ("pricevanja"), we need original ("pričevanja")
-            original_words = transcript.split()
-            words = []
-            for i, item in enumerate(word_timestamps):
-                # Use original word if index matches, otherwise fall back to aligned text
-                original_word = original_words[i] if i < len(original_words) else item["text"]
-                words.append({
-                    "word": original_word,
-                    "start": item["start"],
-                    "end": item["end"]
-                })
-
-            alignment_time = time.time() - start_time
-            logger.info(f"Forced alignment complete in {alignment_time:.2f}s: {len(words)} words")
-            return words
-
-        except ImportError as e:
-            logger.warning(f"ctc-forced-aligner not available: {e}")
-            logger.warning("Install with: pip install ctc-forced-aligner")
-            return []
+    except ImportError as e:
+        logger.error(f"NeMo aligner_utils not available: {e}")
+        return []
 
     except Exception as e:
         logger.error(f"Forced alignment failed: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        return []
+        return []  # Fallback to proportional splitting
 
 
 def merge_words_with_speakers(
