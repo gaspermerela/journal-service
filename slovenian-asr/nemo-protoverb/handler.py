@@ -10,20 +10,29 @@ Pipeline:
         Audio -> ASR (PROTOVERB) -> Punctuation (optional) -> Denormalization (optional)
 
     With diarization (DIARIZE-FIRST architecture):
-        Audio -> Diarization -> Split by speaker -> [ASR + NFA per segment] -> Merge -> Punct -> Denorm
+        Audio -> Diarization -> Pre-merge -> [ASR + NFA per segment] -> Merge -> Punct -> Denorm
 
         Phase 1: Diarization (full audio)
             - Detect speaker segments with timestamps
             - Uses TitaNet-Large embeddings + clustering
 
+        Phase 1.5: Pre-merge short segments (for ASR quality)
+            - Merge adjacent same-speaker segments < 3s
+            - Gives PROTOVERB more acoustic context
+
         Phase 2: Process segments in parallel
-            - Extract audio for each speaker segment
-            - Run ASR on segment (captures words that would be dropped on full audio)
-            - Run NFA for word-level timestamps within segment
+            - Extract audio with 0.5s context padding before/after
+            - Run ASR on segment (captures words dropped on full audio)
+            - Run NFA for word-level timestamps (skipped on segments < 2s)
 
         Phase 3: Merge consecutive same-speaker segments
 
         Phase 4: Apply punctuation and denormalization per segment
+
+    Quality optimizations:
+        - MIN_SEGMENT_FOR_ASR (3.0s): Pre-merge short segments for context
+        - CONTEXT_PADDING (0.5s): Add audio context around segment boundaries
+        - MIN_SEGMENT_FOR_NFA (2.0s): Skip NFA on tiny segments (overhead not worth it)
 
     Why DIARIZE-FIRST?
         The old architecture (ASR first, then diarize) had a critical flaw:
@@ -1098,29 +1107,44 @@ def transcribe_audio(audio_path: str) -> str:
     return transcriptions[0].strip() if transcriptions else ""
 
 
-def extract_audio_segment(audio_path: str, start: float, end: float) -> str:
+def extract_audio_segment(
+    audio_path: str,
+    start: float,
+    end: float,
+    padding_before: float = 0.0,
+    padding_after: float = 0.0
+) -> tuple:
     """
-    Extract audio segment to a temporary file.
+    Extract audio segment to a temporary file with optional context padding.
 
     Uses soundfile for efficient audio slicing without re-encoding.
+    Padding adds extra audio before/after for ASR context, which improves
+    transcription quality on short segments.
 
     Args:
         audio_path: Path to source audio file
-        start: Start time in seconds
-        end: End time in seconds
+        start: Start time in seconds (of the actual segment)
+        end: End time in seconds (of the actual segment)
+        padding_before: Extra audio to include before start (seconds)
+        padding_after: Extra audio to include after end (seconds)
 
     Returns:
-        Path to temporary file containing the segment
+        Tuple of (path to temp file, actual_start, actual_end) where
+        actual_start/end reflect the padding applied (clamped to file bounds)
     """
     import soundfile as sf
-    import numpy as np
 
     # Read audio file
     audio_data, sample_rate = sf.read(audio_path)
+    total_duration = len(audio_data) / sample_rate
+
+    # Apply padding (clamped to file bounds)
+    padded_start = max(0, start - padding_before)
+    padded_end = min(total_duration, end + padding_after)
 
     # Calculate sample indices
-    start_sample = int(start * sample_rate)
-    end_sample = int(end * sample_rate)
+    start_sample = int(padded_start * sample_rate)
+    end_sample = int(padded_end * sample_rate)
 
     # Clamp to valid range
     start_sample = max(0, start_sample)
@@ -1132,7 +1156,82 @@ def extract_audio_segment(audio_path: str, start: float, end: float) -> str:
     # Write to temp file
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         sf.write(tmp.name, segment_data, sample_rate)
-        return tmp.name
+        return tmp.name, padded_start, padded_end
+
+
+# Configuration for segment processing
+MIN_SEGMENT_FOR_ASR = 3.0  # Merge segments shorter than this (seconds)
+CONTEXT_PADDING = 0.5  # Add this much audio before/after for ASR context (seconds)
+MIN_SEGMENT_FOR_NFA = 2.0  # Skip NFA for segments shorter than this (seconds)
+
+
+def merge_short_segments_for_asr(
+    segments: List[Dict[str, Any]],
+    min_duration: float = MIN_SEGMENT_FOR_ASR
+) -> List[Dict[str, Any]]:
+    """
+    Merge adjacent short segments from the same speaker BEFORE running ASR.
+
+    PROTOVERB ASR quality degrades significantly on very short segments (<3s)
+    because it lacks acoustic context. This function merges adjacent same-speaker
+    segments to ensure each segment has enough context for quality transcription.
+
+    Args:
+        segments: Raw diarization segments from run_diarization()
+        min_duration: Minimum segment duration in seconds (default: 3.0)
+
+    Returns:
+        List of merged segments where short same-speaker segments are combined
+    """
+    if not segments:
+        return []
+
+    logger.info(
+        f"Pre-merging short segments: {len(segments)} segments, "
+        f"min_duration={min_duration}s"
+    )
+
+    merged = []
+    current = None
+
+    for seg in segments:
+        duration = seg.get("duration", 0)
+        speaker = seg["speaker"]
+
+        if current is None:
+            # First segment
+            current = {
+                "start": seg["start"],
+                "duration": duration,
+                "speaker": speaker
+            }
+        elif speaker == current["speaker"] and duration < min_duration:
+            # Same speaker and short segment - merge
+            new_end = seg["start"] + duration
+            current["duration"] = new_end - current["start"]
+        elif speaker == current["speaker"] and current["duration"] < min_duration:
+            # Same speaker and current is short - merge
+            new_end = seg["start"] + duration
+            current["duration"] = new_end - current["start"]
+        else:
+            # Different speaker or both segments are long enough
+            merged.append(current)
+            current = {
+                "start": seg["start"],
+                "duration": duration,
+                "speaker": speaker
+            }
+
+    # Don't forget the last segment
+    if current:
+        merged.append(current)
+
+    logger.info(
+        f"Pre-merge complete: {len(segments)} -> {len(merged)} segments "
+        f"({len(segments) - len(merged)} merged)"
+    )
+
+    return merged
 
 
 def process_diarization_segment(
@@ -1144,6 +1243,10 @@ def process_diarization_segment(
     Process a single diarization segment: extract audio, run ASR, run NFA.
 
     This function is designed to be run in parallel for each segment.
+
+    Features:
+    - Context padding: Adds CONTEXT_PADDING seconds before/after for ASR quality
+    - Skips NFA on tiny segments (<MIN_SEGMENT_FOR_NFA) to reduce overhead
 
     Args:
         audio_path: Path to full audio file
@@ -1168,10 +1271,14 @@ def process_diarization_segment(
 
     segment_audio_path = None
     try:
-        # Extract audio segment
-        segment_audio_path = extract_audio_segment(audio_path, start, end)
+        # Extract audio segment with context padding for better ASR quality
+        segment_audio_path, padded_start, padded_end = extract_audio_segment(
+            audio_path, start, end,
+            padding_before=CONTEXT_PADDING,
+            padding_after=CONTEXT_PADDING
+        )
 
-        # Run ASR on segment
+        # Run ASR on segment (with padded audio for context)
         segment_text = transcribe_audio(segment_audio_path)
 
         if not segment_text.strip():
@@ -1185,17 +1292,26 @@ def process_diarization_segment(
                 "words": []
             }
 
-        # Run NFA on segment for word-level timestamps
-        word_timestamps = run_forced_alignment(segment_audio_path, segment_text)
-
-        # Adjust word timestamps to absolute time (add segment start offset)
         words = []
-        for w in word_timestamps:
-            words.append({
-                "word": w["word"],
-                "start": round(start + w["start"], 2),
-                "end": round(start + w["end"], 2)
-            })
+
+        # Skip NFA on very short segments (not worth the overhead)
+        if duration < MIN_SEGMENT_FOR_NFA:
+            logger.debug(
+                f"Segment {segment_index}: skipping NFA (duration={duration:.1f}s < "
+                f"{MIN_SEGMENT_FOR_NFA}s threshold)"
+            )
+        else:
+            # Run NFA on segment for word-level timestamps
+            word_timestamps = run_forced_alignment(segment_audio_path, segment_text)
+
+            # Adjust word timestamps to absolute time
+            # NFA timestamps are relative to padded audio, so add padded_start offset
+            for w in word_timestamps:
+                words.append({
+                    "word": w["word"],
+                    "start": round(padded_start + w["start"], 2),
+                    "end": round(padded_start + w["end"], 2)
+                })
 
         logger.debug(
             f"Segment {segment_index} [{start:.1f}s-{end:.1f}s] {speaker}: "
@@ -1513,11 +1629,18 @@ def handler(job: Dict[str, Any]) -> Dict[str, Any]:
                 diarization_applied = True
                 logger.info(f"Diarization complete: {len(speaker_segments)} raw segments")
 
+                # Phase 1.5: Pre-merge short same-speaker segments for better ASR context
+                # PROTOVERB quality degrades on very short segments (<3s)
+                merged_for_asr = merge_short_segments_for_asr(
+                    speaker_segments,
+                    min_duration=MIN_SEGMENT_FOR_ASR
+                )
+
                 # Phase 2: Process each segment in parallel (ASR + NFA per segment)
                 logger.info("Phase 2: Processing segments in parallel (ASR + NFA per segment)")
                 processed_segments = process_segments_parallel(
                     tmp_path,
-                    speaker_segments,
+                    merged_for_asr,  # Use pre-merged segments
                     max_workers=4
                 )
                 pipeline_steps.append("asr")
