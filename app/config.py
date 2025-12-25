@@ -26,8 +26,8 @@ class Settings(BaseSettings):
     AUDIO_STORAGE_PATH: str = "/app/data/audio"
     MAX_FILE_SIZE_MB: int = 100
 
-    # Transcription Configuration
-    TRANSCRIPTION_PROVIDER: str = "groq"  # Options: groq, assemblyai, clarin-slovene-asr
+    # Default Transcription Provider (can be overridden per-request via API)
+    DEFAULT_TRANSCRIPTION_PROVIDER: str = "groq"  # Options: groq, assemblyai, clarin-slovene-asr, noop
 
     # Audio Preprocessing Configuration
     ENABLE_AUDIO_PREPROCESSING: bool = True  # Enable ffmpeg preprocessing pipeline
@@ -39,8 +39,8 @@ class Settings(BaseSettings):
     PREPROCESSING_SILENCE_THRESHOLD: str = "-80dB"  # Silence detection threshold
     PREPROCESSING_SILENCE_DURATION: float = 0.5  # Minimum silence duration in seconds
 
-    # LLM Cleanup Configuration
-    LLM_PROVIDER: str = "groq"  # Options: groq (API), runpod_llm_gams (Slovenian GaMS on RunPod)
+    # Default LLM Cleanup Provider (can be overridden per-request via API)
+    DEFAULT_LLM_PROVIDER: str = "groq"  # Options: groq, runpod_llm_gams
     LLM_TIMEOUT_SECONDS: int = 120
     LLM_MAX_RETRIES: int = 2
 
@@ -90,9 +90,6 @@ class Settings(BaseSettings):
 
     # CORS Configuration
     CORS_ORIGINS: str = "*"
-
-    # Worker Configuration
-    WORKERS: int = 1
 
     # Database Pool Configuration
     DB_POOL_SIZE: int = 5
@@ -146,7 +143,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        case_sensitive=True
+        case_sensitive=True,
+        extra="ignore"  # Ignore unknown env vars for backwards compatibility
     )
 
     @property

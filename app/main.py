@@ -47,13 +47,13 @@ async def lifespan(app: FastAPI):
     from app.services.provider_registry import get_effective_transcription_provider, get_effective_llm_provider
     try:
         get_effective_transcription_provider(None)
-        logger.info(f"Default transcription provider '{settings.TRANSCRIPTION_PROVIDER}' is configured")
+        logger.info(f"Default transcription provider '{settings.DEFAULT_TRANSCRIPTION_PROVIDER}' is configured")
     except ValueError as e:
         raise RuntimeError(str(e)) from e
 
     try:
         get_effective_llm_provider(None)
-        logger.info(f"Default LLM provider '{settings.LLM_PROVIDER}' is configured")
+        logger.info(f"Default LLM provider '{settings.DEFAULT_LLM_PROVIDER}' is configured")
     except ValueError as e:
         raise RuntimeError(str(e)) from e
 
@@ -61,8 +61,8 @@ async def lifespan(app: FastAPI):
     logger.info(f"Available LLM providers: {get_available_llm_providers()}")
 
     # Store default provider names in app.state for backwards compatibility
-    app.state.default_transcription_provider = settings.TRANSCRIPTION_PROVIDER
-    app.state.default_llm_provider = settings.LLM_PROVIDER
+    app.state.default_transcription_provider = settings.DEFAULT_TRANSCRIPTION_PROVIDER
+    app.state.default_llm_provider = settings.DEFAULT_LLM_PROVIDER
 
     # Initialize envelope encryption service (required - app fails without it)
     logger.info(f"Initializing encryption service with provider: {settings.ENCRYPTION_PROVIDER}")

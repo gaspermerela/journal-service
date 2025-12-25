@@ -59,7 +59,7 @@ RUNPOD_LLM_GAMS_DEFAULT_TOP_P=0.9
 
 Set as default LLM provider:
 ```bash
-LLM_PROVIDER=runpod_llm_gams
+DEFAULT_LLM_PROVIDER=runpod_llm_gams
 ```
 
 Or specify per-request via API:

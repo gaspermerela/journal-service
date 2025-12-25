@@ -195,7 +195,7 @@ Tests organized by type in subdirectories:
 
 ### Transcription Providers
 
-**Default provider:** Set via `TRANSCRIPTION_PROVIDER` (default: `groq`)
+**Default provider:** Set via `DEFAULT_TRANSCRIPTION_PROVIDER` (default: `groq`)
 
 | Provider | Required Settings | Optional Settings |
 |----------|-------------------|-------------------|
@@ -212,7 +212,7 @@ SLOVENE_ASR_PYANNOTE_ENDPOINT_ID=xxx # pyannote 3.1 (best quality)
 
 ### LLM Cleanup Providers
 
-**Default provider:** Set via `LLM_PROVIDER` (default: `groq`)
+**Default provider:** Set via `DEFAULT_LLM_PROVIDER` (default: `groq`)
 
 | Provider | Required Settings | Optional Settings |
 |----------|-------------------|-------------------|

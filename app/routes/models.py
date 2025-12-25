@@ -47,8 +47,8 @@ async def get_options() -> UnifiedOptionsResponse:
         available_llm = get_available_llm_providers()
 
         # Create services for default providers
-        transcription_service = get_transcription_service_for_provider(settings.TRANSCRIPTION_PROVIDER)
-        llm_service = get_llm_service_for_provider(settings.LLM_PROVIDER)
+        transcription_service = get_transcription_service_for_provider(settings.DEFAULT_TRANSCRIPTION_PROVIDER)
+        llm_service = get_llm_service_for_provider(settings.DEFAULT_LLM_PROVIDER)
 
         # Get models from services
         transcription_models = await transcription_service.list_available_models()
@@ -56,17 +56,17 @@ async def get_options() -> UnifiedOptionsResponse:
 
         # Get provider-specific parameters
         transcription_params = TRANSCRIPTION_PROVIDER_PARAMETERS.get(
-            settings.TRANSCRIPTION_PROVIDER,
+            settings.DEFAULT_TRANSCRIPTION_PROVIDER,
             {}
         )
         llm_params = LLM_PROVIDER_PARAMETERS.get(
-            settings.LLM_PROVIDER,
+            settings.DEFAULT_LLM_PROVIDER,
             {}
         )
 
         return UnifiedOptionsResponse(
             transcription=ServiceOptions(
-                provider=settings.TRANSCRIPTION_PROVIDER,
+                provider=settings.DEFAULT_TRANSCRIPTION_PROVIDER,
                 available_providers=available_transcription,
                 models=[ModelInfo(**m) for m in transcription_models],
                 parameters={
@@ -75,7 +75,7 @@ async def get_options() -> UnifiedOptionsResponse:
                 }
             ),
             llm=ServiceOptions(
-                provider=settings.LLM_PROVIDER,
+                provider=settings.DEFAULT_LLM_PROVIDER,
                 available_providers=available_llm,
                 models=[ModelInfo(**m) for m in llm_models],
                 parameters={

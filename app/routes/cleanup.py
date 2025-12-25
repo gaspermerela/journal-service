@@ -95,7 +95,7 @@ async def process_cleanup_background(
     from app.services.llm_cleanup import create_llm_cleanup_service
 
     # Use specified provider or fall back to settings default
-    effective_provider = llm_provider or settings.LLM_PROVIDER
+    effective_provider = llm_provider or settings.DEFAULT_LLM_PROVIDER
 
     async with get_session() as db:
         # Create LLM service using factory with database session for prompt lookup

@@ -30,7 +30,7 @@ def create_llm_cleanup_service(
         ValueError: If provider is not supported
     """
     if provider is None:
-        provider = settings.LLM_PROVIDER
+        provider = settings.DEFAULT_LLM_PROVIDER
 
     provider = provider.lower()
 
