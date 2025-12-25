@@ -17,8 +17,8 @@ from sqlalchemy.pool import NullPool
 # Set required environment variables before importing Settings to avoid validation error
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-testing-only-not-for-production")
 os.environ.setdefault("DATABASE_PASSWORD", "password")  # Matches TEST_DATABASE_URL
-os.environ.setdefault("TRANSCRIPTION_PROVIDER", "noop")  # Use NoOp for unit/integration tests
-os.environ.setdefault("LLM_PROVIDER", "noop")  # Use NoOp for unit/integration tests
+os.environ.setdefault("DEFAULT_TRANSCRIPTION_PROVIDER", "noop")  # Use NoOp for unit/integration tests
+os.environ.setdefault("DEFAULT_LLM_PROVIDER", "noop")  # Use NoOp for unit/integration tests
 os.environ["DB_SCHEMA"] = "journal_test"  # MUST be set before app imports to use test schema
 
 from app.config import Settings

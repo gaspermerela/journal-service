@@ -379,7 +379,7 @@ Get unified options (models + parameters) for transcription and LLM. This endpoi
 - **No authentication required** - this endpoint is public
 - **Dynamic parameters** - Parameter availability depends on configured providers
 - **Per-request override** - Use `transcription_provider` and `llm_provider` in upload requests
-- Set default providers via `TRANSCRIPTION_PROVIDER` and `LLM_PROVIDER` environment variables
+- Set default providers via `DEFAULT_TRANSCRIPTION_PROVIDER` and `DEFAULT_LLM_PROVIDER` environment variables
 - Use this endpoint to discover available models and valid parameter ranges before making upload requests
 
 **GET `/api/v1/models/languages`**

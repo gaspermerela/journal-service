@@ -157,8 +157,8 @@ class TestUnifiedOptionsEndpoint:
         # Mock settings and service creation
         with patch("app.routes.models.settings") as mock_settings, \
                 patch("app.routes.models.get_transcription_service_for_provider", return_value=mock_transcription_service):
-            mock_settings.TRANSCRIPTION_PROVIDER = "groq"
-            mock_settings.LLM_PROVIDER = "noop"
+            mock_settings.DEFAULT_TRANSCRIPTION_PROVIDER = "groq"
+            mock_settings.DEFAULT_LLM_PROVIDER = "noop"
 
             response = await authenticated_client.get("/api/v1/options")
 
@@ -195,8 +195,8 @@ class TestUnifiedOptionsEndpoint:
         # Mock settings and service creation
         with patch("app.routes.models.settings") as mock_settings, \
                 patch("app.routes.models.get_llm_service_for_provider", return_value=mock_llm_service):
-            mock_settings.TRANSCRIPTION_PROVIDER = "noop"
-            mock_settings.LLM_PROVIDER = "groq"
+            mock_settings.DEFAULT_TRANSCRIPTION_PROVIDER = "noop"
+            mock_settings.DEFAULT_LLM_PROVIDER = "groq"
 
             response = await authenticated_client.get("/api/v1/options")
 

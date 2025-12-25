@@ -428,7 +428,7 @@ def get_effective_transcription_provider(requested_provider: Optional[str]) -> s
     Raises:
         ValueError: If provider is not valid or not configured
     """
-    provider = requested_provider or settings.TRANSCRIPTION_PROVIDER
+    provider = requested_provider or settings.DEFAULT_TRANSCRIPTION_PROVIDER
     provider = provider.lower()
 
     if provider not in TRANSCRIPTION_PROVIDERS:
@@ -461,7 +461,7 @@ def get_effective_llm_provider(requested_provider: Optional[str]) -> str:
     Raises:
         ValueError: If provider is not valid or not configured
     """
-    provider = requested_provider or settings.LLM_PROVIDER
+    provider = requested_provider or settings.DEFAULT_LLM_PROVIDER
     provider = provider.lower()
 
     if provider not in LLM_PROVIDERS:
