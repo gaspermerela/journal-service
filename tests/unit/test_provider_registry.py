@@ -370,3 +370,251 @@ class TestCaseInsensitivity:
 
         service2 = get_transcription_service_for_provider("Noop")
         assert service2 is not None
+
+
+# =============================================================================
+# LLM Provider Tests
+# =============================================================================
+
+from app.services.provider_registry import (
+    LLM_PROVIDERS,
+    is_llm_provider_configured,
+    get_missing_settings_for_llm_provider,
+    get_llm_service_for_provider,
+    get_available_llm_providers,
+)
+
+
+class TestLLMProvidersConfig:
+    """Test LLM_PROVIDERS configuration structure."""
+
+    def test_llm_providers_has_runpod_llm_gams(self):
+        """Test runpod_llm_gams provider is registered."""
+        assert "runpod_llm_gams" in LLM_PROVIDERS
+
+    def test_runpod_llm_gams_has_required_settings(self):
+        """Test runpod_llm_gams has correct required settings."""
+        provider = LLM_PROVIDERS["runpod_llm_gams"]
+        required = provider["required_settings"]
+        assert "RUNPOD_API_KEY" in required
+        assert "RUNPOD_LLM_GAMS_ENDPOINT_ID" in required
+
+    def test_llm_providers_have_description(self):
+        """Test all LLM providers have a description."""
+        for provider_name, config in LLM_PROVIDERS.items():
+            assert "description" in config, f"{provider_name} missing description"
+
+    def test_noop_llm_provider_exists(self):
+        """Test noop LLM provider exists for testing."""
+        assert "noop" in LLM_PROVIDERS
+        assert LLM_PROVIDERS["noop"]["required_settings"] == []
+
+
+class TestIsLLMProviderConfigured:
+    """Test is_llm_provider_configured function."""
+
+    def test_unknown_provider_returns_false(self):
+        """Test unknown provider returns False."""
+        assert is_llm_provider_configured("unknown-provider") is False
+
+    def test_noop_always_configured(self):
+        """Test noop provider is always configured."""
+        assert is_llm_provider_configured("noop") is True
+
+    def test_runpod_llm_gams_configured_when_both_set(self):
+        """Test runpod_llm_gams is configured when both API key and endpoint set."""
+        mock_settings = MagicMock()
+        mock_settings.RUNPOD_API_KEY = "test-key"
+        mock_settings.RUNPOD_LLM_GAMS_ENDPOINT_ID = "test-endpoint"
+
+        with patch("app.services.provider_registry.settings", mock_settings):
+            assert is_llm_provider_configured("runpod_llm_gams") is True
+
+    def test_runpod_llm_gams_not_configured_without_api_key(self):
+        """Test runpod_llm_gams is not configured without API key."""
+        mock_settings = MagicMock()
+        mock_settings.RUNPOD_API_KEY = ""
+        mock_settings.RUNPOD_LLM_GAMS_ENDPOINT_ID = "test-endpoint"
+
+        with patch("app.services.provider_registry.settings", mock_settings):
+            assert is_llm_provider_configured("runpod_llm_gams") is False
+
+    def test_runpod_llm_gams_not_configured_without_endpoint(self):
+        """Test runpod_llm_gams is not configured without endpoint ID."""
+        mock_settings = MagicMock()
+        mock_settings.RUNPOD_API_KEY = "test-key"
+        mock_settings.RUNPOD_LLM_GAMS_ENDPOINT_ID = ""
+
+        with patch("app.services.provider_registry.settings", mock_settings):
+            assert is_llm_provider_configured("runpod_llm_gams") is False
+
+    def test_groq_llm_configured_when_api_key_set(self):
+        """Test groq LLM is configured when GROQ_API_KEY is set."""
+        mock_settings = MagicMock()
+        mock_settings.GROQ_API_KEY = "test-key"
+
+        with patch("app.services.provider_registry.settings", mock_settings):
+            assert is_llm_provider_configured("groq") is True
+
+
+class TestGetMissingSettingsForLLMProvider:
+    """Test get_missing_settings_for_llm_provider function."""
+
+    def test_unknown_provider_returns_empty(self):
+        """Test unknown provider returns empty list."""
+        assert get_missing_settings_for_llm_provider("unknown") == []
+
+    def test_noop_returns_empty(self):
+        """Test noop provider returns empty list (no settings required)."""
+        assert get_missing_settings_for_llm_provider("noop") == []
+
+    def test_runpod_llm_gams_missing_api_key(self):
+        """Test runpod_llm_gams reports missing RUNPOD_API_KEY."""
+        mock_settings = MagicMock()
+        mock_settings.RUNPOD_API_KEY = ""
+        mock_settings.RUNPOD_LLM_GAMS_ENDPOINT_ID = "test-endpoint"
+
+        with patch("app.services.provider_registry.settings", mock_settings):
+            missing = get_missing_settings_for_llm_provider("runpod_llm_gams")
+            assert "RUNPOD_API_KEY" in missing
+            assert "RUNPOD_LLM_GAMS_ENDPOINT_ID" not in missing
+
+    def test_runpod_llm_gams_missing_endpoint(self):
+        """Test runpod_llm_gams reports missing endpoint ID."""
+        mock_settings = MagicMock()
+        mock_settings.RUNPOD_API_KEY = "test-key"
+        mock_settings.RUNPOD_LLM_GAMS_ENDPOINT_ID = ""
+
+        with patch("app.services.provider_registry.settings", mock_settings):
+            missing = get_missing_settings_for_llm_provider("runpod_llm_gams")
+            assert "RUNPOD_LLM_GAMS_ENDPOINT_ID" in missing
+            assert "RUNPOD_API_KEY" not in missing
+
+    def test_runpod_llm_gams_missing_both(self):
+        """Test runpod_llm_gams reports both missing settings."""
+        mock_settings = MagicMock()
+        mock_settings.RUNPOD_API_KEY = ""
+        mock_settings.RUNPOD_LLM_GAMS_ENDPOINT_ID = ""
+
+        with patch("app.services.provider_registry.settings", mock_settings):
+            missing = get_missing_settings_for_llm_provider("runpod_llm_gams")
+            assert len(missing) == 2
+            assert "RUNPOD_API_KEY" in missing
+            assert "RUNPOD_LLM_GAMS_ENDPOINT_ID" in missing
+
+    def test_fully_configured_returns_empty(self):
+        """Test fully configured provider returns empty list."""
+        mock_settings = MagicMock()
+        mock_settings.RUNPOD_API_KEY = "test-key"
+        mock_settings.RUNPOD_LLM_GAMS_ENDPOINT_ID = "test-endpoint"
+
+        with patch("app.services.provider_registry.settings", mock_settings):
+            missing = get_missing_settings_for_llm_provider("runpod_llm_gams")
+            assert missing == []
+
+
+class TestGetLLMServiceForProvider:
+    """Test get_llm_service_for_provider function."""
+
+    def test_unknown_provider_raises(self):
+        """Test unknown provider raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown LLM provider"):
+            get_llm_service_for_provider("unknown-provider")
+
+    def test_unconfigured_provider_raises(self):
+        """Test unconfigured provider raises ValueError."""
+        mock_settings = MagicMock()
+        mock_settings.GROQ_API_KEY = ""
+
+        with patch("app.services.provider_registry.settings", mock_settings):
+            with pytest.raises(ValueError, match="not configured"):
+                get_llm_service_for_provider("groq")
+
+    def test_noop_provider_returns_service(self):
+        """Test noop provider returns NoOpLLMCleanupService."""
+        service = get_llm_service_for_provider("noop")
+        assert service is not None
+        assert service.get_provider_name() == "noop"
+
+    def test_runpod_llm_gams_returns_service(self):
+        """Test runpod_llm_gams returns RunPodGamsLLMCleanupService."""
+        mock_settings = MagicMock()
+        mock_settings.RUNPOD_API_KEY = "test-key"
+        mock_settings.RUNPOD_LLM_GAMS_ENDPOINT_ID = "test-endpoint"
+        mock_settings.RUNPOD_LLM_GAMS_MODEL = "GaMS-9B-Instruct"
+        mock_settings.RUNPOD_LLM_GAMS_TIMEOUT = 120
+        mock_settings.RUNPOD_LLM_GAMS_MAX_RETRIES = 3
+        mock_settings.RUNPOD_LLM_GAMS_DEFAULT_TEMPERATURE = 0.3
+        mock_settings.RUNPOD_LLM_GAMS_DEFAULT_TOP_P = 0.9
+        mock_settings.RUNPOD_LLM_GAMS_MAX_TOKENS = 2048
+
+        with patch("app.services.provider_registry.settings", mock_settings):
+            with patch(
+                "app.services.llm_cleanup_runpod_gams.settings", mock_settings
+            ):
+                service = get_llm_service_for_provider("runpod_llm_gams")
+                assert service is not None
+                assert service.get_provider_name() == "runpod_llm_gams"
+
+
+class TestGetAvailableLLMProviders:
+    """Test get_available_llm_providers function."""
+
+    def test_returns_configured_providers_only(self):
+        """Test returns only providers that are fully configured."""
+        mock_settings = MagicMock()
+        mock_settings.GROQ_API_KEY = "test-key"
+        mock_settings.RUNPOD_API_KEY = ""  # Not configured
+        mock_settings.RUNPOD_LLM_GAMS_ENDPOINT_ID = ""
+
+        with patch("app.services.provider_registry.settings", mock_settings):
+            providers = get_available_llm_providers()
+            assert "groq" in providers
+            assert "noop" in providers
+            assert "runpod_llm_gams" not in providers
+
+    def test_noop_always_available(self):
+        """Test noop is always available."""
+        mock_settings = MagicMock()
+        mock_settings.GROQ_API_KEY = ""
+        mock_settings.RUNPOD_API_KEY = ""
+        mock_settings.RUNPOD_LLM_GAMS_ENDPOINT_ID = ""
+
+        with patch("app.services.provider_registry.settings", mock_settings):
+            providers = get_available_llm_providers()
+            assert "noop" in providers
+
+    def test_runpod_llm_gams_available_when_configured(self):
+        """Test runpod_llm_gams is available when configured."""
+        mock_settings = MagicMock()
+        mock_settings.GROQ_API_KEY = ""
+        mock_settings.RUNPOD_API_KEY = "test-key"
+        mock_settings.RUNPOD_LLM_GAMS_ENDPOINT_ID = "test-endpoint"
+
+        with patch("app.services.provider_registry.settings", mock_settings):
+            providers = get_available_llm_providers()
+            assert "runpod_llm_gams" in providers
+
+
+class TestLLMProviderCaseInsensitivity:
+    """Test LLM provider names are case-insensitive."""
+
+    def test_is_configured_case_insensitive(self):
+        """Test is_llm_provider_configured is case-insensitive."""
+        assert is_llm_provider_configured("NOOP") is True
+        assert is_llm_provider_configured("Noop") is True
+        assert is_llm_provider_configured("noop") is True
+
+    def test_get_missing_settings_case_insensitive(self):
+        """Test get_missing_settings_for_llm_provider is case-insensitive."""
+        # Should not raise, even with uppercase
+        result = get_missing_settings_for_llm_provider("NOOP")
+        assert isinstance(result, list)
+
+    def test_get_service_case_insensitive(self):
+        """Test get_llm_service_for_provider is case-insensitive."""
+        service = get_llm_service_for_provider("NOOP")
+        assert service is not None
+
+        service2 = get_llm_service_for_provider("Noop")
+        assert service2 is not None
