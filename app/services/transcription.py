@@ -5,9 +5,8 @@ Provides abstract base class and factory function.
 Supported providers:
 - groq: Groq API (Whisper large-v3)
 - assemblyai: AssemblyAI API
-- clarin-slovene-asr-nfa: Slovenian ASR with NeMo diarization + NFA alignment
-- clarin-slovene-asr-mms: Slovenian ASR with NeMo diarization + MMS alignment
-- clarin-slovene-asr-pyannote: Slovenian ASR with pyannote 3.1 diarization (best quality)
+- clarin-slovene-asr: Slovenian ASR with PROTOVERB model
+  Models: nfa (NeMo + NFA), mms (NeMo + MMS), pyannote (pyannote 3.1, best quality)
 
 Note: Local Whisper support has been removed. Use API-based providers instead.
 """

@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = 100
 
     # Transcription Configuration
-    TRANSCRIPTION_PROVIDER: str = "groq"  # Options: groq, assemblyai, clarin-slovene-asr-{nfa,mms,pyannote}
+    TRANSCRIPTION_PROVIDER: str = "groq"  # Options: groq, assemblyai, clarin-slovene-asr
 
     # Audio Preprocessing Configuration
     ENABLE_AUDIO_PREPROCESSING: bool = True  # Enable ffmpeg preprocessing pipeline
@@ -187,8 +187,8 @@ TRANSCRIPTION_PROVIDER_PARAMETERS = {
         }
     },
     "assemblyai": {},  # AssemblyAI - no configurable parameters (no beam_size/temperature support)
-    # Slovenian ASR pipelines with diarization support
-    "clarin-slovene-asr-nfa": {
+    # Slovenian ASR with multiple model variants (nfa, mms, pyannote)
+    "clarin-slovene-asr": {
         "punctuate": {
             "type": "bool",
             "default": True,
@@ -208,81 +208,7 @@ TRANSCRIPTION_PROVIDER_PARAMETERS = {
         "enable_diarization": {
             "type": "bool",
             "default": False,
-            "description": "Enable speaker diarization (NeMo ClusteringDiarizer + NFA alignment)"
-        },
-        "speaker_count": {
-            "type": "int",
-            "min": 1,
-            "max": 20,
-            "default": None,
-            "description": "Known speaker count (null for auto-detect)"
-        },
-        "max_speakers": {
-            "type": "int",
-            "min": 1,
-            "max": 20,
-            "default": 10,
-            "description": "Maximum speakers for auto-detection"
-        }
-    },
-    "clarin-slovene-asr-mms": {
-        "punctuate": {
-            "type": "bool",
-            "default": True,
-            "description": "Add punctuation and capitalization to transcription"
-        },
-        "denormalize": {
-            "type": "bool",
-            "default": True,
-            "description": "Convert spoken numbers, dates, times to written form"
-        },
-        "denormalize_style": {
-            "type": "string",
-            "options": ["default", "technical", "everyday"],
-            "default": "default",
-            "description": "Denormalization style preset"
-        },
-        "enable_diarization": {
-            "type": "bool",
-            "default": False,
-            "description": "Enable speaker diarization (NeMo ClusteringDiarizer + MMS alignment)"
-        },
-        "speaker_count": {
-            "type": "int",
-            "min": 1,
-            "max": 20,
-            "default": None,
-            "description": "Known speaker count (null for auto-detect)"
-        },
-        "max_speakers": {
-            "type": "int",
-            "min": 1,
-            "max": 20,
-            "default": 10,
-            "description": "Maximum speakers for auto-detection"
-        }
-    },
-    "clarin-slovene-asr-pyannote": {
-        "punctuate": {
-            "type": "bool",
-            "default": True,
-            "description": "Add punctuation and capitalization to transcription"
-        },
-        "denormalize": {
-            "type": "bool",
-            "default": True,
-            "description": "Convert spoken numbers, dates, times to written form"
-        },
-        "denormalize_style": {
-            "type": "string",
-            "options": ["default", "technical", "everyday"],
-            "default": "default",
-            "description": "Denormalization style preset"
-        },
-        "enable_diarization": {
-            "type": "bool",
-            "default": False,
-            "description": "Enable speaker diarization (pyannote 3.1 + NFA alignment, best quality)"
+            "description": "Enable speaker diarization"
         },
         "speaker_count": {
             "type": "int",

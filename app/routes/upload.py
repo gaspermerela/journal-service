@@ -373,8 +373,8 @@ async def upload_and_transcribe(
     language: Optional[str] = Form(None, description="Language code for transcription (e.g., 'en', 'es', 'sl') or 'auto' for detection. If not provided, uses user preference."),
     transcription_beam_size: Optional[int] = Form(None, description="Beam size for transcription (1-10, higher = more accurate but slower). If not provided, uses default from config."),
     transcription_temperature: Optional[float] = Form(None, ge=0.0, le=1.0, description="Temperature for transcription sampling (0.0-1.0, higher = more random). If not provided, uses default."),
-    transcription_model: Optional[str] = Form(None, description="Transcription model to use (e.g., 'whisper-large-v3'). If not provided, uses configured default."),
-    transcription_provider: Optional[str] = Form(None, description="Transcription provider (e.g., 'groq', 'assemblyai', 'clarin-slovene-asr-pyannote'). If not provided, uses configured default."),
+    transcription_model: Optional[str] = Form(None, description="Transcription model to use (e.g., 'whisper-large-v3', 'pyannote'). If not provided, uses configured default."),
+    transcription_provider: Optional[str] = Form(None, description="Transcription provider (e.g., 'groq', 'assemblyai', 'clarin-slovene-asr'). If not provided, uses configured default."),
     enable_diarization: bool = Form(False, description="Enable speaker diarization to identify different speakers."),
     speaker_count: int = Form(1, ge=1, le=10, description="Expected number of speakers (1-10). Only used if enable_diarization=True."),
     db: AsyncSession = Depends(get_db),
@@ -407,8 +407,10 @@ async def upload_and_transcribe(
         )
 
     # Get transcription service to obtain model name for database record
-    # TODO: Simplify
-    transcription_service = get_transcription_service_for_provider(effective_transcription_provider)
+    transcription_service = get_transcription_service_for_provider(
+        effective_transcription_provider,
+        model=transcription_model
+    )
 
     file_id = uuid.uuid4()
     saved_file_path = None
@@ -613,8 +615,8 @@ async def upload_transcribe_and_cleanup(
     language: Optional[str] = Form(None, description="Language code for transcription (e.g., 'en', 'es', 'sl') or 'auto' for detection. If not provided, uses user preference."),
     transcription_beam_size: Optional[int] = Form(None, description="Beam size for transcription (1-10, higher = more accurate but slower). If not provided, uses default from config."),
     transcription_temperature: Optional[float] = Form(None, ge=0.0, le=1.0, description="Temperature for transcription sampling (0.0-1.0, higher = more random). If not provided, uses default."),
-    transcription_model: Optional[str] = Form(None, description="Transcription model to use (e.g., 'whisper-large-v3'). If not provided, uses configured default."),
-    transcription_provider: Optional[str] = Form(None, description="Transcription provider (e.g., 'groq', 'assemblyai', 'clarin-slovene-asr-pyannote'). If not provided, uses configured default."),
+    transcription_model: Optional[str] = Form(None, description="Transcription model to use (e.g., 'whisper-large-v3', 'pyannote'). If not provided, uses configured default."),
+    transcription_provider: Optional[str] = Form(None, description="Transcription provider (e.g., 'groq', 'assemblyai', 'clarin-slovene-asr'). If not provided, uses configured default."),
     enable_diarization: bool = Form(False, description="Enable speaker diarization to identify different speakers."),
     speaker_count: int = Form(1, ge=1, le=10, description="Expected number of speakers (1-10). Only used if enable_diarization=True."),
     cleanup_temperature: Optional[float] = Form(None, ge=0.0, le=2.0, description="Temperature for LLM cleanup (0.0-2.0, higher = more creative). If not provided, uses default."),
@@ -664,8 +666,10 @@ async def upload_transcribe_and_cleanup(
         )
 
     # Get transcription service to obtain model name for database record
-    # TODO: Simplify
-    transcription_service = get_transcription_service_for_provider(effective_transcription_provider)
+    transcription_service = get_transcription_service_for_provider(
+        effective_transcription_provider,
+        model=transcription_model
+    )
 
     file_id = uuid.uuid4()
     saved_file_path = None

@@ -77,7 +77,10 @@ async def process_transcription_task(
     from app.database import AsyncSessionLocal
 
     # Create transcription service for this provider
-    transcription_service = get_transcription_service_for_provider(transcription_provider)
+    transcription_service = get_transcription_service_for_provider(
+        transcription_provider,
+        model=transcription_model
+    )
 
     logger.info(
         f"Starting transcription background task",
@@ -301,8 +304,10 @@ async def trigger_transcription(
         )
 
     # Get transcription service to obtain model name for database record
-    # TODO: Simplify
-    transcription_service = get_transcription_service_for_provider(effective_provider)
+    transcription_service = get_transcription_service_for_provider(
+        effective_provider,
+        model=request_data.transcription_model
+    )
     model_name = transcription_service.get_model_name()
 
     logger.info(
