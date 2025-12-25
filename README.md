@@ -21,30 +21,37 @@ This project is my attempt to build a GDPR friendly, possibly even self-hosted, 
 A self-hostable REST API that:
 
 1. **Accepts audio uploads** (voice memos, session recordings, dictation)
-2. **Transcribes** using pluggable providers (local Whisper, Groq, AssemblyAI, or language-specific models)
-3. **Cleans up** transcriptions with LLM post-processing (fixes grammar, adds punctuation, structures text)
-4. **Analyzes** content (extracts themes, emotions, ...)
-5. **Encrypts everything** at rest (GDPR-compliant envelope encryption)
-6. **Syncs** to Notion or exports for use elsewhere
+2. **Transcribes** using pluggable providers:
+   - **Groq** (cloud Whisper) - Fast, multilingual, 99+ languages
+   - **AssemblyAI** (cloud) - Speaker diarization, utterance-level timestamps
+   - **Slovenian ASR** (RunPod) - Native Slovenian with PROTOVERB model, speaker diarization
+3. **Cleans up** transcriptions with LLM post-processing:
+   - **Groq** or **Ollama** - For general text cleanup
+   - **GaMS** (RunPod) - Native Slovenian LLM for optimal Slovenian text quality
+4. **Encrypts everything** at rest (GDPR-compliant envelope encryption)
+5. **Syncs** to Notion or exports for use elsewhere
 
-The architecture is provider-agnostic. Swap transcription backends without changing your workflow. Compare quality across providers on the same audio.
+The architecture is provider-agnostic. Swap transcription backends without changing your workflow. Compare quality across providers on the same audio. Analysis (themes, emotions, etc.) is handled by wrapper applications.
 
 ## Current State
 
 This works for personal use today. I'm actively testing transcription quality and building toward a solution that could serve broader needs.
 
 **What's done:**
-- Multi-provider transcription (Whisper, Groq, AssemblyAI)
-- LLM cleanup with Ollama or Groq
+- Multi-provider transcription (Groq Whisper, AssemblyAI, Slovenian ASR)
+- Speaker diarization via AssemblyAI and Slovenian ASR (pyannote, NeMo)
+- Slovenian-specific ASR with PROTOVERB model (3 diarization variants)
+- LLM cleanup with Ollama, Groq, or GaMS (native Slovenian LLM)
 - GDPR-compliant envelope encryption (all data encrypted at rest)
+- Audio preprocessing pipeline (16kHz mono WAV, noise reduction)
 - JWT authentication, multi-user support
-- Notion integration
+- Per-request provider selection (switch providers without config changes)
+- Notion integration with auto-sync
 - React Native mobile + web frontend (separate repo)
 
 **What's in progress:**
-- Speaker diarization (for conversations with multiple speakers)
-- Slovenian-specific model integration (RSDO, fine-tuned Whisper)
-- Quality benchmarking framework
+- Quality benchmarking framework across providers
+- Additional language-specific model integrations
 
 **What's not ready:**
 - Production hardening (see [Known Issues](docs/known-issues.md))
@@ -71,18 +78,20 @@ See [API Reference](docs/api-reference.md) for authentication and endpoint examp
 FastAPI + PostgreSQL + async SQLAlchemy with pluggable transcription and LLM providers.
 
 Key design decisions:
-- **Provider abstraction**: Add new transcription services without touching core logic
+- **Provider abstraction**: Add new transcription or LLM services without touching core logic
 - **Background processing**: Long-running tasks don't block API responses
-- **Encryption by default**: Audio, transcriptions, and analysis encrypted at rest
+- **Encryption by default**: Audio files and transcriptions encrypted at rest
 - **Multi-tenant ready**: User isolation built in from the start
+- **Backbone design**: Handles transcription + cleanup; analysis delegated to wrapper apps
 
 [Full architecture details](docs/architecture.md)
 
 ## Potential Use Cases
 
 - **Personal journaling**: Voice-first daily journals, dream logs, quick notes
-- **Therapy/Psychology**: Session transcription with speaker separation (in progress)
+- **Therapy/Psychology**: Session transcription with speaker diarization
 - **Healthcare**: Dictation with domain-specific accuracy requirements
+- **Slovenian language**: Native ASR and LLM for optimal quality
 - **Underserved languages**: Where generic ASR falls short
 
 ## Known Issues

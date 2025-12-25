@@ -8,17 +8,17 @@ High-level design decisions and trade-offs.
 
 ```
 1. User authenticates (JWT)
-2. Client POSTs MP3/M4A file
+2. Client POSTs audio file (MP3, M4A, WAV, etc.)
 3. Validate file type + size
 4. Generate UUID + timestamp filename
 5. Save audio file to disk
-6. Preprocess audio (16kHz mono WAV) - only for self-hosted transcription
+6. Preprocess audio (16kHz mono WAV, noise reduction, normalization)
 7. Calculate audio duration
 8. Create database record
 9. Encrypt audio file (envelope encryption)
    - Create/reuse DEK for this VoiceEntry
    - Delete original unencrypted file
-10. Start background transcription (Whisper)
+10. Start background transcription (provider-configurable)
 11. Return entry metadata + transcription_id
 ```
 
@@ -79,8 +79,8 @@ The service provides REST endpoints across 9 functional areas:
 9. **Health** - Service health check
 
 **Key Features:**
-- **Unified options endpoint** - `/api/v1/options` for dynamic parameter discovery, 
-depending on what we are running (local whisper or groq for transcription, local ollama or groq for cleanup)
+- **Unified options endpoint** - `/api/v1/options` for dynamic parameter discovery based on configured providers
+- **Per-request provider selection** - Override default transcription or LLM provider per request
 - **Soft deletion prevention** - Cannot delete last transcription for an entry
 - **Cascading deletes** - Entry deletion removes all child records and audio file
 - **Idempotent Notion sync** - Re-syncing updates existing Notion page
@@ -92,7 +92,7 @@ depending on what we are running (local whisper or groq for transcription, local
 
 The service implements **envelope encryption** for GDPR-compliant data protection.
 
-**Encryption is always enabled** - there is no user toggle. The application fails at startup if the encryption service is unavailable. All audio files, transcriptions, and cleaned entries (including analysis) are encrypted.
+**Encryption is always enabled** - there is no user toggle. The application fails at startup if the encryption service is unavailable. All audio files, transcriptions, and cleaned entries are encrypted.
 
 ```
 Master Key → KEK (per-user) → DEK (per-VoiceEntry) → Data
@@ -162,15 +162,27 @@ Main Database (PostgreSQL)
 
 ## Tech Stack
 
+**Core:**
 - **FastAPI:** Async + auto OpenAPI docs
-- **PostgreSQL**
+- **PostgreSQL:** Primary database
 - **SQLAlchemy:** Async ORM
-- **Whisper:** Local speech-to-text
-- **Ollama (llama3.2:3b):** LLM for text cleanup
-- **pydub:** Audio duration calculation
 - **JWT:** Token-based auth
 - **Docker:** Consistent deployment
 - **Pytest:** Testing
+
+**Transcription Providers:**
+- **Groq:** Cloud Whisper API (default, 99+ languages)
+- **AssemblyAI:** Cloud ASR with speaker diarization
+- **Slovenian ASR:** RunPod serverless with PROTOVERB model (3 diarization variants)
+
+**LLM Cleanup Providers:**
+- **Groq:** Cloud LLM API (LLaMA models)
+- **Ollama:** Local LLM (llama3.2:3b default)
+- **GaMS:** RunPod serverless with native Slovenian LLM (GaMS-9B-Instruct)
+
+**Audio Processing:**
+- **ffmpeg:** Audio preprocessing (16kHz mono, noise reduction, normalization)
+- **mutagen:** Audio duration and format detection
 
 ## Testing
 
@@ -178,6 +190,73 @@ Tests organized by type in subdirectories:
 
 - **`tests/unit/`** - Business logic (no DB/external deps)
 - **`tests/integration/`** - API routes + test database
-- **`tests/e2e/`** - Full workflows with real services
+- **`tests/e2e/`** - Full workflows with real services (marked with `@pytest.mark.e2e_real`)
 
-Run subsets: `pytest tests/unit` (fast), `pytest tests/integration`, `pytest tests/e2e`
+## Provider Configuration
+
+### Transcription Providers
+
+**Default provider:** Set via `TRANSCRIPTION_PROVIDER` (default: `groq`)
+
+| Provider | Required Settings | Optional Settings |
+|----------|-------------------|-------------------|
+| `groq` | `GROQ_API_KEY` | `GROQ_TRANSCRIPTION_MODEL` (default: `whisper-large-v3`) |
+| `assemblyai` | `ASSEMBLYAI_API_KEY` | `ASSEMBLYAI_MODEL`, `ASSEMBLYAI_POLL_INTERVAL`, `ASSEMBLYAI_TIMEOUT` |
+| `clarin-slovene-asr` | `RUNPOD_API_KEY` + at least one endpoint | See below |
+
+**Slovenian ASR Endpoints** (RunPod):
+```bash
+SLOVENE_ASR_NFA_ENDPOINT_ID=xxx      # NeMo + NFA alignment
+SLOVENE_ASR_MMS_ENDPOINT_ID=xxx      # NeMo + MMS alignment
+SLOVENE_ASR_PYANNOTE_ENDPOINT_ID=xxx # pyannote 3.1 (best quality)
+```
+
+### LLM Cleanup Providers
+
+**Default provider:** Set via `LLM_PROVIDER` (default: `groq`)
+
+| Provider | Required Settings | Optional Settings |
+|----------|-------------------|-------------------|
+| `groq` | `GROQ_API_KEY` | `GROQ_LLM_MODEL` (default: `meta-llama/llama-4-maverick-17b-128e-instruct`) |
+| `ollama` | None | `OLLAMA_BASE_URL` (default: `http://localhost:11434`), `OLLAMA_MODEL` |
+| `runpod_llm_gams` | `RUNPOD_API_KEY`, `RUNPOD_LLM_GAMS_ENDPOINT_ID` | See below |
+
+**GaMS LLM Settings** (RunPod):
+```bash
+RUNPOD_LLM_GAMS_ENDPOINT_ID=xxx        # Required: RunPod endpoint
+RUNPOD_LLM_GAMS_MODEL=GaMS-9B-Instruct # Model variant
+RUNPOD_LLM_GAMS_TIMEOUT=120            # Request timeout (seconds)
+RUNPOD_LLM_GAMS_MAX_RETRIES=3          # Retry attempts
+RUNPOD_LLM_GAMS_DEFAULT_TEMPERATURE=0.3
+RUNPOD_LLM_GAMS_DEFAULT_TOP_P=0.9
+RUNPOD_LLM_GAMS_MAX_TOKENS=2048
+```
+
+### Core Settings
+
+```bash
+# Database
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_NAME=postgres
+DATABASE_USER=journal_user
+DATABASE_PASSWORD=your_password
+
+# Authentication
+JWT_SECRET_KEY=your-secret-key
+ACCESS_TOKEN_EXPIRE_DAYS=7
+REFRESH_TOKEN_EXPIRE_DAYS=30
+
+# Storage
+AUDIO_STORAGE_PATH=/app/data/audio
+MAX_FILE_SIZE_MB=100
+
+# Encryption (required)
+ENCRYPTION_MASTER_KEY=your-32-byte-key-base64
+
+# Logging
+LOG_LEVEL=INFO
+SQLALCHEMY_LOG_LEVEL=WARNING
+```
+
+See `app/config.py` for the complete list of settings with defaults.
