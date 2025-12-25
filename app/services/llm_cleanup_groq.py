@@ -11,8 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.prompt_template import PromptTemplate
-from app.services.llm_cleanup_base import LLMCleanupService, LLMCleanupError
-from app.services.llm_cleanup_ollama import (
+from app.services.llm_cleanup_base import (
+    LLMCleanupService,
+    LLMCleanupError,
     DREAM_CLEANUP_PROMPT,
     GENERIC_CLEANUP_PROMPT,
 )

@@ -544,8 +544,8 @@ class TestGetLLMServiceForProvider:
         mock_settings.RUNPOD_LLM_GAMS_MODEL = "GaMS-9B-Instruct"
         mock_settings.RUNPOD_LLM_GAMS_TIMEOUT = 120
         mock_settings.RUNPOD_LLM_GAMS_MAX_RETRIES = 3
-        mock_settings.RUNPOD_LLM_GAMS_DEFAULT_TEMPERATURE = 0.3
-        mock_settings.RUNPOD_LLM_GAMS_DEFAULT_TOP_P = 0.9
+        mock_settings.RUNPOD_LLM_GAMS_DEFAULT_TEMPERATURE = 0.0
+        mock_settings.RUNPOD_LLM_GAMS_DEFAULT_TOP_P = 0.0
         mock_settings.RUNPOD_LLM_GAMS_MAX_TOKENS = 2048
 
         with patch("app.services.provider_registry.settings", mock_settings):

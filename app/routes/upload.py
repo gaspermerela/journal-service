@@ -798,8 +798,13 @@ async def upload_transcribe_and_cleanup(
             # Use default from settings based on effective provider
             if effective_llm_provider == "groq":
                 cleanup_model_name = f"groq-{settings.GROQ_LLM_MODEL}"
+            elif effective_llm_provider == "runpod_llm_gams":
+                cleanup_model_name = f"runpod_llm_gams-{settings.RUNPOD_LLM_GAMS_MODEL}"
+            elif effective_llm_provider == "noop":
+                cleanup_model_name = "noop-test"
             else:
-                cleanup_model_name = f"ollama-{settings.OLLAMA_MODEL}"
+                # Unknown provider - use provider name as model
+                cleanup_model_name = f"{effective_llm_provider}-default"
 
         cleaned_entry = await db_service.create_cleaned_entry(
             db=db,

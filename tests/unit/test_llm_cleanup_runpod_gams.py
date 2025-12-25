@@ -20,8 +20,8 @@ def mock_settings():
     mock.RUNPOD_LLM_GAMS_MODEL = "GaMS-9B-Instruct"
     mock.RUNPOD_LLM_GAMS_TIMEOUT = 120
     mock.RUNPOD_LLM_GAMS_MAX_RETRIES = 3
-    mock.RUNPOD_LLM_GAMS_DEFAULT_TEMPERATURE = 0.3
-    mock.RUNPOD_LLM_GAMS_DEFAULT_TOP_P = 0.9
+    mock.RUNPOD_LLM_GAMS_DEFAULT_TEMPERATURE = 0.0
+    mock.RUNPOD_LLM_GAMS_DEFAULT_TOP_P = 0.0
     mock.RUNPOD_LLM_GAMS_MAX_TOKENS = 2048
     return mock
 
@@ -210,11 +210,11 @@ class TestRunPodGamsLLMCleanupService:
             entry_type="dream",
         )
 
-        # Verify defaults were used (0.3 temperature, 0.9 top_p)
+        # Verify defaults were used (0.0 temperature, 0.0 top_p)
         call_args = mock_httpx_client.post.call_args
         payload = call_args[1]["json"]
-        assert payload["input"]["temperature"] == 0.3
-        assert payload["input"]["top_p"] == 0.9
+        assert payload["input"]["temperature"] == 0.0
+        assert payload["input"]["top_p"] == 0.0
 
         # Result should have None for parameters (indicates defaults used)
         assert result["temperature"] is None
@@ -406,12 +406,10 @@ class TestRunPodGamsServiceModels:
         """Test list_available_models returns expected models."""
         models = await cleanup_service.list_available_models()
 
-        assert len(models) == 4
+        # Only GaMS-9B-Instruct is currently supported
+        assert len(models) == 1
         model_ids = [m["id"] for m in models]
         assert "GaMS-9B-Instruct" in model_ids
-        assert "GaMS-27B-Instruct" in model_ids
-        assert "GaMS-2B-Instruct" in model_ids
-        assert "GaMS-1B-Chat" in model_ids
 
     @pytest.mark.asyncio
     async def test_list_available_models_cached(self, cleanup_service):

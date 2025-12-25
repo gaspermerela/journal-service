@@ -371,7 +371,7 @@ def mock_transcription_service():
 def mock_llm_cleanup_service():
     """
     NoOp LLM cleanup service for integration tests.
-    Avoids loading Ollama/Groq while testing API endpoints.
+    Avoids loading Groq/GaMS while testing API endpoints.
     """
     from app.services.llm_cleanup_noop import NoOpLLMCleanupService
     return NoOpLLMCleanupService(model_name="noop-llm-test")
@@ -448,7 +448,7 @@ async def real_api_client() -> AsyncGenerator[AsyncClient, None]:
     Create a real HTTP client for e2e tests that connects to the running Docker app.
 
     This makes actual HTTP requests to http://localhost:8000 instead of using ASGI transport.
-    Use this fixture for true end-to-end tests that need real services (Whisper, Ollama, etc.)
+    Use this fixture for true end-to-end tests that need real services (Groq, GaMS, etc.)
 
     Prerequisites:
     - Docker container must be running
@@ -506,16 +506,6 @@ def app_is_available() -> bool:
     try:
         import httpx
         response = httpx.get("http://localhost:8000/health", timeout=2)
-        return response.status_code == 200
-    except Exception:
-        return False
-
-
-def ollama_available() -> bool:
-    """Check if Ollama service is available at http://localhost:11434."""
-    try:
-        import httpx
-        response = httpx.get("http://localhost:11434/api/tags", timeout=2)
         return response.status_code == 200
     except Exception:
         return False

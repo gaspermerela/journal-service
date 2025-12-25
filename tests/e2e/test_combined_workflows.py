@@ -7,8 +7,8 @@ Tests the convenience endpoints that combine multiple steps:
 
 Prerequisites:
 - App running in Docker at http://localhost:8000
-- Whisper model available
-- Ollama running with llama3.2:3b model (for cleanup test)
+- Transcription provider configured (Groq, AssemblyAI, or Slovenian ASR)
+- LLM provider configured (Groq or GaMS on RunPod) for cleanup test
 """
 import pytest
 from pathlib import Path
@@ -107,7 +107,7 @@ async def test_e2e_upload_transcribe_and_cleanup(
     authenticated_e2e_client: Tuple[AsyncClient, str]
 ):
     """
-    Test upload-transcribe-cleanup combined endpoint with real Whisper and Ollama.
+    Test upload-transcribe-cleanup combined endpoint with real transcription and LLM.
 
     This is the complete workflow endpoint that combines:
     1. Upload audio file

@@ -5,6 +5,37 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 
 
+# Cleanup prompt templates - output plain text with <break> markers for paragraphs
+DREAM_CLEANUP_PROMPT = """You are a dream journal assistant. Clean up this voice transcription of a dream.
+
+Original transcription:
+{transcription_text}
+
+Tasks:
+1. Fix grammar, punctuation, and capitalization
+2. Remove filler words (um, uh, like, you know)
+3. Keep the original meaning and emotional tone intact
+4. Use <break> to separate paragraphs (NOT newlines)
+
+Output ONLY the cleaned text with <break> markers between paragraphs.
+No JSON, no explanations, no analysis - just the cleaned text."""
+
+
+GENERIC_CLEANUP_PROMPT = """You are a transcription cleanup assistant. Clean up this voice transcription.
+
+Original transcription:
+{transcription_text}
+
+Tasks:
+1. Fix grammar, punctuation, and capitalization
+2. Remove filler words (um, uh, like, you know)
+3. Keep the original meaning and tone intact
+4. Use <break> to separate paragraphs (NOT newlines)
+
+Output ONLY the cleaned text with <break> markers between paragraphs.
+No JSON, no explanations, no analysis - just the cleaned text."""
+
+
 class LLMCleanupError(Exception):
     """
     Custom exception for LLM cleanup failures that preserves debug information.

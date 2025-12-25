@@ -8,7 +8,7 @@ This document lists improvements I plan to add as the project grows. Everything 
 
 ### 1. Automatic Retries with Backoff for Background Tasks
 
-**Goal:** Make cleanup/transcription/Notion sync more resilient to short outages (Ollama restarting, network hiccups, etc.).
+**Goal:** Make cleanup/transcription/Notion sync more resilient to short outages (API outages, network hiccups, etc.).
 
 **Current behavior**
 
@@ -25,7 +25,7 @@ except Exception as e:
     )
 ```
 
-If Ollama is briefly down, the entry is just marked as `FAILED` and never retried.
+If the LLM service is briefly down, the entry is just marked as `FAILED` and never retried.
 
 **Plan**
 

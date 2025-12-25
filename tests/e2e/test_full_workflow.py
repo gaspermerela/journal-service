@@ -5,8 +5,8 @@ These tests verify the complete Phase 1-4 pipeline works together.
 
 Prerequisites for real e2e tests:
 - PostgreSQL database running
-- Whisper model available
-- Ollama running with llama3.2:3b model
+- Transcription provider configured (Groq, AssemblyAI, or Slovenian ASR)
+- LLM provider configured (Groq or GaMS on RunPod)
 
 Run all tests: pytest tests/test_e2e_full_workflow.py
 Run only mocked tests: pytest tests/test_e2e_full_workflow.py -k "not real"
@@ -113,14 +113,13 @@ async def test_e2e_real_complete_workflow(
 
     This test:
     1. Uploads real audio
-    2. Transcribes with real Whisper
-    3. Cleans with real Ollama
+    2. Transcribes with configured provider
+    3. Cleans with configured LLM
     4. Retrieves and validates all results
 
     Prerequisites:
-    - Ollama: ollama serve
-    - Model: ollama pull llama3.2:3b
-    - Whisper model files in place
+    - Transcription provider configured (e.g., GROQ_API_KEY)
+    - LLM provider configured (e.g., GROQ_API_KEY or RUNPOD_LLM_GAMS_ENDPOINT_ID)
     """
     client, email = authenticated_e2e_client
 

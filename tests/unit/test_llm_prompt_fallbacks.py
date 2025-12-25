@@ -8,15 +8,21 @@ After refactoring, we have separate prompts for:
 This test file covers the _get_prompt_from_db and hardcoded fallback mechanisms.
 """
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.llm_cleanup_ollama import OllamaLLMCleanupService
+from app.services.llm_cleanup_groq import GroqLLMCleanupService
 from app.models.prompt_template import PromptTemplate
 
 
-# Alias for backward compatibility with tests
-LLMCleanupService = OllamaLLMCleanupService
+# Create a test service with mocked API key
+def create_test_service(db_session=None):
+    """Create a GroqLLMCleanupService instance for testing."""
+    return GroqLLMCleanupService(
+        api_key="test-api-key",
+        model="test-model",
+        db_session=db_session
+    )
 
 
 class TestPromptFallbackMechanisms:
@@ -49,7 +55,7 @@ class TestPromptFallbackMechanisms:
         mock_session.execute.return_value = mock_result
 
         # Create service with mocked session
-        service = OllamaLLMCleanupService(db_session=mock_session)
+        service = create_test_service(db_session=mock_session)
 
         # Test DB prompt loading
         result = await service._get_prompt_from_db("dream")
@@ -73,7 +79,7 @@ class TestPromptFallbackMechanisms:
 
         mock_session.execute.return_value = mock_result
 
-        service = LLMCleanupService(db_session=mock_session)
+        service = create_test_service(db_session=mock_session)
 
         result = await service._get_prompt_from_db("dream")
 
@@ -104,7 +110,7 @@ class TestPromptFallbackMechanisms:
 
         mock_session.execute.return_value = mock_result
 
-        service = LLMCleanupService(db_session=mock_session)
+        service = create_test_service(db_session=mock_session)
 
         result = await service._get_prompt_from_db("dream")
 
@@ -114,7 +120,7 @@ class TestPromptFallbackMechanisms:
     @pytest.mark.asyncio
     async def test_get_prompt_from_db_no_session(self):
         """Test when no database session provided."""
-        service = LLMCleanupService(db_session=None)
+        service = create_test_service(db_session=None)
 
         result = await service._get_prompt_from_db("dream")
 
@@ -126,7 +132,7 @@ class TestPromptFallbackMechanisms:
         mock_session = AsyncMock(spec=AsyncSession)
         mock_session.execute.side_effect = Exception("Database error")
 
-        service = LLMCleanupService(db_session=mock_session)
+        service = create_test_service(db_session=mock_session)
 
         result = await service._get_prompt_from_db("dream")
 
@@ -135,7 +141,7 @@ class TestPromptFallbackMechanisms:
 
     def test_hardcoded_cleanup_prompt_dream(self):
         """Test hardcoded cleanup prompt for dream entry type."""
-        service = LLMCleanupService()
+        service = create_test_service()
 
         prompt = service._get_hardcoded_cleanup_prompt("dream")
 
@@ -145,7 +151,7 @@ class TestPromptFallbackMechanisms:
 
     def test_hardcoded_cleanup_prompt_generic(self):
         """Test hardcoded cleanup prompt for non-dream entry types."""
-        service = LLMCleanupService()
+        service = create_test_service()
 
         for entry_type in ["journal", "meeting", "note"]:
             prompt = service._get_hardcoded_cleanup_prompt(entry_type)
@@ -178,7 +184,7 @@ class TestPromptFallbackMechanisms:
 
         mock_session.execute.return_value = mock_result
 
-        service = LLMCleanupService(db_session=mock_session)
+        service = create_test_service(db_session=mock_session)
 
         prompt_text, template_id = await service._get_cleanup_prompt("journal")
 
@@ -199,7 +205,7 @@ class TestPromptFallbackMechanisms:
 
         mock_session.execute.return_value = mock_result
 
-        service = LLMCleanupService(db_session=mock_session)
+        service = create_test_service(db_session=mock_session)
 
         prompt_text, template_id = await service._get_cleanup_prompt("dream")
 
@@ -210,7 +216,7 @@ class TestPromptFallbackMechanisms:
     @pytest.mark.asyncio
     async def test_get_cleanup_prompt_no_session_uses_fallback(self):
         """Test using hardcoded fallback when no session provided."""
-        service = LLMCleanupService(db_session=None)
+        service = create_test_service(db_session=None)
 
         prompt_text, template_id = await service._get_cleanup_prompt("journal")
 
