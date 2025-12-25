@@ -43,7 +43,7 @@ class TestE2EUnifiedOptions:
 
         # Verify LLM provider and models
         llm = data["llm"]
-        assert llm["provider"] in ["ollama", "groq"]
+        assert llm["provider"] in ["groq", "runpod_llm_gams"]
         assert len(llm["models"]) > 0
 
     @pytest.mark.asyncio

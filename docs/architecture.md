@@ -177,7 +177,6 @@ Main Database (PostgreSQL)
 
 **LLM Cleanup Providers:**
 - **Groq:** Cloud LLM API (LLaMA models)
-- **Ollama:** Local LLM (llama3.2:3b default)
 - **GaMS:** RunPod serverless with native Slovenian LLM (GaMS-9B-Instruct)
 
 **Audio Processing:**
@@ -218,7 +217,6 @@ SLOVENE_ASR_PYANNOTE_ENDPOINT_ID=xxx # pyannote 3.1 (best quality)
 | Provider | Required Settings | Optional Settings |
 |----------|-------------------|-------------------|
 | `groq` | `GROQ_API_KEY` | `GROQ_LLM_MODEL` (default: `meta-llama/llama-4-maverick-17b-128e-instruct`) |
-| `ollama` | None | `OLLAMA_BASE_URL` (default: `http://localhost:11434`), `OLLAMA_MODEL` |
 | `runpod_llm_gams` | `RUNPOD_API_KEY`, `RUNPOD_LLM_GAMS_ENDPOINT_ID` | See below |
 
 **GaMS LLM Settings** (RunPod):
@@ -227,8 +225,8 @@ RUNPOD_LLM_GAMS_ENDPOINT_ID=xxx        # Required: RunPod endpoint
 RUNPOD_LLM_GAMS_MODEL=GaMS-9B-Instruct # Model variant
 RUNPOD_LLM_GAMS_TIMEOUT=120            # Request timeout (seconds)
 RUNPOD_LLM_GAMS_MAX_RETRIES=3          # Retry attempts
-RUNPOD_LLM_GAMS_DEFAULT_TEMPERATURE=0.3
-RUNPOD_LLM_GAMS_DEFAULT_TOP_P=0.9
+RUNPOD_LLM_GAMS_DEFAULT_TEMPERATURE=0.0
+RUNPOD_LLM_GAMS_DEFAULT_TOP_P=0.0
 RUNPOD_LLM_GAMS_MAX_TOKENS=2048
 ```
 

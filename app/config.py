@@ -40,11 +40,7 @@ class Settings(BaseSettings):
     PREPROCESSING_SILENCE_DURATION: float = 0.5  # Minimum silence duration in seconds
 
     # LLM Cleanup Configuration
-    LLM_PROVIDER: str = "groq"  # Options: ollama (local), groq (API)
-
-    # Ollama (Local) LLM Configuration
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "llama3.2:3b"
+    LLM_PROVIDER: str = "groq"  # Options: groq (API), runpod_llm_gams (Slovenian GaMS on RunPod)
     LLM_TIMEOUT_SECONDS: int = 120
     LLM_MAX_RETRIES: int = 2
 
@@ -85,11 +81,11 @@ class Settings(BaseSettings):
     # GaMS LLM on RunPod Configuration (Slovenian text cleanup)
     # Reuses RUNPOD_API_KEY for authentication
     RUNPOD_LLM_GAMS_ENDPOINT_ID: Optional[str] = None  # RunPod serverless endpoint ID for GaMS
-    RUNPOD_LLM_GAMS_MODEL: str = "GaMS-9B-Instruct"  # Model variant (future: GaMS-27B-Instruct)
+    RUNPOD_LLM_GAMS_MODEL: str = "GaMS-9B-Instruct"  # Native Slovenian LLM model
     RUNPOD_LLM_GAMS_TIMEOUT: int = 120  # Max seconds per request
     RUNPOD_LLM_GAMS_MAX_RETRIES: int = 3  # Max retry attempts on failure
-    RUNPOD_LLM_GAMS_DEFAULT_TEMPERATURE: float = 0.3  # Lower = more deterministic
-    RUNPOD_LLM_GAMS_DEFAULT_TOP_P: float = 0.9  # Nucleus sampling parameter
+    RUNPOD_LLM_GAMS_DEFAULT_TEMPERATURE: float = 0.0  # Lower = more deterministic
+    RUNPOD_LLM_GAMS_DEFAULT_TOP_P: float = 0.0  # Nucleus sampling parameter
     RUNPOD_LLM_GAMS_MAX_TOKENS: int = 2048  # Max tokens to generate
 
     # CORS Configuration
@@ -245,30 +241,14 @@ LLM_PROVIDER_PARAMETERS = {
             "type": "float",
             "min": 0.0,
             "max": 2.0,
-            "default": 1.0,
+            "default": 0.0,
             "description": "Temperature for LLM sampling (0.0-2.0, higher = more creative)"
         },
         "top_p": {
             "type": "float",
             "min": 0.0,
             "max": 1.0,
-            "default": 1.0,
-            "description": "Top-p nucleus sampling (0.0-1.0)"
-        }
-    },
-    "ollama": {
-        "temperature": {
-            "type": "float",
-            "min": 0.0,
-            "max": 2.0,
-            "default": 1.0,
-            "description": "Temperature for LLM sampling (0.0-2.0, higher = more creative)"
-        },
-        "top_p": {
-            "type": "float",
-            "min": 0.0,
-            "max": 1.0,
-            "default": 1.0,
+            "default": 0.0,
             "description": "Top-p nucleus sampling (0.0-1.0)"
         }
     },
@@ -277,14 +257,14 @@ LLM_PROVIDER_PARAMETERS = {
             "type": "float",
             "min": 0.0,
             "max": 2.0,
-            "default": 0.3,
+            "default": 0.0,
             "description": "Temperature for GaMS sampling (0.0-2.0, lower = more deterministic)"
         },
         "top_p": {
             "type": "float",
             "min": 0.0,
             "max": 1.0,
-            "default": 0.9,
+            "default": 0.0,
             "description": "Top-p nucleus sampling for GaMS (0.0-1.0)"
         }
     },

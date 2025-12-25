@@ -26,7 +26,7 @@ A self-hostable REST API that:
    - **AssemblyAI** (cloud) - Speaker diarization, utterance-level timestamps
    - **Slovenian ASR** (RunPod) - Native Slovenian with PROTOVERB model, speaker diarization
 3. **Cleans up** transcriptions with LLM post-processing:
-   - **Groq** or **Ollama** - For general text cleanup
+   - **Groq** - For general text cleanup (cloud API)
    - **GaMS** (RunPod) - Native Slovenian LLM for optimal Slovenian text quality
 4. **Encrypts everything** at rest (GDPR-compliant envelope encryption)
 5. **Syncs** to Notion or exports for use elsewhere
@@ -41,7 +41,7 @@ This works for personal use today. I'm actively testing transcription quality an
 - Multi-provider transcription (Groq Whisper, AssemblyAI, Slovenian ASR)
 - Speaker diarization via AssemblyAI and Slovenian ASR (pyannote, NeMo)
 - Slovenian-specific ASR with PROTOVERB model (3 diarization variants)
-- LLM cleanup with Ollama, Groq, or GaMS (native Slovenian LLM)
+- LLM cleanup with Groq or GaMS (native Slovenian LLM)
 - GDPR-compliant envelope encryption (all data encrypted at rest)
 - Audio preprocessing pipeline (16kHz mono WAV, noise reduction)
 - JWT authentication, multi-user support

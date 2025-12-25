@@ -139,10 +139,10 @@ Upload, transcribe, and cleanup in one request. This endpoint:
 - `speaker_count` (optional): Expected number of speakers (1-20). Default: auto-detect
 
 **LLM Cleanup Parameters:**
-- `llm_provider` (optional): Provider to use (`groq`, `ollama`, `runpod_llm_gams`). Default: configured provider
+- `llm_provider` (optional): Provider to use (`groq`, `runpod_llm_gams`). Default: configured provider
 - `llm_model` (optional): LLM model (e.g., `llama-3.3-70b-versatile`, `GaMS-9B-Instruct`). Default: configured model
-- `cleanup_temperature` (optional): LLM temperature (0.0-2.0, higher = more creative). Default: 0.3
-- `cleanup_top_p` (optional): LLM nucleus sampling (0.0-1.0). Default: 0.9
+- `cleanup_temperature` (optional): LLM temperature (0.0-2.0, higher = more creative). Default: 0.0
+- `cleanup_top_p` (optional): LLM nucleus sampling (0.0-1.0). Default: 0.0
 
 **AI Parameters:**
 - Parameters are **immutable** - saved at creation time and never changed.
@@ -344,24 +344,23 @@ Get unified options (models + parameters) for transcription and LLM. This endpoi
   },
   "llm": {
     "provider": "runpod_llm_gams",
-    "available_providers": ["groq", "ollama", "runpod_llm_gams", "noop"],
+    "available_providers": ["groq", "runpod_llm_gams", "noop"],
     "models": [
-      {"id": "GaMS-9B-Instruct", "name": "GaMS 9B Instruct", "description": "Recommended. Best balance of quality and cost."},
-      {"id": "GaMS-27B-Instruct", "name": "GaMS 27B Instruct", "description": "Higher quality, requires larger GPU."}
+      {"id": "GaMS-9B-Instruct", "name": "GaMS 9B Instruct", "description": "Native Slovenian LLM. Best balance of quality and cost."}
     ],
     "parameters": {
       "temperature": {
         "type": "float",
         "min": 0.0,
         "max": 2.0,
-        "default": 0.3,
+        "default": 0.0,
         "description": "Sampling temperature (higher = more creative)"
       },
       "top_p": {
         "type": "float",
         "min": 0.0,
         "max": 1.0,
-        "default": 0.9,
+        "default": 0.0,
         "description": "Nucleus sampling threshold"
       }
     }
@@ -374,7 +373,7 @@ Get unified options (models + parameters) for transcription and LLM. This endpoi
 | Type | Providers                                                                     |
 |------|-------------------------------------------------------------------------------|
 | Transcription | `groq` (Whisper), `assemblyai`, `clarin-slovene-asr` (Slovenian)              |
-| LLM Cleanup | `groq`, `ollama`, `runpod_llm_gams` (Slovenian GaMS)                          |
+| LLM Cleanup | `groq`, `runpod_llm_gams` (Slovenian GaMS)                          |
 
 **Notes:**
 - **No authentication required** - this endpoint is public

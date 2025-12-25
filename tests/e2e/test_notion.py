@@ -2,12 +2,12 @@
 End-to-end tests for Notion integration (Phase 5).
 
 These tests verify the complete Notion sync workflow works with REAL Notion API.
-All tests use actual services (Whisper, Ollama, Notion) - no mocks.
+All tests use actual services (transcription, LLM, Notion) - no mocks.
 
 Prerequisites:
 - PostgreSQL database running
-- Whisper model available
-- Ollama running with llama3.2:3b model
+- Transcription provider configured (Groq, AssemblyAI, or Slovenian ASR)
+- LLM provider configured (Groq or GaMS on RunPod)
 - Notion API key set in NOTION_TEST_API_KEY env var
 - Notion test database ID set in NOTION_TEST_DATABASE_ID env var
 
@@ -91,14 +91,13 @@ async def test_e2e_real_full_workflow_with_notion_sync(
     Real end-to-end test: Upload → Transcribe → Cleanup → Notion Sync
 
     This test uses REAL services:
-    - Whisper for transcription
-    - Ollama for cleanup
+    - Configured transcription provider for transcription
+    - Configured LLM provider for cleanup
     - Notion API for sync
 
     Prerequisites:
-    - Whisper model files
-    - Ollama running: ollama serve
-    - Model available: ollama pull llama3.2:3b
+    - Transcription provider configured (e.g., GROQ_API_KEY)
+    - LLM provider configured (e.g., GROQ_API_KEY or RUNPOD_LLM_GAMS_ENDPOINT_ID)
     - NOTION_TEST_API_KEY environment variable set
     - NOTION_TEST_DATABASE_ID environment variable set
     """
@@ -156,7 +155,7 @@ async def test_e2e_real_full_workflow_with_notion_sync(
     print(f"✓ Transcription completed")
     print(f"  Text: {transcription['transcribed_text'][:80]}...")
 
-    # Step 4: Cleanup with real Ollama
+    # Step 4: Cleanup with configured LLM
     print("\n[4/7] Cleaning up text with LLM...")
     cleanup_response = await client.post(
         f"/api/v1/transcriptions/{transcription_id}/cleanup"

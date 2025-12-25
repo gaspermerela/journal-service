@@ -281,13 +281,12 @@ async def test_delete_cleaned_entry_success(
 ):
     """Test successful deletion of a cleaned entry."""
     # Create a cleaned entry
-    from app.config import settings
     cleaned_entry = await db_service.create_cleaned_entry(
         db_session,
         voice_entry_id=sample_voice_entry.id,
         transcription_id=sample_transcription.id,
         user_id=test_user.id,
-        model_name=settings.OLLAMA_MODEL
+        model_name="groq-llama-test"
     )
     await db_session.commit()
 
@@ -324,13 +323,12 @@ async def test_delete_cleaned_entry_requires_auth(
     db_session: AsyncSession
 ):
     """Test that delete requires authentication."""
-    from app.config import settings
     cleaned_entry = await db_service.create_cleaned_entry(
         db_session,
         voice_entry_id=sample_voice_entry.id,
         transcription_id=sample_transcription.id,
         user_id=test_user.id,
-        model_name=settings.OLLAMA_MODEL
+        model_name="groq-llama-test"
     )
     await db_session.commit()
 
@@ -348,13 +346,12 @@ async def test_delete_cleaned_entry_user_isolation(
     db_session: AsyncSession
 ):
     """Test that users cannot delete other users' cleaned entries."""
-    from app.config import settings
     cleaned_entry = await db_service.create_cleaned_entry(
         db_session,
         voice_entry_id=sample_voice_entry.id,
         transcription_id=sample_transcription.id,
         user_id=test_user.id,
-        model_name=settings.OLLAMA_MODEL
+        model_name="groq-llama-test"
     )
     await db_session.commit()
 
@@ -373,22 +370,20 @@ async def test_delete_cleaned_entry_no_restrictions(
     db_session: AsyncSession
 ):
     """Test that any cleaned entry can be deleted (no restriction like transcriptions)."""
-    from app.config import settings
-
     # Create multiple cleaned entries
     cleaned1 = await db_service.create_cleaned_entry(
         db_session,
         voice_entry_id=sample_voice_entry.id,
         transcription_id=sample_transcription.id,
         user_id=test_user.id,
-        model_name=settings.OLLAMA_MODEL
+        model_name="groq-llama-test"
     )
     cleaned2 = await db_service.create_cleaned_entry(
         db_session,
         voice_entry_id=sample_voice_entry.id,
         transcription_id=sample_transcription.id,
         user_id=test_user.id,
-        model_name=settings.OLLAMA_MODEL
+        model_name="groq-llama-test"
     )
     await db_session.commit()
 

@@ -2,12 +2,12 @@
 End-to-end tests for LLM cleanup workflow.
 
 These tests verify the cleanup pipeline works with REAL services.
-All real e2e tests use actual Ollama LLM (no mocks).
+All real e2e tests use actual LLM services (Groq or GaMS) - no mocks.
 
 Prerequisites:
 - PostgreSQL database running
 - App running in Docker at http://localhost:8000
-- Ollama running with llama3.2:3b model
+- LLM provider configured (GROQ_API_KEY or RUNPOD_LLM_GAMS_ENDPOINT_ID)
 
 Run tests: pytest tests/test_e2e_cleanup.py -v
 Tests will be skipped if services are not available.
@@ -34,10 +34,10 @@ async def test_e2e_cleanup_full_workflow(
     authenticated_e2e_client: Tuple[AsyncClient, str]
 ):
     """
-    Test complete cleanup workflow with real Whisper and Ollama:
+    Test complete cleanup workflow with real transcription and LLM:
     1. Upload audio file
-    2. Transcribe with real Whisper
-    3. Cleanup with real Ollama
+    2. Transcribe with configured provider
+    3. Cleanup with configured LLM
     4. Verify cleaned text
 
     This test uses REAL services (no mocks).
@@ -76,7 +76,7 @@ async def test_e2e_cleanup_full_workflow(
     assert transcription["transcribed_text"] is not None
     print(f"✓ Transcription completed: {transcription['transcribed_text'][:80]}...")
 
-    # Step 4: Trigger cleanup with real Ollama
+    # Step 4: Trigger cleanup with configured LLM
     cleanup_response = await client.post(
         f"/api/v1/transcriptions/{transcription_id}/cleanup"
     )

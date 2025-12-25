@@ -17,8 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models.prompt_template import PromptTemplate
-from app.services.llm_cleanup_base import LLMCleanupError, LLMCleanupService
-from app.services.llm_cleanup_ollama import (
+from app.services.llm_cleanup_base import (
+    LLMCleanupError,
+    LLMCleanupService,
     DREAM_CLEANUP_PROMPT,
     GENERIC_CLEANUP_PROMPT,
 )
@@ -415,43 +416,16 @@ class RunPodGamsLLMCleanupService(LLMCleanupService):
         if self._models_cache is not None:
             return self._models_cache
 
-        # GaMS model variants (from CJVT)
+        # Currently only GaMS-9B-Instruct is deployed on RunPod
         self._models_cache = [
             {
                 "id": "GaMS-9B-Instruct",
                 "name": "GaMS 9B Instruct",
-                "description": "Recommended. Best balance of quality and cost.",
+                "description": "Native Slovenian LLM. Best balance of quality and cost.",
                 "parameters": "9B",
                 "base_model": "Gemma 2",
                 "vram_required": "~20GB",
                 "context_window": 4096,
-            },
-            {
-                "id": "GaMS-27B-Instruct",
-                "name": "GaMS 27B Instruct",
-                "description": "Higher quality, requires larger GPU (A100).",
-                "parameters": "27B",
-                "base_model": "Gemma 2",
-                "vram_required": "~54GB (BF16) or ~27GB (INT8)",
-                "context_window": 4096,
-            },
-            {
-                "id": "GaMS-2B-Instruct",
-                "name": "GaMS 2B Instruct",
-                "description": "Lightweight, fastest inference.",
-                "parameters": "2B",
-                "base_model": "Gemma 2",
-                "vram_required": "~8GB",
-                "context_window": 4096,
-            },
-            {
-                "id": "GaMS-1B-Chat",
-                "name": "GaMS 1B Chat",
-                "description": "Minimal resources, for testing.",
-                "parameters": "1B",
-                "base_model": "OPT",
-                "vram_required": "~4GB",
-                "context_window": 2048,
             },
         ]
 

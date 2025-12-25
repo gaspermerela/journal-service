@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.services.llm_cleanup_base import LLMCleanupService
-from app.services.llm_cleanup_ollama import OllamaLLMCleanupService
 from app.utils.logger import get_logger
 
 
@@ -21,7 +20,7 @@ def create_llm_cleanup_service(
     Factory function to create appropriate LLM cleanup service based on provider.
 
     Args:
-        provider: Provider name ("ollama", "groq"). If None, uses settings.LLM_PROVIDER
+        provider: Provider name ("groq", "runpod_llm_gams"). If None, uses settings.LLM_PROVIDER
         db_session: Optional database session for prompt template lookup
 
     Returns:
@@ -35,10 +34,7 @@ def create_llm_cleanup_service(
 
     provider = provider.lower()
 
-    if provider == "ollama":
-        logger.info(f"Creating Ollama LLM cleanup service with model: {settings.OLLAMA_MODEL}")
-        return OllamaLLMCleanupService(db_session=db_session)
-    elif provider == "groq":
+    if provider == "groq":
         # Import here to avoid circular dependency and to fail gracefully if groq not installed
         try:
             from app.services.llm_cleanup_groq import GroqLLMCleanupService
@@ -66,12 +62,12 @@ def create_llm_cleanup_service(
     else:
         raise ValueError(
             f"Unsupported LLM provider: {provider}. "
-            f"Supported providers: ollama, groq, runpod_llm_gams"
+            f"Supported providers: groq, runpod_llm_gams"
         )
 
 
 # For backward compatibility - expose the prompts
-from app.services.llm_cleanup_ollama import DREAM_CLEANUP_PROMPT, GENERIC_CLEANUP_PROMPT
+from app.services.llm_cleanup_base import DREAM_CLEANUP_PROMPT, GENERIC_CLEANUP_PROMPT
 
 __all__ = [
     "create_llm_cleanup_service",

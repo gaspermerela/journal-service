@@ -51,10 +51,6 @@ TRANSCRIPTION_PROVIDERS: Dict[str, Dict[str, Any]] = {
 }
 
 LLM_PROVIDERS: Dict[str, Dict[str, Any]] = {
-    "ollama": {
-        "required_settings": [],  # Ollama just needs OLLAMA_BASE_URL which has a default
-        "description": "Ollama (local LLM)"
-    },
     "groq": {
         "required_settings": ["GROQ_API_KEY"],
         "description": "Groq API (LLaMA models)"

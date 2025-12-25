@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, patch, MagicMock
 from app.services.transcription_groq import GroqTranscriptionService
 from app.services.transcription_assemblyai import AssemblyAITranscriptionService
 from app.services.transcription_noop import NoOpTranscriptionService
-from app.services.llm_cleanup_ollama import OllamaLLMCleanupService
 from app.services.llm_cleanup_groq import GroqLLMCleanupService
 from app.services.llm_cleanup_noop import NoOpLLMCleanupService
 
@@ -150,33 +149,6 @@ class TestNoOpTranscriptionServiceModels:
         assert len(models) == 1
         assert models[0]["id"] == "noop-whisper-test"
         assert models[0]["name"] == "NoOp Test Model"
-
-
-class TestOllamaLLMCleanupServiceModels:
-    """Test OllamaLLMCleanupService.list_available_models()"""
-
-    @pytest.mark.asyncio
-    async def test_list_available_models_returns_hardcoded_list(self):
-        """Test that Ollama service returns hardcoded list of models."""
-        service = OllamaLLMCleanupService()
-
-        models = await service.list_available_models()
-
-        # Should return hardcoded list
-        assert isinstance(models, list)
-        assert len(models) == 6  # llama3.2:3b, llama3.2:1b, llama3.1:8b, llama3.1:70b, qwen2.5:7b, mistral:7b
-
-        # Check structure
-        for model in models:
-            assert "id" in model
-            assert "name" in model
-
-        # Check specific models
-        model_ids = [m["id"] for m in models]
-        assert "llama3.2:3b" in model_ids
-        assert "llama3.2:1b" in model_ids
-        assert "llama3.1:8b" in model_ids
-        assert "mistral:7b" in model_ids
 
 
 class TestGroqLLMCleanupServiceModels:
