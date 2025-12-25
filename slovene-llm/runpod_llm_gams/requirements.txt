@@ -1,0 +1,15 @@
+# GaMS LLM Handler Dependencies
+#
+# Core inference
+vllm>=0.4.0
+torch>=2.1.0
+
+# RunPod serverless
+runpod>=1.6.0
+
+# Model download
+huggingface_hub>=0.20.0
+
+# Required for GaMS (Gemma 2 based)
+transformers>=4.38.0
+accelerate>=0.26.0

@@ -49,10 +49,24 @@ def create_llm_cleanup_service(
                 f"Groq provider selected but groq package not installed. "
                 f"Install with: pip install groq"
             ) from e
+    elif provider == "runpod_llm_gams":
+        # GaMS (Generative Model for Slovene) on RunPod serverless
+        try:
+            from app.services.llm_cleanup_runpod_gams import RunPodGamsLLMCleanupService
+            logger.info(
+                f"Creating GaMS LLM cleanup service on RunPod with model: "
+                f"{settings.RUNPOD_LLM_GAMS_MODEL}"
+            )
+            return RunPodGamsLLMCleanupService(db_session=db_session)
+        except ImportError as e:
+            raise ValueError(
+                f"RunPod GaMS provider selected but httpx package not installed. "
+                f"Install with: pip install httpx"
+            ) from e
     else:
         raise ValueError(
             f"Unsupported LLM provider: {provider}. "
-            f"Supported providers: ollama, groq"
+            f"Supported providers: ollama, groq, runpod_llm_gams"
         )
 
 

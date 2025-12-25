@@ -59,6 +59,10 @@ LLM_PROVIDERS: Dict[str, Dict[str, Any]] = {
         "required_settings": ["GROQ_API_KEY"],
         "description": "Groq API (LLaMA models)"
     },
+    "runpod_llm_gams": {
+        "required_settings": ["RUNPOD_API_KEY", "RUNPOD_LLM_GAMS_ENDPOINT_ID"],
+        "description": "GaMS Slovenian LLM on RunPod"
+    },
     "noop": {
         "required_settings": [],  # Always available for testing
         "description": "NoOp (test provider)"

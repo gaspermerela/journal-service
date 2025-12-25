@@ -82,6 +82,16 @@ class Settings(BaseSettings):
     SLOVENE_ASR_MMS_ENDPOINT_ID: Optional[str] = None  # NeMo ClusteringDiarizer + MMS alignment
     SLOVENE_ASR_PYANNOTE_ENDPOINT_ID: Optional[str] = None  # pyannote 3.1 diarization + NFA alignment
 
+    # GaMS LLM on RunPod Configuration (Slovenian text cleanup)
+    # Reuses RUNPOD_API_KEY for authentication
+    RUNPOD_LLM_GAMS_ENDPOINT_ID: Optional[str] = None  # RunPod serverless endpoint ID for GaMS
+    RUNPOD_LLM_GAMS_MODEL: str = "GaMS-9B-Instruct"  # Model variant (future: GaMS-27B-Instruct)
+    RUNPOD_LLM_GAMS_TIMEOUT: int = 120  # Max seconds per request
+    RUNPOD_LLM_GAMS_MAX_RETRIES: int = 3  # Max retry attempts on failure
+    RUNPOD_LLM_GAMS_DEFAULT_TEMPERATURE: float = 0.3  # Lower = more deterministic
+    RUNPOD_LLM_GAMS_DEFAULT_TOP_P: float = 0.9  # Nucleus sampling parameter
+    RUNPOD_LLM_GAMS_MAX_TOKENS: int = 2048  # Max tokens to generate
+
     # CORS Configuration
     CORS_ORIGINS: str = "*"
 
@@ -260,6 +270,22 @@ LLM_PROVIDER_PARAMETERS = {
             "max": 1.0,
             "default": 1.0,
             "description": "Top-p nucleus sampling (0.0-1.0)"
+        }
+    },
+    "runpod_llm_gams": {
+        "temperature": {
+            "type": "float",
+            "min": 0.0,
+            "max": 2.0,
+            "default": 0.3,
+            "description": "Temperature for GaMS sampling (0.0-2.0, lower = more deterministic)"
+        },
+        "top_p": {
+            "type": "float",
+            "min": 0.0,
+            "max": 1.0,
+            "default": 0.9,
+            "description": "Top-p nucleus sampling for GaMS (0.0-1.0)"
         }
     },
     "noop": {}  # Test provider - no configurable parameters
