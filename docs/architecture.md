@@ -183,6 +183,59 @@ Main Database (PostgreSQL)
 - **ffmpeg:** Audio preprocessing (16kHz mono, noise reduction, normalization)
 - **mutagen:** Audio duration and format detection
 
+**Spell-Check:**
+- **SymSpellPy:** Fast spell-checking for Slovenian text
+- **Sloleks 3.0:** Slovenian morphological lexicon (~2-3M word forms)
+
+## Spell-Check (Slovenian)
+
+The service provides automatic spell-checking for Slovenian text, designed for frontend use in highlighting potential misspellings and offering corrections.
+
+### How It Works
+
+1. **Triggered on fetch** - Spell-check runs when fetching a cleaned entry via `GET /api/v1/cleaned-entries/{id}`
+2. **Language detection** - Only runs when the transcription language is Slovenian (`sl`)
+3. **Text selection** - Checks `user_edited_text` if available, otherwise `cleaned_text`
+4. **Response field** - Results returned in `spelling_issues` array (null for non-Slovenian)
+
+### Frontend Use Case
+
+The spell-check feature is designed for frontend text editors to:
+- **Highlight misspellings** - Underline or mark words that may be incorrect
+- **Show suggestions** - Display correction options when user clicks/hovers on highlighted word
+- **Support user editing** - When users edit cleaned text, spell-check runs on the edited version
+
+### Dictionary Source
+
+Uses **Sloleks 3.0** (Slovenian morphological lexicon):
+- ~2.9 million unique word forms
+- Includes all inflections (nouns, verbs, adjectives, etc.)
+- Generated from official Slovenian linguistic resources (CJVT)
+
+### Configuration
+
+```bash
+# Enable/disable spell-check
+SPELLCHECK_ENABLED=true
+
+# Dictionary paths (baked into Docker image)
+SPELLCHECK_WORDLIST_PATH=/app/data/dictionaries/sl-words.txt
+SPELLCHECK_CACHE_PATH=/app/data/cache
+
+# SymSpell parameters
+SPELLCHECK_MAX_EDIT_DISTANCE=2   # Max character changes for suggestions
+SPELLCHECK_PREFIX_LENGTH=7       # Lookup optimization
+SPELLCHECK_SUGGESTION_COUNT=5    # Max suggestions per word
+SPELLCHECK_MIN_WORD_LENGTH=2     # Skip 1-character words
+```
+
+### Performance
+
+- **First load:** ~60-90 seconds (builds SymSpell dictionary from wordlist)
+- **Subsequent loads:** ~2-5 seconds (loads from pickle cache)
+
+The pickle cache is stored in `SPELLCHECK_CACHE_PATH` and persists across restarts.
+
 ## Testing
 
 Tests organized by type in subdirectories:
