@@ -269,6 +269,7 @@ print(json.dumps(result))
     # Build docker run command with output mount
     cmd = [
         "docker", "run", "--rm",
+        "--shm-size=2g", # To avoid insufficient shared memory error
         "-v", f"{audio_path.absolute()}:/audio/input.wav:ro",
         "-v", f"{output_dir.absolute()}:/output:rw",
         image, "python", "-c", python_script
