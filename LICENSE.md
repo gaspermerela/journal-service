@@ -1,6 +1,6 @@
-# PolyForm Noncommercial License 1.0.0
+# Modified PolyForm Noncommercial License
 
-<https://polyformproject.org/licenses/noncommercial/1.0.0>
+Based on [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0) with modifications to the "Noncommercial Organizations" section.
 
 ## Acceptance
 
@@ -63,12 +63,9 @@ is use for a permitted purpose.
 
 ## Noncommercial Organizations
 
-Use by any charitable organization, educational institution,
-public research organization, public safety or health
-organization, environmental protection organization,
-or government institution is use for a permitted purpose
-regardless of the source of funding or obligations resulting
-from the funding.
+Use by any educational institution is use for a permitted
+purpose regardless of the source of funding or obligations
+resulting from the funding.
 
 ## Fair Use
 
