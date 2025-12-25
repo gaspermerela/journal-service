@@ -79,14 +79,16 @@ class ParameterConfig(BaseModel):
 class ServiceOptions(BaseModel):
     """Options for a specific service (transcription or LLM)."""
 
-    provider: str = Field(..., description="Current active provider")
-    models: List[ModelInfo] = Field(..., description="Available models")
+    provider: str = Field(..., description="Current active/default provider")
+    available_providers: List[str] = Field(..., description="All configured and available providers")
+    models: List[ModelInfo] = Field(..., description="Available models for current provider")
     parameters: Dict[str, ParameterConfig] = Field(..., description="Available parameters with configuration")
 
     class Config:
         json_schema_extra = {
             "example": {
                 "provider": "groq",
+                "available_providers": ["groq", "assemblyai", "clarin-slovene-asr"],
                 "models": [
                     {
                         "id": "llama-3.3-70b-versatile",
@@ -127,6 +129,7 @@ class UnifiedOptionsResponse(BaseModel):
             "example": {
                 "transcription": {
                     "provider": "groq",
+                    "available_providers": ["groq", "assemblyai", "clarin-slovene-asr"],
                     "models": [
                         {
                             "id": "whisper-large-v3",
@@ -147,6 +150,7 @@ class UnifiedOptionsResponse(BaseModel):
                 },
                 "llm": {
                     "provider": "groq",
+                    "available_providers": ["groq", "ollama"],
                     "models": [
                         {
                             "id": "llama-3.3-70b-versatile",

@@ -25,18 +25,24 @@ TRANSCRIPTION_PROVIDERS: Dict[str, Dict[str, Any]] = {
         "required_settings": ["ASSEMBLYAI_API_KEY"],
         "description": "AssemblyAI API"
     },
-    # Slovenian ASR pipelines with diarization support
-    "clarin-slovene-asr-nfa": {
-        "required_settings": ["RUNPOD_API_KEY", "SLOVENE_ASR_NFA_ENDPOINT_ID"],
-        "description": "Slovenian ASR with NeMo diarization + NFA alignment"
-    },
-    "clarin-slovene-asr-mms": {
-        "required_settings": ["RUNPOD_API_KEY", "SLOVENE_ASR_MMS_ENDPOINT_ID"],
-        "description": "Slovenian ASR with NeMo diarization + MMS alignment"
-    },
-    "clarin-slovene-asr-pyannote": {
-        "required_settings": ["RUNPOD_API_KEY", "SLOVENE_ASR_PYANNOTE_ENDPOINT_ID"],
-        "description": "Slovenian ASR with pyannote 3.1 diarization (best quality)"
+    # Slovenian ASR with multiple RunPod endpoints (different diarization backends)
+    "clarin-slovene-asr": {
+        "required_settings": ["RUNPOD_API_KEY"],
+        "description": "Slovenian ASR with PROTOVERB model",
+    "runpods": {
+            "nfa": {
+                "endpoint_setting": "SLOVENE_ASR_NFA_ENDPOINT_ID",
+                "description": "NeMo ClusteringDiarizer + NFA alignment"
+            },
+            "mms": {
+                "endpoint_setting": "SLOVENE_ASR_MMS_ENDPOINT_ID",
+                "description": "NeMo ClusteringDiarizer + MMS alignment"
+            },
+            "pyannote": {
+                "endpoint_setting": "SLOVENE_ASR_PYANNOTE_ENDPOINT_ID",
+                "description": "pyannote 3.1 diarization (best quality)"
+            }
+        }
     },
     "noop": {
         "required_settings": [],  # Always available for testing
@@ -81,8 +87,11 @@ def is_transcription_provider_configured(provider: str) -> bool:
     """
     Check if a transcription provider has all required settings configured.
 
+    For providers with multiple models (e.g., clarin-slovene-asr), returns True
+    if the base requirements are met AND at least one model endpoint is configured.
+
     Args:
-        provider: Provider name (e.g., "groq", "assemblyai", "clarin-slovene-asr-pyannote")
+        provider: Provider name (e.g., "groq", "assemblyai", "clarin-slovene-asr")
 
     Returns:
         True if provider is valid and configured, False otherwise
@@ -92,8 +101,23 @@ def is_transcription_provider_configured(provider: str) -> bool:
     if provider not in TRANSCRIPTION_PROVIDERS:
         return False
 
-    required = TRANSCRIPTION_PROVIDERS[provider]["required_settings"]
-    return _check_settings_configured(required)
+    provider_config = TRANSCRIPTION_PROVIDERS[provider]
+    required = provider_config["required_settings"]
+
+    # Check base requirements
+    if not _check_settings_configured(required):
+        return False
+
+    # For providers with multiple RunPod endpoints, check if at least one is configured
+    if "runpods" in provider_config:
+        for runpod_config in provider_config["runpods"].values():
+            endpoint_setting = runpod_config.get("endpoint_setting")
+            if endpoint_setting and _check_settings_configured([endpoint_setting]):
+                return True
+        # No RunPod endpoints configured
+        return False
+
+    return True
 
 
 def is_llm_provider_configured(provider: str) -> bool:
@@ -119,6 +143,8 @@ def get_missing_settings_for_transcription_provider(provider: str) -> List[str]:
     """
     Get list of missing settings for a transcription provider.
 
+    For providers with models, includes a note if no model endpoints are configured.
+
     Args:
         provider: Provider name
 
@@ -130,13 +156,71 @@ def get_missing_settings_for_transcription_provider(provider: str) -> List[str]:
     if provider not in TRANSCRIPTION_PROVIDERS:
         return []
 
+    provider_config = TRANSCRIPTION_PROVIDERS[provider]
     missing = []
-    for setting_name in TRANSCRIPTION_PROVIDERS[provider]["required_settings"]:
+
+    # Check base requirements
+    for setting_name in provider_config["required_settings"]:
         value = getattr(settings, setting_name, None)
         if value is None or (isinstance(value, str) and not value.strip()):
             missing.append(setting_name)
 
+    # For providers with RunPod endpoints, check if any are configured
+    if "runpods" in provider_config:
+        has_any_endpoint = False
+        for runpod_config in provider_config["runpods"].values():
+            endpoint_setting = runpod_config.get("endpoint_setting")
+            if endpoint_setting:
+                value = getattr(settings, endpoint_setting, None)
+                if value and (not isinstance(value, str) or value.strip()):
+                    has_any_endpoint = True
+                    break
+        if not has_any_endpoint:
+            # List all possible endpoint settings
+            endpoint_settings = [
+                r["endpoint_setting"]
+                for r in provider_config["runpods"].values()
+                if "endpoint_setting" in r
+            ]
+            missing.append(f"At least one of: {', '.join(endpoint_settings)}")
+
     return missing
+
+
+def get_available_runpods_for_provider(provider: str) -> List[Dict[str, Any]]:
+    """
+    Get list of available (configured) RunPod endpoints for a transcription provider.
+
+    For providers with multiple RunPod endpoints (e.g., clarin-slovene-asr), returns
+    only endpoints that are configured.
+
+    Args:
+        provider: Provider name
+
+    Returns:
+        List of runpod dicts with 'id' and 'description' keys
+    """
+    provider = provider.lower()
+
+    if provider not in TRANSCRIPTION_PROVIDERS:
+        return []
+
+    provider_config = TRANSCRIPTION_PROVIDERS[provider]
+
+    # If no runpods defined, return empty (provider uses single endpoint)
+    if "runpods" not in provider_config:
+        return []
+
+    available = []
+    for runpod_id, runpod_config in provider_config["runpods"].items():
+        endpoint_setting = runpod_config.get("endpoint_setting")
+        if endpoint_setting and _check_settings_configured([endpoint_setting]):
+            available.append({
+                "id": runpod_id,
+                "description": runpod_config.get("description", "")
+            })
+
+    return available
 
 
 def get_missing_settings_for_llm_provider(provider: str) -> List[str]:
@@ -163,14 +247,19 @@ def get_missing_settings_for_llm_provider(provider: str) -> List[str]:
     return missing
 
 
-def get_transcription_service_for_provider(provider: str) -> TranscriptionService:
+def get_transcription_service_for_provider(
+    provider: str,
+    model: Optional[str] = None
+) -> TranscriptionService:
     """
     Create a transcription service instance for the specified provider.
 
     Uses settings to get API keys and configuration.
 
     Args:
-        provider: Provider name (e.g., "groq", "assemblyai", "clarin-slovene-asr-pyannote")
+        provider: Provider name (e.g., "groq", "assemblyai", "clarin-slovene-asr")
+        model: Model name for providers with multiple models (e.g., "pyannote" for clarin-slovene-asr).
+               If not specified, uses the first available model.
 
     Returns:
         TranscriptionService instance
@@ -194,7 +283,7 @@ def get_transcription_service_for_provider(provider: str) -> TranscriptionServic
             f"Missing settings: {', '.join(missing)}"
         )
 
-    logger.info(f"Creating transcription service for provider: {provider}")
+    logger.info(f"Creating transcription service for provider: {provider}", model=model)
 
     if provider == "groq":
         return create_transcription_service(
@@ -208,26 +297,45 @@ def get_transcription_service_for_provider(provider: str) -> TranscriptionServic
             api_key=settings.ASSEMBLYAI_API_KEY,
             model_name=settings.ASSEMBLYAI_MODEL
         )
-    elif provider == "clarin-slovene-asr-nfa":
+    elif provider == "clarin-slovene-asr":
+        # Resolve model to RunPod endpoint_id
+        provider_config = TRANSCRIPTION_PROVIDERS[provider]
+        runpods_config = provider_config.get("runpods", {})
+
+        # If no model specified, use first available RunPod
+        if not model:
+            available_runpods = get_available_runpods_for_provider(provider)
+            if not available_runpods:
+                raise ValueError(
+                    f"No RunPod endpoints configured for provider '{provider}'. "
+                    f"Configure at least one endpoint ID."
+                )
+            model = available_runpods[0]["id"]
+            logger.info(f"No model specified, using default RunPod: {model}")
+
+        model = model.lower()
+        if model not in runpods_config:
+            available = ", ".join(runpods_config.keys())
+            raise ValueError(
+                f"Unknown model '{model}' for provider '{provider}'. "
+                f"Available: {available}"
+            )
+
+        runpod_config = runpods_config[model]
+        endpoint_setting = runpod_config["endpoint_setting"]
+        endpoint_id = getattr(settings, endpoint_setting, None)
+
+        if not endpoint_id:
+            raise ValueError(
+                f"RunPod '{model}' is not configured for provider '{provider}'. "
+                f"Missing setting: {endpoint_setting}"
+            )
+
         return create_transcription_service(
             provider="clarin-slovene-asr",
             api_key=settings.RUNPOD_API_KEY,
-            endpoint_id=settings.SLOVENE_ASR_NFA_ENDPOINT_ID,
-            variant="nfa"
-        )
-    elif provider == "clarin-slovene-asr-mms":
-        return create_transcription_service(
-            provider="clarin-slovene-asr",
-            api_key=settings.RUNPOD_API_KEY,
-            endpoint_id=settings.SLOVENE_ASR_MMS_ENDPOINT_ID,
-            variant="mms"
-        )
-    elif provider == "clarin-slovene-asr-pyannote":
-        return create_transcription_service(
-            provider="clarin-slovene-asr",
-            api_key=settings.RUNPOD_API_KEY,
-            endpoint_id=settings.SLOVENE_ASR_PYANNOTE_ENDPOINT_ID,
-            variant="pyannote"
+            endpoint_id=endpoint_id,
+            variant=model
         )
     elif provider == "noop":
         from app.services.transcription_noop import NoOpTranscriptionService

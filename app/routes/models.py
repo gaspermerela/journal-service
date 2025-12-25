@@ -14,6 +14,8 @@ from app.schemas.models import (
 from app.services.provider_registry import (
     get_transcription_service_for_provider,
     get_llm_service_for_provider,
+    get_available_transcription_providers,
+    get_available_llm_providers,
 )
 from app.utils.logger import get_logger
 
@@ -34,11 +36,16 @@ async def get_options() -> UnifiedOptionsResponse:
 
     Returns:
         UnifiedOptionsResponse: Combined options for both services including:
-            - provider: Current active provider (groq, assemblyai, ollama)
-            - models: List of available models
+            - provider: Current active provider (groq, assemblyai, clarin-slovene-asr, ollama)
+            - available_providers: List of all configured providers
+            - models: List of available models for current provider
             - parameters: Available parameters with type, min/max, default, description
     """
     try:
+        # Get list of available (configured) providers
+        available_transcription = get_available_transcription_providers()
+        available_llm = get_available_llm_providers()
+
         # Create services for default providers
         transcription_service = get_transcription_service_for_provider(settings.TRANSCRIPTION_PROVIDER)
         llm_service = get_llm_service_for_provider(settings.LLM_PROVIDER)
@@ -60,6 +67,7 @@ async def get_options() -> UnifiedOptionsResponse:
         return UnifiedOptionsResponse(
             transcription=ServiceOptions(
                 provider=settings.TRANSCRIPTION_PROVIDER,
+                available_providers=available_transcription,
                 models=[ModelInfo(**m) for m in transcription_models],
                 parameters={
                     k: ParameterConfig(**v)
@@ -68,6 +76,7 @@ async def get_options() -> UnifiedOptionsResponse:
             ),
             llm=ServiceOptions(
                 provider=settings.LLM_PROVIDER,
+                available_providers=available_llm,
                 models=[ModelInfo(**m) for m in llm_models],
                 parameters={
                     k: ParameterConfig(**v)

@@ -680,25 +680,39 @@ class SloveneASRTranscriptionService(TranscriptionService):
         """
         Get list of available models for this provider.
 
+        Returns all 3 variants (nfa, mms, pyannote) as separate models.
+        The frontend can use this to populate model selection UI.
+
         Returns:
-            List with PROTOVERB model info for this variant
+            List with PROTOVERB model info for all variants
         """
-        variant_descriptions = {
-            "nfa": "NeMo ClusteringDiarizer + NFA (Viterbi) alignment",
-            "mms": "NeMo ClusteringDiarizer + MMS alignment",
-            "pyannote": "pyannote 3.1 diarization + NFA alignment (best quality, 10x fewer segments)"
+        variant_info = {
+            "nfa": {
+                "description": "NeMo ClusteringDiarizer + NFA (Viterbi) alignment",
+                "recommended_for": "General use with good accuracy"
+            },
+            "mms": {
+                "description": "NeMo ClusteringDiarizer + MMS alignment",
+                "recommended_for": "Alternative alignment method"
+            },
+            "pyannote": {
+                "description": "pyannote 3.1 diarization + NFA alignment",
+                "recommended_for": "Best quality diarization, 10x fewer segments"
+            }
         }
 
-        return [
-            {
-                "id": f"protoverb-slovenian-asr-{self.variant}",
-                "name": f"PROTOVERB Slovenian ASR ({self.variant})",
-                "description": f"PROTOVERB-ASR-E2E 1.0 with {variant_descriptions.get(self.variant, self.variant)}",
+        models = []
+        for variant_id, info in variant_info.items():
+            models.append({
+                "id": variant_id,
+                "name": f"PROTOVERB ({variant_id})",
+                "description": f"PROTOVERB-ASR-E2E 1.0 with {info['description']}",
                 "language": "sl",
                 "size": "~820MB (ASR + Punctuator models)",
                 "wer": "~5% (9.8% improvement over RSDO 2.0)",
                 "features": ["punctuation", "denormalization", "diarization"],
                 "diarization": True,
+                "recommended_for": info["recommended_for"],
                 "pipeline_options": {
                     "punctuate": "Add punctuation and capitalization",
                     "denormalize": "Convert numbers, dates, times to written form",
@@ -707,8 +721,9 @@ class SloveneASRTranscriptionService(TranscriptionService):
                     "speaker_count": "Known number of speakers (null for auto-detect)",
                     "max_speakers": "Maximum speakers for auto-detection"
                 }
-            }
-        ]
+            })
+
+        return models
 
     def supports_diarization(self) -> bool:
         """
