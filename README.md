@@ -1,6 +1,6 @@
 # AI Journal Backend Service
 
-[![License: PolyForm Noncommercial](https://img.shields.io/badge/License-PolyForm%20Noncommercial-blue.svg)](LICENSE.md)
+[![License: Modified PolyForm NC](https://img.shields.io/badge/License-Modified%20PolyForm%20NC-blue.svg)](LICENSE.md)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-00a393.svg)](https://fastapi.tiangolo.com)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15+-336791.svg)](https://www.postgresql.org/)
@@ -98,6 +98,12 @@ This service works for personal use but needs hardening before production deploy
 
 ## License
 
-This project is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE.md).
+This project is source-available under a [Modified PolyForm Noncommercial License](LICENSE.md).
 
-You may view, learn from, and use this software for personal, non-commercial purposes. For commercial licensing inquiries, please open an issue or contact the maintainer.
+**Free for:**
+- Personal use, hobby projects, research
+- Educational institutions
+
+**Commercial use requires a license.** This includes non-profits, government, and any commercial entity. Contact me for licensing options.
+
+📧 **Commercial inquiries:** [your-email@example.com](mailto:your-email@example.com)
