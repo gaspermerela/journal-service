@@ -162,90 +162,19 @@ Add composite indexes via Alembic migrations where needed (e.g. “all entries f
 
 ---
 
-### 5. Enforce “Only One Primary Transcription per Entry” in the DB
+### 5. ~~Enforce "Only One Primary Transcription per Entry" in the DB~~ ✅ DONE
 
-**Goal:** Guarantee at the database level that an entry never has two primary transcriptions.
+**Status:** Implemented via partial unique indexes on both `transcriptions` and `cleaned_entries` tables.
 
-**Current behavior**
-
-The app code handles this in two steps:
-
-```python
-# Pseudo-code
-await db.execute(
-    update(Transcription)
-    .where(Transcription.entry_id == entry_id)
-    .values(is_primary=False)
-)
-
-transcription.is_primary = True
-```
-
-This works in normal use, but there’s no constraint stopping a bug or manual change from creating two primaries.
-
-**Plan**
-
-1. Make the update atomic in a single query:
-
-```python
-from sqlalchemy import case
-
-await db.execute(
-    update(Transcription)
-    .where(Transcription.entry_id == entry_id)
-    .values(
-        is_primary=case(
-            (Transcription.id == target_id, True),
-            else_=False,
-        )
-    )
-)
-```
-
-2. Add a partial unique index:
-
-```python
-op.create_index(
-    "uq_one_primary_per_entry",
-    "transcriptions",
-    ["entry_id"],
-    unique=True,
-    postgresql_where=sa.text("is_primary = true"),
-    schema="journal",
-)
-```
-
-That gives both atomic behavior and a hard safety net in the DB.
+See migrations:
+- `a7bdb66f23be_add_unique_constraint_one_primary_per_.py`
+- `0a7bf1e29a1a_change_primary_cleanup_to_voice_entry_.py`
 
 ---
 
-### 6. Add Pagination to List Endpoints
+### 6. ~~Add Pagination to List Endpoints~~ ✅ DONE
 
-**Goal:** Avoid huge responses and slow queries when there are many transcriptions/cleaned entries.
-
-**Current behavior**
-
-Some list endpoints return everything at once (no `limit` / `offset`). This is fine today (small numbers) but doesn’t scale.
-
-**Plan**
-
-Use simple pagination params with safe defaults:
-
-```python
-@router.get("/entries/{entry_id}/transcriptions")
-async def list_transcriptions(
-    entry_id: UUID,
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-):
-    transcriptions = await db_service.get_transcriptions_for_entry(
-        db, entry_id, limit=limit, offset=offset
-    )
-    total = await db_service.count_transcriptions(db, entry_id)
-    return {"transcriptions": transcriptions, "total": total, "limit": limit, "offset": offset}
-```
-
-Same pattern can be reused for other endpoints.
+**Status:** Implemented for main endpoints (`/entries`, `/notion/syncs`). Standard `limit` (1-100, default 20) and `offset` parameters with total count in response.
 
 ---
 

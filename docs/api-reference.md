@@ -48,7 +48,7 @@ Access tokens expire after `ACCESS_TOKEN_EXPIRE_DAYS` days (7 by default). Refre
 | `/api/v1/transcriptions/{id}` | GET | Yes | Get transcription status and text |
 | `/api/v1/transcriptions/{id}/cleanup` | POST | Yes | Start LLM cleanup of transcription |
 | `/api/v1/transcriptions/{id}/set-primary` | PUT | Yes | Set transcription as primary for entry |
-| `/api/v1/cleaned-entries/{id}` | GET | Yes | Get cleaned text with analysis |
+| `/api/v1/cleaned-entries/{id}` | GET | Yes | Get cleaned text and status |
 
 ### Manual Workflow (Advanced) 🔧
 
@@ -127,15 +127,22 @@ Upload, transcribe, and cleanup in one request. This endpoint:
 4. Returns all IDs immediately
 
 **Parameters:**
-- `file` (required): MP3 or M4A audio file
+- `file` (required): Audio file (MP3, M4A, WAV, etc.)
 - `language` (optional): Language code (`en`, `es`, `sl`) or `auto`. Default: user preference → `auto`
 - `entry_type` (optional): Entry type (`dream`, `journal`, `meeting`, `note`). Default: `dream`
-- `transcription_beam_size` (optional): Beam size (1-10, higher = more accurate but slower). Relevant when running Whisper locally only. Default: 5
+
+**Transcription Parameters:**
+- `transcription_provider` (optional): Provider to use (`groq`, `assemblyai`, `clarin-slovene-asr`). Default: configured provider
+- `transcription_model` (optional): Model/variant (e.g., `whisper-large-v3`, `pyannote` for Slovenian ASR). Default: configured model
 - `transcription_temperature` (optional): Transcription temperature (0.0-1.0). Default: 0.0
-- `transcription_model` (optional): Model to use (e.g., `whisper-large-v3`). Default: configured model
+- `enable_diarization` (optional): Enable speaker identification. Default: false
+- `speaker_count` (optional): Expected number of speakers (1-20). Default: auto-detect
+
+**LLM Cleanup Parameters:**
+- `llm_provider` (optional): Provider to use (`groq`, `ollama`, `runpod_llm_gams`). Default: configured provider
+- `llm_model` (optional): LLM model (e.g., `llama-3.3-70b-versatile`, `GaMS-9B-Instruct`). Default: configured model
 - `cleanup_temperature` (optional): LLM temperature (0.0-2.0, higher = more creative). Default: 0.3
 - `cleanup_top_p` (optional): LLM nucleus sampling (0.0-1.0). Default: 0.9
-- `llm_model` (optional): LLM model to use (e.g., `llama-3.3-70b-versatile`). Default: configured model
 
 **AI Parameters:**
 - Parameters are **immutable** - saved at creation time and never changed.
@@ -161,12 +168,14 @@ Upload, transcribe, and cleanup in one request. This endpoint:
 If you don't need LLM cleanup, use this simpler endpoint. Response includes `entry_id` and `transcription_id`. Transcription runs in the background.
 
 **Parameters:**
-- `file` (required): MP3 or M4A audio file
-- `language` (optional): Language code or `auto`
+- `file` (required): Audio file (MP3, M4A, WAV, etc.)
+- `language` (optional): Language code or `auto`. Default: user preference → `auto`
 - `entry_type` (optional): Entry type. Default: `dream`
-- `transcription_beam_size` (optional): Beam size (1-10). Default: 5
+- `transcription_provider` (optional): Provider (`groq`, `assemblyai`, `clarin-slovene-asr`). Default: configured provider
+- `transcription_model` (optional): Model/variant to use. Default: configured model
 - `transcription_temperature` (optional): Temperature (0.0-1.0). Default: 0.0
-- `transcription_model` (optional): Model to use. Default: configured model
+- `enable_diarization` (optional): Enable speaker identification. Default: false
+- `speaker_count` (optional): Expected number of speakers. Default: auto-detect
 
 ### List Entries
 
@@ -199,14 +208,8 @@ Get paginated list of all entries with transcription and cleanup status.
       },
       "latest_cleaned_entry": {
         "id": "770e8400-e29b-41d4-a716-446655440002",
-        "status": "COMPLETED",
+        "status": "completed",
         "cleaned_text_preview": "I dreamt I was flying over a vast ocean...",
-        "analysis": {
-          "themes": ["flying", "freedom", "ocean"],
-          "emotions": ["joy", "peace", "wonder"],
-          "characters": [],
-          "locations": ["ocean", "sky"]
-        },
         "error_message": null,
         "created_at": "2025-11-15T03:15:20Z"
       }
@@ -222,9 +225,9 @@ Get paginated list of all entries with transcription and cleanup status.
 - Entries ordered by `uploaded_at` DESC (newest first)
 - Includes `duration_seconds` for each entry (audio length in seconds)
 - Shows transcription status (no text content in list view)
-- Shows cleanup status with text preview and analysis
+- Shows cleanup status with text preview
 - `primary_transcription`: Automatically set when first transcription completes
-- `latest_cleaned_entry`: Most recent LLM cleanup with preview and analysis
+- `latest_cleaned_entry`: Most recent LLM cleanup with preview
 
 **Status Values:**
 - Transcription: `pending`, `processing`, `completed`, `failed`
@@ -320,25 +323,16 @@ When uploading audio files, the system determines the transcription language usi
 
 Get unified options (models + parameters) for transcription and LLM. This endpoint is **recommended** for discovering available models and parameter constraints.
 
-**Response:**
+**Response (example with Groq transcription + GaMS LLM):**
 ```json
 {
   "transcription": {
     "provider": "groq",
+    "available_providers": ["groq", "assemblyai", "clarin-slovene-asr", "noop"],
     "models": [
-      {
-        "id": "whisper-large-v3",
-        "name": "Whisper Large v3"
-      }
+      {"id": "whisper-large-v3", "name": "Whisper Large v3"}
     ],
     "parameters": {
-      "beam_size": {
-        "type": "int",
-        "min": 1,
-        "max": 10,
-        "default": 5,
-        "description": "Beam search width (higher = more accurate but slower)"
-      },
       "temperature": {
         "type": "float",
         "min": 0.0,
@@ -349,12 +343,11 @@ Get unified options (models + parameters) for transcription and LLM. This endpoi
     }
   },
   "llm": {
-    "provider": "ollama",
+    "provider": "runpod_llm_gams",
+    "available_providers": ["groq", "ollama", "runpod_llm_gams", "noop"],
     "models": [
-      {
-        "id": "llama3.2:3b",
-        "name": "Llama 3.2 3B"
-      }
+      {"id": "GaMS-9B-Instruct", "name": "GaMS 9B Instruct", "description": "Recommended. Best balance of quality and cost."},
+      {"id": "GaMS-27B-Instruct", "name": "GaMS 27B Instruct", "description": "Higher quality, requires larger GPU."}
     ],
     "parameters": {
       "temperature": {
@@ -376,10 +369,18 @@ Get unified options (models + parameters) for transcription and LLM. This endpoi
 }
 ```
 
+**Available Providers:**
+
+| Type | Providers                                                                     |
+|------|-------------------------------------------------------------------------------|
+| Transcription | `groq` (Whisper), `assemblyai`, `clarin-slovene-asr` (Slovenian)              |
+| LLM Cleanup | `groq`, `ollama`, `runpod_llm_gams` (Slovenian GaMS)                          |
+
 **Notes:**
 - **No authentication required** - this endpoint is public
 - **Dynamic parameters** - Parameter availability depends on configured providers
-- Set providers via `TRANSCRIPTION_PROVIDER` and `LLM_PROVIDER` environment variables
+- **Per-request override** - Use `transcription_provider` and `llm_provider` in upload requests
+- Set default providers via `TRANSCRIPTION_PROVIDER` and `LLM_PROVIDER` environment variables
 - Use this endpoint to discover available models and valid parameter ranges before making upload requests
 
 **GET `/api/v1/models/languages`**
