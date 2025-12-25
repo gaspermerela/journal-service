@@ -48,7 +48,7 @@ Access tokens expire after `ACCESS_TOKEN_EXPIRE_DAYS` days (7 by default). Refre
 | `/api/v1/transcriptions/{id}` | GET | Yes | Get transcription status and text |
 | `/api/v1/transcriptions/{id}/cleanup` | POST | Yes | Start LLM cleanup of transcription |
 | `/api/v1/transcriptions/{id}/set-primary` | PUT | Yes | Set transcription as primary for entry |
-| `/api/v1/cleaned-entries/{id}` | GET | Yes | Get cleaned text and status |
+| `/api/v1/cleaned-entries/{id}` | GET | Yes | Get cleaned text, status, and spell-check results |
 
 ### Manual Workflow (Advanced) 🔧
 
@@ -395,6 +395,59 @@ List all supported transcription languages.
 ```
 
 Both Whisper and Groq support 99+ languages plus auto-detection. Supported languages include all major world languages.
+
+### Cleaned Entry Details (with Spell-Check)
+
+**GET `/api/v1/cleaned-entries/{id}`**
+
+Get cleaned entry with optional spell-check results.
+
+**Response (Slovenian text - includes spell-check):**
+```json
+{
+  "id": "770e8400-e29b-41d4-a716-446655440002",
+  "voice_entry_id": "550e8400-e29b-41d4-a716-446655440000",
+  "transcription_id": "660e8400-e29b-41d4-a716-446655440001",
+  "user_id": "880e8400-e29b-41d4-a716-446655440003",
+  "cleaned_text": "Sanjal sem, da sem bil na planini...",
+  "status": "completed",
+  "model_name": "runpod_llm_gams-GaMS-9B-Instruct",
+  "is_primary": true,
+  "spelling_issues": [
+    {
+      "word": "planini",
+      "suggestions": ["planina", "planine", "planino"]
+    }
+  ],
+  "created_at": "2025-11-15T03:15:20Z"
+}
+```
+
+**Response (non-Slovenian text - no spell-check):**
+```json
+{
+  "id": "770e8400-e29b-41d4-a716-446655440002",
+  "voice_entry_id": "550e8400-e29b-41d4-a716-446655440000",
+  "transcription_id": "660e8400-e29b-41d4-a716-446655440001",
+  "user_id": "880e8400-e29b-41d4-a716-446655440003",
+  "cleaned_text": "I dreamt that I was on a mountain...",
+  "status": "completed",
+  "model_name": "groq-llama-3.3-70b-versatile",
+  "is_primary": true,
+  "spelling_issues": null,
+  "created_at": "2025-11-15T03:15:20Z"
+}
+```
+
+**Spell-Check Behavior:**
+- **Slovenian only** - Spell-check runs only when the transcription language is `sl`
+- **Automatic** - No additional API calls needed; results included in response
+- **Computed on-the-fly** - Spell-check runs when you fetch the cleaned entry
+- **User edits supported** - If `user_edited_text` exists, spell-check runs on edited text instead
+- **Deduplication** - Same misspelled word appears only once, even if repeated in text
+
+**Spell-Check Configuration:**
+The backend must have spell-check enabled and the Slovenian dictionary loaded. See the Spell-Check section in architecture docs for details.
 
 ## Interactive Documentation
 
