@@ -1,7 +1,7 @@
 """add_speaker_diarization
 
 Revision ID: f8a9b0c1d2e3
-Revises: 27014772c518
+Revises: 601acb7e0ba1
 Create Date: 2025-12-17 23:30:00.000000
 
 """
@@ -15,7 +15,7 @@ from schema_config import get_schema
 
 # revision identifiers, used by Alembic.
 revision: str = 'f8a9b0c1d2e3'
-down_revision: Union[str, None] = '27014772c518'
+down_revision: Union[str, None] = '601acb7e0ba1'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
