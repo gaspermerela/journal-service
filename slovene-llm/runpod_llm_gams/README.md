@@ -19,9 +19,7 @@ RunPod serverless handler for **GaMS (Generative Model for Slovene)** - a native
 
 ```bash
 # Build for AMD64 (RunPod requirement)
-docker buildx build --platform linux/amd64 \
-  -t your-registry/gams-llm:v1.0 \
-  --push .
+docker buildx build --platform linux/amd64 -t your-registry/gams-llm:v1.0 --push .
 ```
 
 ### 2. Create RunPod Serverless Endpoint
