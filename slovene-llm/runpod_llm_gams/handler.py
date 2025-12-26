@@ -49,7 +49,7 @@ def load_model() -> LLM:
 
     llm = LLM(
         model=model_source,
-        dtype="float16",  # FP16 for L4 GPU
+        dtype="bfloat16",  # BF16 for L4 GPU (Gemma2 doesn't support FP16)
         gpu_memory_utilization=GPU_MEMORY_UTILIZATION,
         max_model_len=MAX_MODEL_LEN,
         trust_remote_code=True,  # Required for some GaMS variants
