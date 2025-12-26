@@ -398,8 +398,8 @@ class SloveneASRTranscriptionService(TranscriptionService):
         Returns:
             Standardized transcription result dict
         """
-        text = result.get("text", "").strip()
-        raw_text = result.get("raw_text", text)  # Fallback to text if raw_text not provided
+        text = self._clean_filler_characters(result.get("text", ""))
+        raw_text = self._clean_filler_characters(result.get("raw_text", text))  # Fallback to text if raw_text not provided
         pipeline = result.get("pipeline", ["asr"])
         model_version = result.get("model_version", "unknown")
         diarization_applied = result.get("diarization_applied", False)
@@ -438,6 +438,28 @@ class SloveneASRTranscriptionService(TranscriptionService):
             if speaker:
                 speakers.add(speaker)
         return len(speakers)
+
+    def _clean_filler_characters(self, text: str) -> str:
+        """
+        Remove filler characters from transcription text.
+
+        The ASR model outputs '▩' to represent filler words like "uhm", "uh", etc.
+        These should be removed from the final output.
+
+        Args:
+            text: Raw transcription text
+
+        Returns:
+            Cleaned text with filler characters removed
+        """
+        if not text:
+            return text
+        # Remove filler character and clean up any resulting double spaces
+        cleaned = text.replace("▩", "")
+        # Clean up multiple spaces that may result from removal
+        while "  " in cleaned:
+            cleaned = cleaned.replace("  ", " ")
+        return cleaned.strip()
 
     async def _transcribe_chunks_parallel(
         self,
@@ -482,8 +504,8 @@ class SloveneASRTranscriptionService(TranscriptionService):
 
                     return {
                         "chunk_index": chunk.index,
-                        "text": result.get("text", "").strip(),
-                        "raw_text": result.get("raw_text", "").strip(),
+                        "text": self._clean_filler_characters(result.get("text", "")),
+                        "raw_text": self._clean_filler_characters(result.get("raw_text", "")),
                         "processing_time": result.get("processing_time"),
                         "pipeline": result.get("pipeline", ["asr"]),
                         "model_version": result.get("model_version", "unknown"),
