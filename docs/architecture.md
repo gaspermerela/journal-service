@@ -177,6 +177,7 @@ Main Database (PostgreSQL)
 
 **LLM Cleanup Providers:**
 - **Groq:** Cloud LLM API (LLaMA models)
+>WARNING: Architecture for GaMS LLM is setup but needs additional tweaking to make it work with runpod.
 - **GaMS:** RunPod serverless with native Slovenian LLM (GaMS-9B-Instruct)
 
 **Audio Processing:**

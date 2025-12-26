@@ -4,6 +4,33 @@ This document lists improvements I plan to add as the project grows. Everything 
 
 ---
 
+## Known Issues
+
+### 9. GaMS-9B on RunPod: CUDA PTX Version Mismatch
+
+**Status:** Investigating - GaMS LLM provider not yet production-ready
+
+**Problem**
+
+GaMS-9B-Instruct fails to initialize due to CUDA version mismatch between Docker base image (CUDA 11.8) and vLLM 0.13 binaries (compiled for CUDA 12.x):
+
+```
+torch.AcceleratorError: CUDA error: the provided PTX was compiled with an unsupported toolchain.
+Search for the following error message `cudaErrorUnsupportedPtxVersion'
+```
+
+The failure occurs during `Capturing CUDA graphs (decode, FULL)` phase, after model loading and KV cache allocation succeed.
+
+**Potential Fixes**
+
+1. **Upgrade Docker base image** to CUDA 12.1+ (recommended - vLLM 0.13 requires CUDA 12.1+)
+2. **Use `enforce_eager=True`** to disable CUDA graphs (quick workaround, slower inference)
+3. **Downgrade vLLM** to version compatible with CUDA 11.8 (~0.5.5)
+
+See `slovene-llm/runpod_llm_gams/docs/TROUBLESHOOTING.md` for detailed analysis and solutions.
+
+---
+
 ## Reliability & Robustness
 
 ### 1. Automatic Retries with Backoff for Background Tasks
