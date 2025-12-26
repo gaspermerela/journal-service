@@ -39,6 +39,8 @@ from app.utils.encryption_helpers import (
     decrypt_text,
 )
 from app.utils.logger import get_logger
+from app.config import settings
+from app.services.spellcheck import get_slovenian_spellcheck_service
 
 logger = get_logger("transcription_routes")
 
@@ -450,6 +452,18 @@ async def get_transcription(
             # Check if any segment has a speaker label to determine if diarization was applied
             diarization_applied = any(s.speaker is not None for s in decrypted_segments)
 
+    # Run spell-check for Slovenian transcriptions (on-the-fly)
+    spelling_issues = None
+    if (
+        decrypted_text
+        and transcription.status == "completed"
+        and transcription.language_code == "sl"
+        and settings.SPELLCHECK_ENABLED
+    ):
+        spellcheck_service = get_slovenian_spellcheck_service()
+        if spellcheck_service and spellcheck_service.is_loaded():
+            spelling_issues = spellcheck_service.check_text(decrypted_text)
+
     logger.info(f"Transcription retrieved", transcription_id=str(transcription_id))
 
     return TranscriptionStatusResponse(
@@ -468,6 +482,7 @@ async def get_transcription(
         transcription_completed_at=transcription.transcription_completed_at,
         error_message=transcription.error_message,
         is_primary=transcription.is_primary,
+        spelling_issues=spelling_issues,
     )
 
 

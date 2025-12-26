@@ -3,8 +3,10 @@ Pydantic schemas for transcription request/response validation.
 """
 from datetime import datetime
 from uuid import UUID
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict, field_validator
+
+from app.schemas.spellcheck import SpellingIssue
 
 
 class TranscriptionSegment(BaseModel):
@@ -134,6 +136,10 @@ class TranscriptionStatusResponse(BaseModel):
     transcription_completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
     is_primary: bool
+    spelling_issues: Optional[List[SpellingIssue]] = Field(
+        default=None,
+        description="Spelling issues found in transcribed text (Slovenian only, null for other languages)"
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
